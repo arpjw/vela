@@ -4,7 +4,7 @@
 
 CEX performance. DEX integrity. Open by default.
 
-Built by [Monolith Systematic LLC](https://monolithsystematic.com). Named for the constellation — for Aditya.
+Built by [Monolith Systematic LLC](https://monolithsystematic.com).
 
 ---
 
