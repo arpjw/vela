@@ -1,0 +1,11 @@
+/target
+Cargo.lock
+*.log
+*.prof
+flamegraph.svg
+perf.data
+perf.data.old
+.DS_Store
+.env
+/data/
+/snapshots/

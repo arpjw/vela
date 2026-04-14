@@ -1,0 +1,15 @@
+[package]
+name = "benches"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dev-dependencies]
+types = { workspace = true }
+engine = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "matching"
+harness = false

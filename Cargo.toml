@@ -1,0 +1,42 @@
+[workspace]
+members = [
+    "types",
+    "engine",
+    "state",
+    "api",
+    "committer",
+    "zkvm",
+    "benches",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Arya Somu <arya@monolithsystematic.com>"]
+license = "MIT"
+repository = "https://github.com/arpjw/vela"
+
+[workspace.dependencies]
+types = { path = "types" }
+engine = { path = "engine" }
+state = { path = "state" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+thiserror = "1"
+bytes = "1"
+dashmap = "5"
+parking_lot = "0.12"
+sha3 = "0.10"
+k256 = { version = "0.13", features = ["ecdsa"] }
+hex = "0.4"
+rand = "0.8"
+criterion = { version = "0.5", features = ["html_reports"] }
