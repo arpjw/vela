@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use api::AppState;
 use axum_test::TestServer;
 use engine::MatchingEngine;
@@ -155,4 +156,216 @@ async fn test_format_amount() {
     assert_eq!(format_amount(150_000_000, 8), "1.5");
     assert_eq!(format_amount(0, 8), "0");
     assert_eq!(format_amount(1, 8), "0.00000001");
+}
+
+// ── WebSocket private-feed tests ─────────────────────────────────────────────
+
+mod ws_tests {
+    use super::*;
+    use std::time::Duration;
+    use axum_test::TestServerConfig;
+    use axum_test::TestWebSocket;
+    use k256::ecdsa::{SigningKey, Signature, RecoveryId};
+    use sha3::{Digest, Keccak256};
+
+    /// Create a server that shares its AppState with the caller so tests can
+    /// inject events directly via `state.feeds`.  WS requires HTTP transport.
+    fn ws_test_server(engine: MatchingEngine) -> (axum_test::TestServer, Arc<AppState>) {
+        let state = AppState::new(engine);
+        let state_clone = state.clone();
+        let config = TestServerConfig::builder().http_transport().build();
+        let server = axum_test::TestServer::new_with_config(
+            api::build_router(state),
+            config,
+        )
+        .unwrap();
+        (server, state_clone)
+    }
+
+    /// Deterministic test key derived from an integer seed.
+    fn test_key(seed: u64) -> SigningKey {
+        use rand::{SeedableRng, rngs::StdRng};
+        let mut rng = StdRng::seed_from_u64(seed);
+        SigningKey::random(&mut rng)
+    }
+
+    fn address_of(key: &SigningKey) -> String {
+        let vk = key.verifying_key();
+        let pubkey = vk.to_encoded_point(false);
+        let hash = Keccak256::digest(&pubkey.as_bytes()[1..]);
+        let addr: [u8; 20] = hash[12..].try_into().unwrap();
+        format!("0x{}", hex::encode(addr))
+    }
+
+    /// Sign `vela:auth:{nonce}` with Ethereum personal-sign prefix.
+    fn sign_auth(key: &SigningKey, nonce: &str) -> String {
+        let msg = api::auth::auth_signing_message(nonce);
+        let hash = api::auth::eth_message_hash(&msg);
+        let (sig, rid): (Signature, RecoveryId) =
+            key.sign_prehash_recoverable(&hash).unwrap();
+        let mut bytes = [0u8; 65];
+        bytes[..64].copy_from_slice(&sig.to_bytes());
+        bytes[64] = rid.to_byte();
+        format!("0x{}", hex::encode(bytes))
+    }
+
+    /// Full RequestChallenge → Auth round-trip; asserts Authenticated is returned.
+    async fn do_auth(ws: &mut TestWebSocket, key: &SigningKey) {
+        ws.send_json(&json!({"type": "request_challenge"})).await;
+        let challenge: Value = ws.receive_json().await;
+        assert_eq!(challenge["type"], "challenge");
+        let nonce = challenge["nonce"].as_str().unwrap().to_string();
+        let addr = address_of(key);
+        let sig = sign_auth(key, &nonce);
+        ws.send_json(&json!({
+            "type": "auth",
+            "address": addr,
+            "signature": sig,
+            "nonce": nonce,
+        }))
+        .await;
+        let resp: Value = ws.receive_json().await;
+        assert_eq!(resp["type"], "authenticated", "auth failed: {resp}");
+    }
+
+    // ── Test 1: unauthenticated connection must not receive private events ──
+
+    #[tokio::test]
+    async fn test_ws_unauthenticated_no_private_events() {
+        let (server, state) = ws_test_server(engine_with_market());
+        let user = types::UserId::from_hex(&user_addr()).unwrap();
+
+        let mut ws = server.get_websocket("/ws").await.into_websocket().await;
+
+        // Publish a private event before any auth.
+        state.feeds.lock().await.publish_private(
+            &user,
+            api::types::WsServerMessage::OrderUpdate {
+                order_id: 1,
+                status: "open".to_string(),
+                filled_quantity: "0".to_string(),
+            },
+        );
+
+        // Nothing should arrive within 100 ms.
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            ws.receive_text(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "unauthenticated connection must not receive private events"
+        );
+
+        ws.close().await;
+    }
+
+    // ── Test 2: authenticated connection receives its own fills ──────────────
+
+    #[tokio::test]
+    async fn test_ws_authenticated_receives_own_fills() {
+        let key = test_key(1);
+        let addr = address_of(&key);
+        let user = types::UserId::from_hex(&addr).unwrap();
+
+        let (server, state) = ws_test_server(engine_with_market());
+
+        let mut ws = server.get_websocket("/ws").await.into_websocket().await;
+        do_auth(&mut ws, &key).await;
+
+        // Inject a Fill directly into the private feed.
+        state.feeds.lock().await.publish_private(
+            &user,
+            api::types::WsServerMessage::Fill {
+                maker_order_id: 10,
+                taker_order_id: 11,
+                price: "50000".to_string(),
+                quantity: "1".to_string(),
+                side: "bid".to_string(),
+                maker_fee: "0".to_string(),
+                taker_fee: "0".to_string(),
+                timestamp: 9999,
+            },
+        );
+
+        let fill: Value = tokio::time::timeout(
+            Duration::from_millis(500),
+            ws.receive_json(),
+        )
+        .await
+        .expect("authenticated connection should receive its own fill within 500 ms");
+
+        assert_eq!(fill["type"], "fill");
+        assert_eq!(fill["price"], "50000");
+        assert_eq!(fill["maker_order_id"], 10);
+
+        ws.close().await;
+    }
+
+    // ── Test 3: user A cannot see user B's private events ───────────────────
+
+    #[tokio::test]
+    async fn test_ws_private_feed_isolation() {
+        let key_a = test_key(2);
+        let key_b = test_key(3);
+        let addr_b = address_of(&key_b);
+        let user_b = types::UserId::from_hex(&addr_b).unwrap();
+
+        let (server, state) = ws_test_server(engine_with_market());
+
+        // User A connects and authenticates.
+        let mut ws_a = server.get_websocket("/ws").await.into_websocket().await;
+        do_auth(&mut ws_a, &key_a).await;
+
+        // Publish an event exclusively for user B.
+        state.feeds.lock().await.publish_private(
+            &user_b,
+            api::types::WsServerMessage::OrderUpdate {
+                order_id: 99,
+                status: "open".to_string(),
+                filled_quantity: "0".to_string(),
+            },
+        );
+
+        // User A must not receive user B's event.
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            ws_a.receive_text(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "user A must not receive user B's private events"
+        );
+
+        ws_a.close().await;
+    }
+
+    // ── Test 4: auth without prior RequestChallenge is rejected ─────────────
+
+    #[tokio::test]
+    async fn test_ws_auth_requires_server_nonce() {
+        let key = test_key(4);
+        let addr = address_of(&key);
+        let nonce = "client-chosen-nonce";
+        let sig = sign_auth(&key, nonce);
+
+        let (server, _state) = ws_test_server(engine_with_market());
+        let mut ws = server.get_websocket("/ws").await.into_websocket().await;
+
+        ws.send_json(&json!({
+            "type": "auth",
+            "address": addr,
+            "signature": sig,
+            "nonce": nonce,
+        }))
+        .await;
+
+        let resp: Value = ws.receive_json().await;
+        assert_eq!(resp["type"], "error");
+        assert_eq!(resp["code"], "NO_CHALLENGE");
+
+        ws.close().await;
+    }
 }

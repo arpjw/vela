@@ -22,8 +22,9 @@ bytes = { workspace = true }
 k256 = { workspace = true }
 sha3 = { workspace = true }
 hex = { workspace = true }
+rand = { workspace = true }
 futures-util = "0.3"
 
 [dev-dependencies]
-axum-test = "15"
+axum-test = { version = "15", features = ["ws"] }
 tokio = { workspace = true }

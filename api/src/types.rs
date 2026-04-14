@@ -6,6 +6,7 @@ use types::{MarketId, OrderSide, OrderStatus, OrderType, Price, Quantity, UserId
 pub enum WsClientMessage {
     Subscribe { channels: Vec<String> },
     Unsubscribe { channels: Vec<String> },
+    RequestChallenge,
     Auth { address: String, signature: String, nonce: String },
     Ping,
 }
@@ -19,6 +20,7 @@ pub enum WsServerMessage {
     OrderUpdate { order_id: u64, status: String, filled_quantity: String },
     Fill { maker_order_id: u64, taker_order_id: u64, price: String, quantity: String, side: String, maker_fee: String, taker_fee: String, timestamp: u64 },
     BalanceUpdate { asset: String, available: String, locked: String },
+    Challenge { nonce: String },
     Authenticated { address: String },
     Error { code: String, message: String },
     Pong,
