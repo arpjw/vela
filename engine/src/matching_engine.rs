@@ -119,8 +119,11 @@ impl MatchingEngine {
             OrderSide::Ask => req.quantity,
         };
 
+        let deposited = spend_balance.total();
+        if order_notional > deposited {
+            return Err(VelaError::InsufficientBalance);
+        }
         if spend_balance.available < order_notional {
-            let deposited = spend_balance.total();
             self.credit_system.check_credit(
                 &req.user,
                 deposited,

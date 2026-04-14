@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use types::{AssetId, OrderId, Price, Quantity, UserId, VelaError, PRICE_SCALE, QUANTITY_SCALE};
+use types::{OrderId, Price, Quantity, UserId, VelaError, PRICE_SCALE, QUANTITY_SCALE};
 
 pub struct CreditSystem {
     credit_ratios: HashMap<UserId, f64>,
@@ -25,8 +25,7 @@ impl CreditSystem {
     pub fn compute_notional(price: Price, quantity: Quantity) -> u64 {
         let p = price as u128;
         let q = quantity as u128;
-        let scale = (PRICE_SCALE as u128) * (QUANTITY_SCALE as u128);
-        ((p * q) / scale) as u64
+        ((p * q) / QUANTITY_SCALE as u128) as u64
     }
 
     pub fn check_credit(

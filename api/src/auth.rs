@@ -1,5 +1,4 @@
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use sha3::{Digest, Keccak256};
 use types::{UserId, VelaError};
 

@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Serialize};
+
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use types::{PostOrderRequest, CancelOrderRequest, Request, Response};
