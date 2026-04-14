@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use tokio::sync::broadcast;
-use types::{Fill, MarketId, Response, UserId};
+use types::{MarketId, Response, UserId};
 use crate::types::WsServerMessage;
 
 const CHANNEL_CAPACITY: usize = 1024;
@@ -8,7 +8,6 @@ const CHANNEL_CAPACITY: usize = 1024;
 pub struct FeedManager {
     public_tx: broadcast::Sender<WsServerMessage>,
     private_txs: HashMap<[u8; 20], broadcast::Sender<WsServerMessage>>,
-    trade_history: HashMap<MarketId, Vec<WsServerMessage>>,
 }
 
 impl FeedManager {
@@ -17,7 +16,6 @@ impl FeedManager {
         FeedManager {
             public_tx,
             private_txs: HashMap::new(),
-            trade_history: HashMap::new(),
         }
     }
 
@@ -33,11 +31,7 @@ impl FeedManager {
     }
 
     pub fn publish_public(&self, msg: WsServerMessage) {
-        if let WsServerMessage::Trade { .. } = &msg {
-            let _ = self.public_tx.send(msg);
-        } else {
-            let _ = self.public_tx.send(msg);
-        }
+        let _ = self.public_tx.send(msg);
     }
 
     pub fn publish_private(&self, user: &UserId, msg: WsServerMessage) {
@@ -47,6 +41,12 @@ impl FeedManager {
     }
 
     pub fn dispatch_responses(&self, user: &UserId, responses: &[Response]) {
+        self.dispatch_response_batch(user, responses);
+    }
+
+    pub fn dispatch_response_batch(&self, user: &UserId, responses: &[Response]) {
+        let mut private_msgs: Vec<([u8; 20], WsServerMessage)> = vec![];
+
         for response in responses {
             match response {
                 Response::OrderFilled(fill) => {
@@ -60,34 +60,37 @@ impl FeedManager {
                         taker_fee: fill.taker_fee.to_string(),
                         timestamp: fill.timestamp,
                     };
-                    self.publish_private(&fill.maker, msg.clone());
-                    self.publish_private(&fill.taker, msg);
+                    private_msgs.push((fill.maker.0, msg.clone()));
+                    private_msgs.push((fill.taker.0, msg));
                 }
                 Response::OrderPosted(posted) => {
-                    let msg = WsServerMessage::OrderUpdate {
+                    private_msgs.push((user.0, WsServerMessage::OrderUpdate {
                         order_id: posted.order_id,
                         status: format!("{:?}", posted.status).to_lowercase(),
                         filled_quantity: "0".to_string(),
-                    };
-                    self.publish_private(user, msg);
+                    }));
                 }
                 Response::OrderCanceled(canceled) => {
-                    let msg = WsServerMessage::OrderUpdate {
+                    private_msgs.push((user.0, WsServerMessage::OrderUpdate {
                         order_id: canceled.order_id,
                         status: "canceled".to_string(),
                         filled_quantity: "0".to_string(),
-                    };
-                    self.publish_private(user, msg);
+                    }));
                 }
                 Response::BalanceUpdated(update) => {
-                    let msg = WsServerMessage::BalanceUpdate {
+                    private_msgs.push((user.0, WsServerMessage::BalanceUpdate {
                         asset: update.asset.0.clone(),
                         available: update.available.to_string(),
                         locked: update.locked.to_string(),
-                    };
-                    self.publish_private(user, msg);
+                    }));
                 }
                 Response::Error(_) => {}
+            }
+        }
+
+        for (addr, msg) in private_msgs {
+            if let Some(tx) = self.private_txs.get(&addr) {
+                let _ = tx.send(msg);
             }
         }
     }

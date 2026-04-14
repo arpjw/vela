@@ -66,3 +66,29 @@ pub fn withdrawal_signing_message(asset: &str, amount: u64, nonce: u64) -> Vec<u
 pub fn auth_signing_message(nonce: &str) -> Vec<u8> {
     format!("vela:auth:{}", nonce).into_bytes()
 }
+
+pub async fn verify_matches_async(
+    message: Vec<u8>,
+    signature: String,
+    expected: String,
+) -> Result<UserId, VelaError> {
+    tokio::task::spawn_blocking(move || verify_matches(&message, &signature, &expected))
+        .await
+        .map_err(|_| VelaError::InvalidSignature)?
+}
+
+pub async fn verify_batch_async(
+    items: Vec<(Vec<u8>, String, String)>,
+) -> Vec<Result<UserId, VelaError>> {
+    let handles: Vec<_> = items
+        .into_iter()
+        .map(|(msg, sig, addr)| {
+            tokio::task::spawn_blocking(move || verify_matches(&msg, &sig, &addr))
+        })
+        .collect();
+    let mut results = vec![];
+    for h in handles {
+        results.push(h.await.unwrap_or(Err(VelaError::InvalidSignature)));
+    }
+    results
+}

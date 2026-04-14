@@ -12,7 +12,7 @@ use types::{
 };
 use crate::{
     AppState,
-    auth::{cancel_signing_message, order_signing_message, verify_matches, withdrawal_signing_message},
+    auth::{cancel_signing_message, order_signing_message, verify_matches_async, withdrawal_signing_message},
     types::{
         ApiResponse, BalanceResponse, BookLevel, BookResponse, CancelOrderBody,
         MarketResponse, PostOrderBody, WithdrawBody, format_amount,
@@ -148,7 +148,7 @@ async fn post_order(
 
     let side_str = format!("{:?}", body.side).to_lowercase();
     let msg = order_signing_message(&body.market, &side_str, body.price, body.quantity, body.nonce);
-    if let Err(_) = verify_matches(&msg, &body.signature, &body.address) {
+    if verify_matches_async(msg, body.signature.clone(), body.address.clone()).await.is_err() {
         return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("invalid signature"))).into_response();
     }
 
@@ -174,7 +174,7 @@ async fn post_order(
         engine.process(Request::PostOrder(req), ts)
     };
 
-    state.feeds.lock().await.dispatch_responses(&user, &responses);
+    state.feeds.lock().await.dispatch_response_batch(&user, &responses);
 
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
 }
@@ -193,7 +193,7 @@ async fn cancel_order(
         body.client_order_id.as_deref(),
         body.nonce,
     );
-    if let Err(_) = verify_matches(&msg, &body.signature, &body.address) {
+    if verify_matches_async(msg, body.signature.clone(), body.address.clone()).await.is_err() {
         return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("invalid signature"))).into_response();
     }
 
@@ -215,7 +215,7 @@ async fn cancel_order(
         engine.process(Request::CancelOrder(req), ts)
     };
 
-    state.feeds.lock().await.dispatch_responses(&user, &responses);
+    state.feeds.lock().await.dispatch_response_batch(&user, &responses);
 
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
 }
@@ -230,7 +230,7 @@ async fn initiate_withdrawal(
     };
 
     let msg = withdrawal_signing_message(&body.asset, body.amount, body.nonce);
-    if let Err(_) = verify_matches(&msg, &body.signature, &body.address) {
+    if verify_matches_async(msg, body.signature.clone(), body.address.clone()).await.is_err() {
         return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("invalid signature"))).into_response();
     }
 
@@ -252,7 +252,7 @@ async fn initiate_withdrawal(
         engine.process(Request::Withdrawal(req), ts)
     };
 
-    state.feeds.lock().await.dispatch_responses(&user, &responses);
+    state.feeds.lock().await.dispatch_response_batch(&user, &responses);
 
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
 }
