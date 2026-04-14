@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use types::{
     AssetId, Balance, CancelOrderRequest, DepositRequest, ErrorCode, ErrorResponse, FeeConfig,
-    Fill, Market, MarketId, Order, OrderId, OrderPostedResponse, OrderSide, OrderStatus,
-    OrderType, PostOrderRequest, Request, Response, Timestamp, UserId, UserMetadata, VelaError,
-    WithdrawalRequest,
+    Fill, Market, MarketId, Order, OrderCanceledResponse, OrderId, OrderPostedResponse, OrderSide,
+    OrderStatus, OrderType, PostOrderRequest, Request, Response, Timestamp, UserId, UserMetadata,
+    VelaError, WithdrawalRequest,
 };
 use crate::{CowCache, CreditSystem, OrderBook};
 
@@ -30,6 +30,10 @@ impl MatchingEngine {
             timestamp: 0,
             next_order_id: 1,
         }
+    }
+
+    pub fn set_credit_ratio(&mut self, user: UserId, ratio: f64) {
+        self.credit_system.set_ratio(user, ratio);
     }
 
     pub fn add_market(&mut self, market: Market) {
@@ -68,6 +72,7 @@ impl MatchingEngine {
             open_order_ids: vec![],
             credit_ratio: 1.0,
             total_quoted_notional: 0,
+            actual_collateral: 0,
         })
     }
 
@@ -151,7 +156,7 @@ impl MatchingEngine {
             status: OrderStatus::Open,
         };
 
-        let fills = self.match_order(&order, market, cow)?;
+        let (fills, auto_canceled) = self.match_order(&order, market, cow)?;
 
         let total_filled: u64 = fills.iter().map(|f| f.quantity).sum();
         order.filled_quantity = total_filled;
@@ -184,6 +189,9 @@ impl MatchingEngine {
         }
 
         let mut responses: Vec<Response> = fills.into_iter().map(Response::OrderFilled).collect();
+        for canceled in auto_canceled {
+            responses.push(Response::OrderCanceled(canceled));
+        }
         responses.push(Response::OrderPosted(OrderPostedResponse {
             order_id: order.id,
             client_order_id: order.client_order_id,
@@ -198,15 +206,16 @@ impl MatchingEngine {
         order: &Order,
         market: &Market,
         cow: &mut CowCache,
-    ) -> Result<Vec<Fill>, VelaError> {
+    ) -> Result<(Vec<Fill>, Vec<OrderCanceledResponse>), VelaError> {
         let book = match self.order_books.get(&order.market) {
             Some(b) => b,
-            None => return Ok(vec![]),
+            None => return Ok((vec![], vec![])),
         };
 
         let mut fills: Vec<Fill> = vec![];
         let mut taker_remaining = order.quantity;
         let mut locally_consumed: HashMap<OrderId, u64> = HashMap::new();
+        let mut affected_makers: HashSet<UserId> = HashSet::new();
 
         let matchable: Vec<(u64, Vec<Order>)> = match order.side {
             OrderSide::Bid => book.matchable_asks(order.price),
@@ -248,6 +257,9 @@ impl MatchingEngine {
                 locally_consumed.insert(resting.id, new_consumed);
 
                 let fully_consumed = new_consumed >= resting.quantity;
+                // For bid makers (resting.side == Bid), fills consume their real quote collateral.
+                // Decrement actual_collateral so the post-fill credit check uses the true amount.
+                let is_bid_maker = resting.side == OrderSide::Bid;
                 if fully_consumed {
                     cow.record_remove(order.market.clone(), resting.id);
                     let mut maker_meta = cow.get_metadata(&resting.user, &self.metadata);
@@ -255,21 +267,101 @@ impl MatchingEngine {
                     let resting_notional = CreditSystem::compute_notional(resting.price, resting.remaining_quantity());
                     maker_meta.total_quoted_notional =
                         maker_meta.total_quoted_notional.saturating_sub(resting_notional);
+                    if is_bid_maker {
+                        maker_meta.actual_collateral =
+                            maker_meta.actual_collateral.saturating_sub(fill_notional);
+                    }
                     cow.set_metadata(maker_meta);
                 } else {
                     cow.record_partial_fill(order.market.clone(), resting.id, fill_qty);
                     let mut maker_meta = cow.get_metadata(&resting.user, &self.metadata);
                     maker_meta.total_quoted_notional = maker_meta.total_quoted_notional
                         .saturating_sub(CreditSystem::compute_notional(resting.price, fill_qty));
+                    if is_bid_maker {
+                        maker_meta.actual_collateral =
+                            maker_meta.actual_collateral.saturating_sub(fill_notional);
+                    }
                     cow.set_metadata(maker_meta);
                 }
 
+                affected_makers.insert(resting.user.clone());
                 taker_remaining -= fill_qty;
                 fills.push(fill);
             }
         }
 
-        Ok(fills)
+        // Credit auto-cancel: only applies to bid makers (taker is Ask, resting are Bids).
+        // Ask makers lock base asset (BTC), which uses a separate backing invariant.
+        // Bid makers lock quote asset (USDC) and may use credit beyond their available balance.
+        // After fills reduce actual_collateral, check if total_quoted_notional > actual_collateral * ratio.
+        let mut auto_canceled: Vec<OrderCanceledResponse> = vec![];
+
+        if order.side == OrderSide::Ask {
+            for maker_user in &affected_makers {
+                let mut maker_meta = cow.get_metadata(maker_user, &self.metadata);
+                let maker_deposited = maker_meta.actual_collateral;
+
+                // Collect (order_id, remaining_notional) for each still-open order,
+                // accounting for fills already applied in this match loop.
+                let open_orders: Vec<(OrderId, u64)> = maker_meta
+                    .open_order_ids
+                    .iter()
+                    .filter_map(|&oid| {
+                        for book in self.order_books.values() {
+                            if let Some(o) = book.get_order(oid) {
+                                let consumed = locally_consumed.get(&oid).copied().unwrap_or(0);
+                                let remaining = o.remaining_quantity().saturating_sub(consumed);
+                                if remaining > 0 {
+                                    return Some((oid, CreditSystem::compute_notional(o.price, remaining)));
+                                }
+                                return None;
+                            }
+                        }
+                        None
+                    })
+                    .collect();
+
+                let to_cancel = self.credit_system.orders_to_cancel_after_fill(
+                    maker_user,
+                    maker_deposited,
+                    maker_meta.total_quoted_notional,
+                    &open_orders,
+                );
+
+                for oid in to_cancel {
+                    'find_order: for book in self.order_books.values() {
+                        if let Some(o) = book.get_order(oid) {
+                            let consumed = locally_consumed.get(&oid).copied().unwrap_or(0);
+                            let remaining = o.remaining_quantity().saturating_sub(consumed);
+                            let notional = CreditSystem::compute_notional(o.price, remaining);
+                            // Bid orders lock quote; unlock the notional amount.
+                            let unlock_amt = CreditSystem::compute_notional(o.price, remaining);
+
+                            cow.record_remove(o.market.clone(), oid);
+                            cow.unlock_to_available(
+                                maker_user,
+                                &market.quote,
+                                unlock_amt,
+                                &self.balances,
+                            );
+                            maker_meta.open_order_ids.retain(|&id| id != oid);
+                            maker_meta.total_quoted_notional =
+                                maker_meta.total_quoted_notional.saturating_sub(notional);
+
+                            auto_canceled.push(OrderCanceledResponse {
+                                order_id: oid,
+                                client_order_id: o.client_order_id.clone(),
+                            });
+                            break 'find_order;
+                        }
+                    }
+                }
+
+                cow.set_metadata(maker_meta);
+            }
+        }
+
+        Ok((fills, auto_canceled))
     }
 
     fn apply_fill_balances(&self, fill: &Fill, market: &Market, cow: &mut CowCache) {
@@ -378,6 +470,14 @@ impl MatchingEngine {
     }
 
     fn process_deposit(&mut self, req: DepositRequest) -> Vec<Response> {
+        // Track actual collateral for credit auto-cancel: only quote assets back bid credit.
+        let is_quote = self.markets.values().any(|m| m.quote == req.asset);
+        if is_quote {
+            let mut meta = self.get_metadata(&req.user);
+            meta.actual_collateral += req.amount;
+            self.metadata.insert(req.user.clone(), meta);
+        }
+
         let key = (req.user.clone(), req.asset.clone());
         let bal = self.balances.entry(key).or_insert_with(|| Balance {
             user: req.user.clone(),

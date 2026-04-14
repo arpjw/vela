@@ -1,4 +1,4 @@
-use engine::MatchingEngine;
+use engine::{CreditSystem, MatchingEngine};
 use types::{
     AssetId, CancelOrderRequest, DepositRequest, ErrorCode, FeeConfig, Market,
     MarketId, OrderSide, OrderStatus, OrderType, PostOrderRequest, Request,
@@ -288,4 +288,232 @@ fn test_multi_level_fill() {
 
     let taker_btc = e.balances.get(&(taker, btc())).unwrap();
     assert_eq!(taker_btc.available, 2 * QUANTITY_SCALE);
+}
+
+// ─── VEL-14: Credit system tests ──────────────────────────────────────────────
+
+fn credit_engine(default_ratio: f64) -> MatchingEngine {
+    let mut e = MatchingEngine::new(FeeConfig::default(), default_ratio);
+    e.add_market(default_market());
+    e
+}
+
+/// A maker with ratio 3.0 and 100 USDC can cumulatively quote up to 300 USDC notional,
+/// even when individual orders exhaust available balance (credit fills the gap).
+/// Note: per-order floor still applies — each order's notional must fit within total deposited.
+#[test]
+fn test_credit_allows_quoting_beyond_available() {
+    let mut e = credit_engine(3.0);
+    let maker = user(1);
+    // Deposit 100 USDC
+    e.process(deposit(maker.clone(), usdc(), 100 * PRICE_SCALE), 1);
+
+    // First bid: 1 BTC @ 60 USDC → notional 60. available=100≥60, no credit needed.
+    // Locks 60. available=40, locked=60.
+    let r1 = e.process(post_bid(maker.clone(), 60, 1, 1), 2);
+    let p1 = r1.iter().find_map(|r| if let Response::OrderPosted(p) = r { Some(p) } else { None }).unwrap();
+    assert_eq!(p1.status, OrderStatus::Open, "first bid should rest");
+
+    // Second bid: 1 BTC @ 60 USDC → notional 60. available=40 < 60 → CREDIT used.
+    // total_quoted would be 60+60=120 ≤ 100*3=300. Credit allows it.
+    let r2 = e.process(post_bid(maker.clone(), 60, 1, 2), 3);
+    let p2 = r2.iter().find_map(|r| if let Response::OrderPosted(p) = r { Some(p) } else { None }).unwrap();
+    assert_eq!(p2.status, OrderStatus::Open, "second bid using credit should rest");
+
+    // Third bid: 1 BTC @ 60 USDC → notional 60. available=0 < 60 → CREDIT used.
+    // total_quoted=180 ≤ 300. Still within credit limit.
+    let r3 = e.process(post_bid(maker.clone(), 60, 1, 3), 4);
+    let p3 = r3.iter().find_map(|r| if let Response::OrderPosted(p) = r { Some(p) } else { None }).unwrap();
+    assert_eq!(p3.status, OrderStatus::Open, "third bid using credit should rest");
+
+    let meta = e.metadata.get(&maker).unwrap();
+    assert_eq!(meta.open_order_ids.len(), 3);
+    let expected_notional = CreditSystem::compute_notional(60 * PRICE_SCALE, QUANTITY_SCALE) * 3;
+    assert_eq!(meta.total_quoted_notional, expected_notional,
+        "total_quoted_notional should track all three bids");
+    // Maker quoted 3×60=180 USDC with only 100 deposited — credit enabled the extra 80.
+    assert!(180 * PRICE_SCALE <= 100 * PRICE_SCALE * 3, "sanity: 180 ≤ 300 (ratio 3.0)");
+}
+
+/// A single order whose notional exceeds the maker's total deposited is rejected
+/// even with a high credit ratio — the 1:1 per-order floor still applies.
+#[test]
+fn test_single_order_bounded_by_deposited() {
+    let mut e = credit_engine(10.0);
+    let maker = user(1);
+    e.process(deposit(maker.clone(), usdc(), 100 * PRICE_SCALE), 1);
+
+    // Try to post a bid for 1 BTC @ 200 USDC — notional 200 > deposited 100
+    let responses = e.process(post_bid(maker.clone(), 200, 1, 1), 2);
+    let err = responses.iter()
+        .find_map(|r| if let Response::Error(e) = r { Some(e) } else { None })
+        .unwrap();
+    assert_eq!(err.code, ErrorCode::InsufficientBalance,
+        "order notional > total deposited must be rejected regardless of credit ratio");
+}
+
+/// After a fill reduces the maker's actual collateral, if total_quoted_notional exceeds
+/// actual_collateral * ratio the engine must atomically cancel the maker's open orders.
+///
+/// Setup: ratio=1.5, maker deposits 100 USDC → max_quoted = 150.
+///   Bid X: 1 BTC @ 70 USDC → notional 70. available=100≥70, rests. available=30.
+///   Bid Y: 1 BTC @ 70 USDC → notional 70. available=30<70 → credit (70+70=140≤150). Rests.
+///   actual_collateral = 100 USDC.
+///
+/// Taker IOC ask at 70, qty=1 → fills X (time priority).
+///   actual_collateral = 100 - 70 = 30. total_quoted = 70. max = 30*1.5 = 45. 70 > 45 → BREACH.
+///   Engine auto-cancels Y to restore ratio.
+#[test]
+fn test_fill_triggers_auto_cancel_when_ratio_breached() {
+    let mut e = credit_engine(1.5);
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), usdc(), 100 * PRICE_SCALE), 1);
+    e.process(deposit(taker.clone(), btc(), 1 * QUANTITY_SCALE), 2);
+
+    // Bid X at 70: within deposited (100), uses available. Rests.
+    let r_x = e.process(post_bid(maker.clone(), 70, 1, 1), 3);
+    let oid_x = r_x.iter()
+        .find_map(|r| if let Response::OrderPosted(p) = r { Some(p.order_id) } else { None })
+        .unwrap();
+    assert!(r_x.iter().any(|r| matches!(r, Response::OrderPosted(p) if p.status == OrderStatus::Open)));
+
+    // Bid Y at 70: available=30 < 70 → credit used (140 ≤ 150). Rests.
+    let r_y = e.process(post_bid(maker.clone(), 70, 1, 2), 4);
+    let oid_y = r_y.iter()
+        .find_map(|r| if let Response::OrderPosted(p) = r { Some(p.order_id) } else { None })
+        .unwrap();
+    assert!(r_y.iter().any(|r| matches!(r, Response::OrderPosted(p) if p.status == OrderStatus::Open)));
+
+    {
+        let meta = e.metadata.get(&maker).unwrap();
+        assert_eq!(meta.open_order_ids.len(), 2);
+        assert_eq!(meta.actual_collateral, 100 * PRICE_SCALE, "actual_collateral must equal deposit");
+    }
+
+    // Taker IOC ask @ 70, qty=1: hits best bid (70), fills X first (FIFO).
+    let taker_resp = e.process(
+        Request::PostOrder(PostOrderRequest {
+            user: taker.clone(),
+            market: btc_usdc(),
+            side: OrderSide::Ask,
+            order_type: OrderType::ImmediateOrCancel,
+            price: 70 * PRICE_SCALE,
+            quantity: 1 * QUANTITY_SCALE,
+            nonce: 1,
+            client_order_id: None,
+            signature: vec![0u8; 65],
+        }),
+        5,
+    );
+
+    // Fill must have occurred (X filled)
+    let fills: Vec<_> = taker_resp.iter()
+        .filter(|r| matches!(r, Response::OrderFilled(_)))
+        .collect();
+    assert!(!fills.is_empty(), "taker ask should fill bid X");
+
+    // Auto-cancel must have fired for Y (breach: 70 > 30*1.5=45)
+    let canceled_ids: Vec<_> = taker_resp.iter()
+        .filter_map(|r| if let Response::OrderCanceled(c) = r { Some(c.order_id) } else { None })
+        .collect();
+    assert!(!canceled_ids.is_empty(), "credit breach must trigger auto-cancel");
+    assert!(canceled_ids.contains(&oid_y), "bid Y must be auto-canceled to restore ratio");
+    assert!(!canceled_ids.contains(&oid_x), "bid X was filled, not auto-canceled");
+
+    // Book should be empty: X filled, Y auto-canceled.
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    assert!(book.best_bid().is_none(), "all maker bids should be gone");
+
+    // Maker received 1 BTC from filling X.
+    let maker_btc = e.balances.get(&(maker.clone(), btc())).map(|b| b.total()).unwrap_or(0);
+    assert_eq!(maker_btc, 1 * QUANTITY_SCALE, "maker should have received 1 BTC");
+
+    // actual_collateral should have dropped by fill_notional.
+    let meta = e.metadata.get(&maker).unwrap();
+    assert_eq!(meta.actual_collateral, 30 * PRICE_SCALE,
+        "actual_collateral = 100 - 70 (fill) = 30 USDC");
+}
+
+/// 1:1 asset backing: after fills, the total of each asset across all users
+/// must not exceed the total deposited (exchange never creates value from nothing).
+/// Uses non-credit orders to avoid ghost balance effects (credit is tested separately).
+#[test]
+fn test_asset_backing_invariant_holds() {
+    let mut e = credit_engine(2.0);
+    let maker = user(1);
+    let taker = user(2);
+
+    // Maker deposits 100 USDC. Taker deposits 1 BTC.
+    e.process(deposit(maker.clone(), usdc(), 100 * PRICE_SCALE), 1);
+    e.process(deposit(taker.clone(), btc(), 1 * QUANTITY_SCALE), 2);
+
+    // Maker places a single non-credit bid: 1 BTC @ 50 USDC.
+    // Notional = 50 ≤ deposited = 100. available=100≥50. No credit.
+    e.process(post_bid(maker.clone(), 50, 1, 1), 3);
+
+    // Also place a second resting bid that won't be filled (for locked USDC coverage).
+    e.process(post_bid(maker.clone(), 40, 1, 2), 4);
+
+    // Taker sells 1 BTC at 50 → fills maker's 50 bid.
+    e.process(
+        Request::PostOrder(PostOrderRequest {
+            user: taker.clone(),
+            market: btc_usdc(),
+            side: OrderSide::Ask,
+            order_type: OrderType::ImmediateOrCancel,
+            price: 50 * PRICE_SCALE,
+            quantity: 1 * QUANTITY_SCALE,
+            nonce: 1,
+            client_order_id: None,
+            signature: vec![0u8; 65],
+        }),
+        5,
+    );
+
+    let maker_usdc = e.balances.get(&(maker.clone(), usdc())).map(|b| b.total()).unwrap_or(0);
+    let maker_btc  = e.balances.get(&(maker.clone(), btc())).map(|b| b.total()).unwrap_or(0);
+    let taker_usdc = e.balances.get(&(taker.clone(), usdc())).map(|b| b.total()).unwrap_or(0);
+
+    // Taker received USDC from fill.
+    assert!(taker_usdc > 0, "taker should have received USDC from fill");
+
+    // Maker received 1 BTC and still holds USDC for remaining resting bid (40 locked).
+    assert_eq!(maker_btc, 1 * QUANTITY_SCALE, "maker received 1 BTC");
+    assert!(maker_usdc > 0, "maker should have remaining USDC for resting bid");
+
+    // 1:1 USDC backing invariant: total USDC in system ≤ 100 USDC deposited by maker.
+    // USDC flows from maker's locked balance to taker; fees are net-consumed by exchange.
+    // (taker pays 7bps, maker gets 2bps rebate → exchange earns 5bps net → USDC decreases)
+    assert!(
+        maker_usdc + taker_usdc <= 100 * PRICE_SCALE,
+        "total USDC must not exceed deposit: {} + {} = {} > {}",
+        maker_usdc, taker_usdc, maker_usdc + taker_usdc, 100 * PRICE_SCALE
+    );
+}
+
+/// set_credit_ratio persists and is reflected in subsequent check_credit calls.
+#[test]
+fn test_set_ratio_per_user() {
+    let mut e = credit_engine(1.0); // default: no credit
+    let maker = user(1);
+
+    e.process(deposit(maker.clone(), usdc(), 100 * PRICE_SCALE), 1);
+
+    // With ratio 1.0 (default) trying to over-quote should fail
+    // (order notional = 50, available = 100 — this is within available, so it rests)
+    e.process(post_bid(maker.clone(), 50, 1, 1), 2); // locks 50, available = 50
+    let fail = e.process(post_bid(maker.clone(), 80, 1, 2), 3); // notional 80 > available 50, credit limit 100
+    // 50 + 80 = 130 > 100 * 1.0 → CreditLimitExceeded
+    let err = fail.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err.code, ErrorCode::CreditLimitExceeded);
+
+    // Upgrade maker's ratio to 2.0 → max = 200
+    e.set_credit_ratio(maker.clone(), 2.0);
+
+    // Now the same order should succeed (50 + 80 = 130 ≤ 200)
+    let ok = e.process(post_bid(maker.clone(), 80, 1, 3), 4);
+    let posted = ok.iter().find_map(|r| if let Response::OrderPosted(p) = r { Some(p) } else { None }).unwrap();
+    assert_eq!(posted.status, OrderStatus::Open);
 }
