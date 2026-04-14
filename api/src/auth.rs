@@ -1,5 +1,6 @@
 use sha3::{Digest, Keccak256};
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
+use rand::RngCore;
 use types::{UserId, VelaError};
 
 pub fn eth_message_hash(message: &[u8]) -> [u8; 32] {
@@ -65,6 +66,14 @@ pub fn withdrawal_signing_message(asset: &str, amount: u64, nonce: u64) -> Vec<u
 
 pub fn auth_signing_message(nonce: &str) -> Vec<u8> {
     format!("vela:auth:{}", nonce).into_bytes()
+}
+
+/// Generates a server-side challenge nonce — 16 random bytes as a lowercase hex string.
+/// Must be server-issued and single-use to prevent replay attacks.
+pub fn generate_nonce() -> String {
+    let mut bytes = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    hex::encode(bytes)
 }
 
 pub async fn verify_matches_async(
