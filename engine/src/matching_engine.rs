@@ -447,3 +447,21 @@ impl MatchingEngine {
         bal.available = bal.available.saturating_sub(amount);
     }
 }
+
+impl MatchingEngine {
+    pub fn changed_balance_keys(&self) -> Vec<(UserId, AssetId)> {
+        self.balances.keys().cloned().collect()
+    }
+
+    pub fn changed_metadata_keys(&self) -> Vec<UserId> {
+        self.metadata.keys().cloned().collect()
+    }
+
+    pub fn snapshot_balances(&self) -> &std::collections::HashMap<(UserId, AssetId), Balance> {
+        &self.balances
+    }
+
+    pub fn snapshot_metadata(&self) -> &std::collections::HashMap<UserId, UserMetadata> {
+        &self.metadata
+    }
+}

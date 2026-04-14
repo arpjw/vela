@@ -18,7 +18,7 @@ pub struct ZkvmOutput {
 pub fn execute_stf(input: ZkvmInput) -> anyhow::Result<ZkvmOutput> {
     let mut mpt = state::MptStore::new();
     for (k, v) in &input.snapshot {
-        mpt.insert(k, v.clone());
+        mpt.insert(k.to_vec(), v.clone());
     }
 
     let fee_config = types::FeeConfig::default();

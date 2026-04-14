@@ -1,42 +1,122 @@
-use std::collections::HashMap;
-use types::{AssetId, Balance, MarketId, UserId, UserMetadata};
+use std::collections::{HashMap, HashSet};
+use serde_json;
+use types::{AssetId, Balance, Market, MarketId, UserId, UserMetadata};
+use crate::keys::StateKey;
+use crate::mpt::{Hash, MptStore};
 
 pub struct StateCache {
-    pub balances: HashMap<(UserId, AssetId), Balance>,
-    pub metadata: HashMap<UserId, UserMetadata>,
-    pub dirty_balance_keys: Vec<(UserId, AssetId)>,
-    pub dirty_metadata_keys: Vec<UserId>,
-    pub dirty_markets: Vec<MarketId>,
+    data: HashMap<Vec<u8>, Vec<u8>>,
+    dirty: HashSet<Vec<u8>>,
 }
 
 impl StateCache {
     pub fn new() -> Self {
         StateCache {
-            balances: HashMap::new(),
-            metadata: HashMap::new(),
-            dirty_balance_keys: vec![],
-            dirty_metadata_keys: vec![],
-            dirty_markets: vec![],
+            data: HashMap::new(),
+            dirty: HashSet::new(),
         }
     }
 
-    pub fn mark_balance_dirty(&mut self, user: UserId, asset: AssetId) {
-        self.dirty_balance_keys.push((user, asset));
+    fn raw_set(&mut self, key: StateKey, value: Vec<u8>) {
+        let encoded = key.encode();
+        self.data.insert(encoded.clone(), value);
+        self.dirty.insert(encoded);
     }
 
-    pub fn mark_metadata_dirty(&mut self, user: UserId) {
-        self.dirty_metadata_keys.push(user);
+    fn raw_get(&self, key: &StateKey) -> Option<&[u8]> {
+        self.data.get(&key.encode()).map(|v| v.as_slice())
     }
 
-    pub fn mark_market_dirty(&mut self, market: MarketId) {
-        self.dirty_markets.push(market);
+    pub fn set_balance(&mut self, balance: &Balance) {
+        let key = StateKey::Balance { user: balance.user.clone(), asset: balance.asset.clone() };
+        let val = serde_json::to_vec(balance).unwrap_or_default();
+        self.raw_set(key, val);
     }
 
-    pub fn flush_dirty(&mut self) -> (Vec<(UserId, AssetId)>, Vec<UserId>, Vec<MarketId>) {
-        let b = std::mem::take(&mut self.dirty_balance_keys);
-        let m = std::mem::take(&mut self.dirty_metadata_keys);
-        let k = std::mem::take(&mut self.dirty_markets);
-        (b, m, k)
+    pub fn get_balance(&self, user: &UserId, asset: &AssetId) -> Option<Balance> {
+        let key = StateKey::Balance { user: user.clone(), asset: asset.clone() };
+        let raw = self.raw_get(&key)?;
+        serde_json::from_slice(raw).ok()
+    }
+
+    pub fn set_metadata(&mut self, meta: &UserMetadata) {
+        let key = StateKey::Metadata { user: meta.user.clone() };
+        let val = serde_json::to_vec(meta).unwrap_or_default();
+        self.raw_set(key, val);
+    }
+
+    pub fn get_metadata(&self, user: &UserId) -> Option<UserMetadata> {
+        let key = StateKey::Metadata { user: user.clone() };
+        let raw = self.raw_get(&key)?;
+        serde_json::from_slice(raw).ok()
+    }
+
+    pub fn set_market(&mut self, market: &Market) {
+        let key = StateKey::MarketConfig { market: market.id.clone() };
+        let val = serde_json::to_vec(market).unwrap_or_default();
+        self.raw_set(key, val);
+    }
+
+    pub fn get_market(&self, market_id: &MarketId) -> Option<Market> {
+        let key = StateKey::MarketConfig { market: market_id.clone() };
+        let raw = self.raw_get(&key)?;
+        serde_json::from_slice(raw).ok()
+    }
+
+    pub fn set_sequence(&mut self, seq: u64) {
+        self.raw_set(StateKey::GlobalSequence, seq.to_be_bytes().to_vec());
+    }
+
+    pub fn get_sequence(&self) -> u64 {
+        self.raw_get(&StateKey::GlobalSequence)
+            .and_then(|b| b.try_into().ok())
+            .map(u64::from_be_bytes)
+            .unwrap_or(0)
+    }
+
+    pub fn dirty_count(&self) -> usize {
+        self.dirty.len()
+    }
+
+    pub fn commit_to_mpt(&mut self, mpt: &mut MptStore) -> Hash {
+        for key in self.dirty.drain() {
+            if let Some(val) = self.data.get(&key) {
+                mpt.insert(key, val.clone());
+            }
+        }
+        mpt.compute_root()
+    }
+
+    pub fn load_from_mpt(&mut self, mpt: &MptStore) {
+        for (k, v) in mpt.snapshot_all() {
+            self.data.insert(k, v);
+        }
+        self.dirty.clear();
+    }
+
+    pub fn mark_dirty(&mut self, key: StateKey) {
+        self.dirty.insert(key.encode());
+    }
+
+    pub fn all_balances(&self) -> Vec<Balance> {
+        self.data.iter()
+            .filter(|(k, _)| k.starts_with(b"bal:"))
+            .filter_map(|(_, v)| serde_json::from_slice(v).ok())
+            .collect()
+    }
+
+    pub fn all_metadata(&self) -> Vec<UserMetadata> {
+        self.data.iter()
+            .filter(|(k, _)| k.starts_with(b"meta:"))
+            .filter_map(|(_, v)| serde_json::from_slice(v).ok())
+            .collect()
+    }
+
+    pub fn all_markets(&self) -> Vec<Market> {
+        self.data.iter()
+            .filter(|(k, _)| k.starts_with(b"mkt:"))
+            .filter_map(|(_, v)| serde_json::from_slice(v).ok())
+            .collect()
     }
 }
 

@@ -12,3 +12,6 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 sha3 = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+engine = { workspace = true }

@@ -56,7 +56,7 @@ impl Committer {
     async fn commit_batch(&mut self, batch: Vec<BatchEntry>) -> anyhow::Result<()> {
         let serialized = serde_json::to_vec(&batch.len())?;
         let ts = batch.last().map(|e| e.timestamp).unwrap_or(0);
-        self.mpt.insert(&ts.to_be_bytes(), serialized);
+        self.mpt.insert(ts.to_be_bytes().to_vec(), serialized);
         self.persist_to_disk().await?;
         Ok(())
     }
