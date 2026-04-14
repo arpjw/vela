@@ -87,6 +87,7 @@ impl CowCache {
                 open_order_ids: vec![],
                 credit_ratio: 1.0,
                 total_quoted_notional: 0,
+                actual_collateral: 0,
             })
     }
 

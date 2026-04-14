@@ -146,6 +146,9 @@ pub struct UserMetadata {
     pub open_order_ids: Vec<OrderId>,
     pub credit_ratio: f64,
     pub total_quoted_notional: u64,
+    /// Actual quote-asset collateral: deposits minus fills consumed (excludes credit ghost).
+    /// Used by the credit auto-cancel check to avoid ghost-balance inflation.
+    pub actual_collateral: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
