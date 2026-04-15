@@ -7,12 +7,14 @@ import Nav from '@/components/Nav'
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
+  weight: ['400', '500', '600', '700', '800'],
   display: 'swap',
 })
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
+  weight: ['400', '500', '600'],
   display: 'swap',
 })
 
@@ -29,7 +31,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
-      <body className="min-h-screen bg-canvas text-cream font-sans">
+      <body className="min-h-screen bg-parchment text-ink font-sans">
         <AuthProvider>
           <Nav />
           <main className="min-h-[calc(100vh-60px)]">{children}</main>

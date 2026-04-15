@@ -24,7 +24,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="text-[10px] font-medium text-stone uppercase tracking-caps"
+            className="text-[0.7rem] font-medium text-brown uppercase tracking-[0.12em]"
           >
             {label}
           </label>
@@ -33,31 +33,30 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <div
           className={[
             'flex items-center gap-2 h-10 px-3',
-            'bg-raised border transition-colors duration-150',
-            'focus-within:ring-1 focus-within:ring-offset-0',
+            'bg-vellum border transition-colors duration-150',
             hasError
-              ? 'border-error focus-within:ring-error/40'
-              : 'border-neutral-200 focus-within:border-primary focus-within:ring-primary/30',
+              ? 'border-terra focus-within:border-terra focus-within:shadow-[0_0_0_2px_rgba(160,64,42,0.2)]'
+              : 'border-[rgba(101,72,42,0.25)] focus-within:border-ochre focus-within:shadow-[0_0_0_2px_rgba(196,148,58,0.2)]',
           ].join(' ')}
         >
           {startAdornment && (
-            <span className="shrink-0 text-stone text-sm">{startAdornment}</span>
+            <span className="shrink-0 text-brown text-sm">{startAdornment}</span>
           )}
 
           <input
             ref={ref}
             id={inputId}
             className={[
-              'flex-1 min-w-0 bg-transparent text-sm text-cream font-mono outline-none',
-              'placeholder:text-neutral-400',
-              'disabled:text-neutral-400 disabled:cursor-not-allowed',
+              'flex-1 min-w-0 bg-transparent text-sm text-ink font-mono outline-none',
+              'placeholder:text-brown/50',
+              'disabled:text-brown disabled:cursor-not-allowed',
               className,
             ].join(' ')}
             {...props}
           />
 
           {endAdornment && (
-            <span className="shrink-0 text-stone text-xs font-medium uppercase tracking-caps">{endAdornment}</span>
+            <span className="shrink-0 text-brown text-xs font-medium uppercase tracking-[0.12em]">{endAdornment}</span>
           )}
         </div>
 
@@ -65,7 +64,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <p
             className={[
               'text-xs',
-              hasError ? 'text-error' : 'text-stone',
+              hasError ? 'text-terra' : 'text-brown',
             ].join(' ')}
           >
             {error ?? hint}

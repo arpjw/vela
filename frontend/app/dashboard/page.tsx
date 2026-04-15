@@ -216,8 +216,8 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm text-center">
-        <div className="w-16 h-16 bg-primary/10 flex items-center justify-center mx-auto mb-5">
+      <div className="w-full max-w-sm text-center bg-canvas border border-border shadow-card p-8">
+        <div className="w-16 h-16 bg-ochre/10 flex items-center justify-center mx-auto mb-5">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path
               d="M21 7H3C2.44772 7 2 7.44772 2 8V20C2 20.5523 2.44772 21 3 21H21C21.5523 21 22 20.5523 22 20V8C22 7.44772 21.5523 7 21 7Z"
@@ -235,15 +235,15 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
             />
           </svg>
         </div>
-        <h2 className="text-xl font-semibold text-cream mb-2">
+        <h2 className="text-xl font-semibold text-ink mb-2">
           Connect your wallet
         </h2>
-        <p className="text-sm text-stone mb-6 leading-relaxed">
+        <p className="text-sm text-brown mb-6 leading-relaxed">
           Connect a wallet to view balances, open orders, credit utilization,
           and real-time P&amp;L.
         </p>
         {error && (
-          <p className="text-xs text-error mb-4 bg-error-light rounded-lg px-3 py-2">
+          <p className="text-xs text-terra mb-4 bg-terra/10 px-3 py-2">
             {error}
           </p>
         )}
@@ -270,13 +270,13 @@ function CreditGauge({
   const dashOffset = circumference - (clamped / 100) * circumference
   const isDanger = clamped >= 95
   const isWarning = clamped >= 80
-  const arcColor = isDanger ? '#A0402A' : isWarning ? '#C4943A' : '#C4943A'
-  const textFill = isDanger ? '#A0402A' : isWarning ? '#C4943A' : '#E8DCBF'
+  const arcColor = isDanger ? '#A0402A' : isWarning ? '#C4943A' : '#6B8C52'
+  const textFill = '#1A1208'
 
   return (
     <div className="flex flex-col items-center gap-5">
       <svg width="128" height="128" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r={R} stroke="#2E2318" strokeWidth="10" fill="none" />
+        <circle cx="50" cy="50" r={R} stroke="rgba(101,72,42,0.15)" strokeWidth="10" fill="none" />
         <circle
           cx="50"
           cy="50"
@@ -306,7 +306,7 @@ function CreditGauge({
           y="61"
           textAnchor="middle"
           fontSize="8"
-          fill="#8B7355"
+          fill="#6B4F2E"
           fontFamily="Inter, system-ui, sans-serif"
         >
           utilized
@@ -315,24 +315,24 @@ function CreditGauge({
 
       <div className="w-full space-y-2 text-sm">
         <div className="flex items-center justify-between">
-          <span className="text-neutral-500">Quoted</span>
-          <span className="tabular-nums font-medium text-neutral-800">
+          <span className="text-brown uppercase tracking-[0.1em] text-xs">Quoted</span>
+          <span className="tabular-nums font-medium text-ink font-mono">
             {quotedValue.toFixed(2)}
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-neutral-500">Deposited</span>
-          <span className="tabular-nums font-medium text-neutral-800">
+          <span className="text-brown uppercase tracking-[0.1em] text-xs">Deposited</span>
+          <span className="tabular-nums font-medium text-ink font-mono">
             {depositedValue.toFixed(2)}
           </span>
         </div>
         {isWarning && (
           <div
             className={[
-              'mt-1 px-3 py-2 rounded-lg text-xs font-medium',
+              'mt-1 px-3 py-2 text-xs font-medium border-l-[3px]',
               isDanger
-                ? 'bg-error-light text-error-dark'
-                : 'bg-warning-light text-warning-dark',
+                ? 'bg-terra/10 border-terra text-terra'
+                : 'bg-ochre/10 border-ochre text-ochre',
             ].join(' ')}
           >
             {isDanger
@@ -379,29 +379,29 @@ function OpenOrdersTable({
 
   return (
     <Card padding="none">
-      <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
-        <span className="font-semibold text-neutral-900">Open Orders</span>
+      <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+        <span className="text-[0.65rem] uppercase tracking-[0.15em] text-brown font-medium">Open Orders</span>
         <Badge variant={active.length > 0 ? 'primary' : 'neutral'}>{active.length}</Badge>
       </div>
 
       {active.length === 0 ? (
-        <p className="px-6 py-10 text-center text-sm text-neutral-400">No open orders</p>
+        <p className="px-6 py-10 text-center text-sm text-brown">No open orders</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-[11px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-50">
-                <th className="px-4 py-3">Market</th>
-                <th className="px-4 py-3">Side</th>
-                <th className="px-4 py-3 text-right">Price</th>
-                <th className="px-4 py-3 text-right">Size</th>
-                <th className="px-4 py-3 text-right">Filled</th>
-                <th className="px-4 py-3">TIF</th>
-                <th className="px-4 py-3">Status</th>
+              <tr className="text-left border-b border-border bg-canvas">
+                <th className="px-4 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Market</th>
+                <th className="px-4 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Side</th>
+                <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Price</th>
+                <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Size</th>
+                <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Filled</th>
+                <th className="px-4 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">TIF</th>
+                <th className="px-4 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Status</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-50">
+            <tbody>
               {active.map((order) => {
                 const isCanceling = cancelingIds.includes(order.id)
                 const fillPct =
@@ -415,12 +415,17 @@ function OpenOrdersTable({
                   <tr
                     key={order.id}
                     className={[
-                      'transition-opacity duration-150',
-                      isCanceling ? 'opacity-35' : 'hover:bg-neutral-50',
+                      'transition-opacity duration-150 border-b border-border last:border-0',
+                      isCanceling ? 'opacity-35' : 'hover:bg-[rgba(196,148,58,0.08)]',
                     ].join(' ')}
                   >
                     <td className="px-4 py-3">
-                      <span className="font-medium text-neutral-900 text-xs">
+                      <span
+                        className={[
+                          'font-medium text-ink text-xs border-l-2 pl-2',
+                          order.side === 'buy' ? 'border-sage' : 'border-terra',
+                        ].join(' ')}
+                      >
                         {order.market}
                       </span>
                     </td>
@@ -432,27 +437,27 @@ function OpenOrdersTable({
                         {order.side}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-xs text-neutral-700">
+                    <td className="px-4 py-3 text-right tabular-nums text-xs text-ink font-mono">
                       {fmtN(order.price, 4)}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-xs text-neutral-700">
+                    <td className="px-4 py-3 text-right tabular-nums text-xs text-ink font-mono">
                       {fmtN(order.quantity, 4)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <div className="w-14 h-1 bg-neutral-100 rounded-full overflow-hidden">
+                        <div className="w-14 h-1 bg-canvas overflow-hidden">
                           <div
-                            className="h-full bg-primary rounded-full transition-[width] duration-300"
+                            className="h-full bg-sage transition-[width] duration-300"
                             style={{ width: `${fillPct}%` }}
                           />
                         </div>
-                        <span className="text-[11px] tabular-nums text-neutral-500 w-7 text-right">
+                        <span className="text-[11px] tabular-nums text-brown w-7 text-right font-mono">
                           {fillPct.toFixed(0)}%
                         </span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-[11px] text-neutral-400 uppercase font-medium">
+                      <span className="text-[11px] text-brown uppercase font-medium tracking-[0.08em]">
                         GTC
                       </span>
                     </td>
@@ -466,7 +471,7 @@ function OpenOrdersTable({
                         loading={isCanceling}
                         disabled={isCanceling}
                         onClick={() => onCancel(order)}
-                        className="text-error hover:bg-error-light text-xs"
+                        className="text-terra hover:bg-terra/10 text-xs"
                       >
                         Cancel
                       </Button>
@@ -498,15 +503,15 @@ function PnlTracker({
     <Card padding="none">
       <button
         type="button"
-        className="w-full px-6 py-4 border-b border-neutral-100 flex items-center justify-between hover:bg-neutral-50 transition-colors rounded-t-2xl"
+        className="w-full px-6 py-4 border-b border-border flex items-center justify-between hover:bg-[rgba(196,148,58,0.05)] transition-colors"
         onClick={() => setExpanded((e) => !e)}
       >
         <div className="flex items-center gap-3">
-          <span className="font-semibold text-neutral-900">Realized P&amp;L</span>
+          <span className="text-[0.65rem] uppercase tracking-[0.15em] text-brown font-medium">Realized P&amp;L</span>
           <span
             className={[
-              'text-xl font-bold tabular-nums',
-              totalPnl >= 0 ? 'text-success' : 'text-error',
+              'text-xl font-bold tabular-nums font-mono',
+              totalPnl >= 0 ? 'text-sage' : 'text-terra',
             ].join(' ')}
           >
             {fmtPnl(totalPnl)}
@@ -522,7 +527,7 @@ function PnlTracker({
             viewBox="0 0 16 16"
             fill="none"
             className={[
-              'text-neutral-400 transition-transform duration-200 shrink-0',
+              'text-brown transition-transform duration-200 shrink-0',
               expanded ? 'rotate-180' : '',
             ].join(' ')}
           >
@@ -540,12 +545,12 @@ function PnlTracker({
       {expanded && (
         <div>
           {markets.length === 0 ? (
-            <p className="px-6 py-8 text-sm text-neutral-400 text-center">
+            <p className="px-6 py-8 text-sm text-brown text-center">
               No fills yet
             </p>
           ) : (
             <>
-              <div className="grid grid-cols-3 px-6 py-2 text-[10px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-50">
+              <div className="grid grid-cols-3 px-6 py-2 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em] border-b border-border">
                 <span>Market</span>
                 <span className="text-right">Fills</span>
                 <span className="text-right">P&amp;L</span>
@@ -556,16 +561,16 @@ function PnlTracker({
                 return (
                   <div
                     key={mkt}
-                    className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-neutral-50 transition-colors border-b border-neutral-50 last:border-0"
+                    className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-[rgba(196,148,58,0.05)] transition-colors border-b border-border last:border-0"
                   >
-                    <span className="font-medium text-neutral-800">{mkt}</span>
-                    <span className="text-right tabular-nums text-neutral-500">
+                    <span className="font-medium text-ink">{mkt}</span>
+                    <span className="text-right tabular-nums text-brown font-mono">
                       {mktFills}
                     </span>
                     <span
                       className={[
-                        'text-right tabular-nums font-semibold',
-                        mktPnl >= 0 ? 'text-success' : 'text-error',
+                        'text-right tabular-nums font-semibold font-mono',
+                        mktPnl >= 0 ? 'text-sage' : 'text-terra',
                       ].join(' ')}
                     >
                       {fmtPnl(mktPnl)}
@@ -594,51 +599,51 @@ interface MarketSummaryRow {
 function MarketSummaryTable({ summaries }: { summaries: MarketSummaryRow[] }) {
   return (
     <Card padding="none">
-      <div className="px-6 py-4 border-b border-neutral-100">
-        <span className="font-semibold text-neutral-900">Per-Market Quotes</span>
+      <div className="px-6 py-4 border-b border-border">
+        <span className="text-[0.65rem] uppercase tracking-[0.15em] text-brown font-medium">Per-Market Quotes</span>
       </div>
       {summaries.length === 0 ? (
-        <p className="px-6 py-10 text-sm text-neutral-400 text-center">
+        <p className="px-6 py-10 text-sm text-brown text-center">
           No active quotes
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-[11px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-50">
-                <th className="px-4 py-3">Market</th>
-                <th className="px-4 py-3 text-right">Bid</th>
-                <th className="px-4 py-3 text-right">Ask</th>
-                <th className="px-4 py-3 text-right">Spread</th>
-                <th className="px-4 py-3 text-right"># Orders</th>
-                <th className="px-4 py-3 text-right">Quoted Value</th>
+              <tr className="text-left border-b border-border bg-canvas">
+                <th className="px-4 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Market</th>
+                <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Bid</th>
+                <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Ask</th>
+                <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Spread</th>
+                <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]"># Orders</th>
+                <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Quoted Value</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-50">
+            <tbody>
               {summaries.map((row) => (
                 <tr
                   key={row.market}
-                  className="hover:bg-neutral-50 transition-colors duration-100"
+                  className="hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-100 border-b border-border last:border-0"
                 >
-                  <td className="px-4 py-3 font-medium text-neutral-900">
+                  <td className="px-4 py-3 font-medium text-ink">
                     {row.market}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-success text-xs">
+                  <td className="px-4 py-3 text-right tabular-nums text-ochre text-xs font-mono">
                     {row.bestBid ?? '—'}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-error text-xs">
+                  <td className="px-4 py-3 text-right tabular-nums text-fresco text-xs font-mono">
                     {row.bestAsk ?? '—'}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-neutral-500 text-xs">
+                  <td className="px-4 py-3 text-right tabular-nums text-violet text-xs font-mono">
                     {row.spread ?? '—'}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-xs text-neutral-600">
+                  <td className="px-4 py-3 text-right tabular-nums text-xs text-ink font-mono">
                     {row.bidCount + row.askCount}
-                    <span className="ml-1 text-neutral-400">
+                    <span className="ml-1 text-brown">
                       ({row.bidCount}b / {row.askCount}a)
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-medium text-neutral-700 text-xs">
+                  <td className="px-4 py-3 text-right tabular-nums font-medium text-ink text-xs font-mono">
                     {row.quotedValue.toFixed(2)}
                   </td>
                 </tr>
@@ -851,8 +856,8 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-cream">Dashboard</h1>
-          <p className="text-sm text-stone mt-1 font-mono">{shortAddr}</p>
+          <h1 className="text-2xl font-bold text-ink">Dashboard</h1>
+          <p className="text-sm text-brown mt-1 font-mono">{shortAddr}</p>
         </div>
         <Badge variant={isAuthenticated ? 'success' : 'warning'} dot>
           {isAuthenticated ? 'Authenticated' : 'Wallet connected'}
@@ -904,26 +909,26 @@ export default function DashboardPage() {
                 'text-2xl font-mono font-bold tabular-nums',
                 pnl
                   ? positive
-                    ? 'text-success'
-                    : 'text-error'
-                  : 'text-primary',
+                    ? 'text-sage'
+                    : 'text-terra'
+                  : 'text-ochre',
               ].join(' ')}
             >
               {value}
               {suffix && (
-                <span className="text-sm font-normal text-neutral-400 ml-1">
+                <span className="text-sm font-normal text-brown ml-1">
                   {suffix}
                 </span>
               )}
             </div>
-            <div className="text-[10px] text-stone mt-1 uppercase tracking-[0.12em]">{label}</div>
+            <div className="text-[10px] text-brown mt-1 uppercase tracking-[0.12em]">{label}</div>
           </Card>
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[288px_1fr] gap-6 mb-6">
         <Card>
-          <div className="text-[10px] font-medium text-stone mb-5 uppercase tracking-[0.15em]">
+          <div className="text-[0.65rem] font-medium text-brown mb-5 uppercase tracking-[0.15em]">
             Credit Utilization
           </div>
           <CreditGauge
@@ -931,9 +936,9 @@ export default function DashboardPage() {
             quotedValue={quotedValue}
             depositedValue={depositedValue}
           />
-          <div className="mt-5 pt-4 border-t border-neutral-100">
+          <div className="mt-5 pt-4 border-t border-border">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-neutral-500">Credit ratio</span>
+              <span className="text-xs text-brown uppercase tracking-[0.1em]">Credit ratio</span>
               <Badge
                 variant={
                   utilPct >= 95 ? 'error' : utilPct >= 80 ? 'warning' : 'success'
@@ -943,22 +948,22 @@ export default function DashboardPage() {
                 {utilPct.toFixed(1)}% / 100%
               </Badge>
             </div>
-            <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+            <div className="h-1.5 bg-canvas overflow-hidden">
               <div
                 className={[
-                  'h-full rounded-full transition-[width] duration-500',
+                  'h-full transition-[width] duration-500',
                   utilPct >= 95
-                    ? 'bg-error'
+                    ? 'bg-terra'
                     : utilPct >= 80
-                    ? 'bg-warning'
-                    : 'bg-primary',
+                    ? 'bg-ochre'
+                    : 'bg-sage',
                 ].join(' ')}
                 style={{ width: `${utilPct}%` }}
               />
             </div>
-            <div className="flex justify-between text-[10px] text-neutral-400 mt-1.5">
+            <div className="flex justify-between text-[10px] text-brown mt-1.5">
               <span>0%</span>
-              <span className="text-warning-dark font-medium">80% warn</span>
+              <span className="text-ochre font-medium">80% warn</span>
               <span>100%</span>
             </div>
           </div>

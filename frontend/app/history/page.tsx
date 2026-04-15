@@ -232,7 +232,7 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
 
   return (
     <Card className="text-center py-10">
-      <div className="w-14 h-14 bg-primary/10 flex items-center justify-center mx-auto mb-4">
+      <div className="w-14 h-14 bg-ochre/10 flex items-center justify-center mx-auto mb-4">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
           <rect
             x="2" y="7" width="20" height="14"
@@ -245,15 +245,15 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
           />
         </svg>
       </div>
-      <h3 className="text-lg font-semibold text-cream mb-2">
+      <h3 className="text-lg font-semibold text-ink mb-2">
         Connect wallet to view trade history
       </h3>
-      <p className="text-sm text-stone mb-6 max-w-xs mx-auto leading-relaxed">
+      <p className="text-sm text-brown mb-6 max-w-xs mx-auto leading-relaxed">
         Trade history is private. Connect and authenticate to see your fills,
         fees, and maker/taker role.
       </p>
       {error && (
-        <p className="text-xs text-error bg-error-light rounded-lg px-3 py-2 mb-4 max-w-xs mx-auto">
+        <p className="text-xs text-terra bg-terra/10 px-3 py-2 mb-4 max-w-xs mx-auto">
           {error}
         </p>
       )}
@@ -265,16 +265,16 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
 }
 
 function RoleBadge({ role }: { role: FillRecord['role'] }) {
-  if (role === 'maker') return <Badge variant="primary" size="sm">Maker</Badge>
-  if (role === 'taker') return <Badge variant="secondary" size="sm">Taker</Badge>
+  if (role === 'maker') return <Badge variant="secondary" size="sm">Maker</Badge>
+  if (role === 'taker') return <Badge variant="primary" size="sm">Taker</Badge>
   return <Badge variant="neutral" size="sm">—</Badge>
 }
 
 function SourceDot({ source }: { source: FillRecord['source'] }) {
   if (source === 'live') {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-secondary">
-        <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse inline-block" />
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-sage">
+        <span className="w-1.5 h-1.5 rounded-full bg-sage animate-pulse inline-block" />
         Live
       </span>
     )
@@ -298,7 +298,7 @@ function Filters({
   return (
     <div className="flex flex-wrap items-end gap-3">
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-medium text-neutral-600">Market</label>
+        <label className="text-[0.7rem] font-medium text-brown uppercase tracking-[0.12em]">Market</label>
         <select
           value={filterMarket}
           onChange={(e) =>
@@ -308,7 +308,7 @@ function Filters({
               value: e.target.value,
             })
           }
-          className="h-10 px-3 pr-8 bg-raised border border-neutral-200 text-sm text-cream outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 cursor-pointer appearance-none min-w-[140px]"
+          className="h-10 px-3 pr-8 bg-vellum border border-[rgba(101,72,42,0.25)] text-sm text-ink outline-none focus:border-ochre cursor-pointer appearance-none min-w-[140px]"
         >
           <option value="">All markets</option>
           {markets.map((m) => (
@@ -380,9 +380,9 @@ function FillHistoryTable({
 }) {
   return (
     <Card padding="none">
-      <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between flex-wrap gap-3">
+      <div className="px-6 py-4 border-b border-border flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <span className="font-semibold text-neutral-900">Fill History</span>
+          <span className="text-[0.65rem] uppercase tracking-[0.15em] text-brown font-medium">Fill History</span>
           <Badge variant="neutral">{fills.length}</Badge>
         </div>
         <Button
@@ -408,10 +408,10 @@ function FillHistoryTable({
 
       {loadingInitial ? (
         <div className="py-12 flex justify-center">
-          <Spinner size="lg" className="text-primary" />
+          <Spinner size="lg" className="text-ochre" />
         </div>
       ) : fills.length === 0 ? (
-        <p className="px-6 py-12 text-center text-sm text-neutral-400">
+        <p className="px-6 py-12 text-center text-sm text-brown">
           No fills match the current filters.
         </p>
       ) : (
@@ -419,29 +419,32 @@ function FillHistoryTable({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-[11px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-50">
-                  <th className="px-5 py-3">Time</th>
-                  <th className="px-5 py-3">Market</th>
-                  <th className="px-5 py-3">Side</th>
-                  <th className="px-5 py-3 text-right">Price</th>
-                  <th className="px-5 py-3 text-right">Size</th>
-                  <th className="px-5 py-3 text-right">Fee</th>
-                  <th className="px-5 py-3">Role</th>
+                <tr className="text-left border-b border-border bg-canvas">
+                  <th className="px-5 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Time</th>
+                  <th className="px-5 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Market</th>
+                  <th className="px-5 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Side</th>
+                  <th className="px-5 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Price</th>
+                  <th className="px-5 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Size</th>
+                  <th className="px-5 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Fee</th>
+                  <th className="px-5 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Role</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-50">
-                {fills.map((f) => (
+              <tbody>
+                {fills.map((f, idx) => (
                   <tr
                     key={f.key}
-                    className="hover:bg-neutral-50 transition-colors duration-75"
+                    className={[
+                      'hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-75 border-b border-border last:border-0',
+                      idx % 2 === 0 ? 'bg-parchment' : 'bg-vellum',
+                    ].join(' ')}
                   >
                     <td className="px-5 py-2.5">
-                      <div className="text-xs text-neutral-700 tabular-nums">
+                      <div className="text-xs text-ink tabular-nums font-mono">
                         {fmtTs(f.ts)}
                       </div>
                       <SourceDot source={f.source} />
                     </td>
-                    <td className="px-5 py-2.5 text-xs font-medium text-neutral-900">
+                    <td className="px-5 py-2.5 text-xs font-medium text-ink">
                       {f.market}
                     </td>
                     <td className="px-5 py-2.5">
@@ -452,13 +455,13 @@ function FillHistoryTable({
                         {f.side}
                       </Badge>
                     </td>
-                    <td className="px-5 py-2.5 text-right tabular-nums text-xs text-neutral-700">
+                    <td className="px-5 py-2.5 text-right tabular-nums text-xs text-ink font-mono">
                       {parseFloat(f.price).toFixed(4)}
                     </td>
-                    <td className="px-5 py-2.5 text-right tabular-nums text-xs text-neutral-700">
+                    <td className="px-5 py-2.5 text-right tabular-nums text-xs text-ink font-mono">
                       {parseFloat(f.size).toFixed(4)}
                     </td>
-                    <td className="px-5 py-2.5 text-right tabular-nums text-xs text-neutral-500">
+                    <td className="px-5 py-2.5 text-right tabular-nums text-xs text-brown font-mono">
                       {f.fee}
                     </td>
                     <td className="px-5 py-2.5">
@@ -471,7 +474,7 @@ function FillHistoryTable({
           </div>
 
           {hasMore && (
-            <div className="px-6 py-4 border-t border-neutral-100 flex justify-center">
+            <div className="px-6 py-4 border-t border-border flex justify-center">
               <Button variant="secondary" size="sm" onClick={onLoadMore}>
                 Load more
               </Button>
@@ -496,9 +499,9 @@ function PublicFeed({
 }) {
   return (
     <Card padding="none">
-      <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between flex-wrap gap-3">
+      <div className="px-6 py-4 border-b border-border flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <span className="font-semibold text-neutral-900">Live Trade Feed</span>
+          <span className="text-[0.65rem] uppercase tracking-[0.15em] text-brown font-medium">Public Trade Feed</span>
           <Badge variant="success" dot size="sm">
             Public
           </Badge>
@@ -510,10 +513,10 @@ function PublicFeed({
               type="button"
               onClick={() => onSelectMarket(m.id)}
               className={[
-                'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors duration-150',
+                'px-2.5 py-1 text-xs font-medium transition-colors duration-150 uppercase tracking-[0.08em]',
                 publicMarket === m.id
-                  ? 'bg-primary text-white'
-                  : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200',
+                  ? 'bg-ochre text-ink'
+                  : 'border border-border text-brown hover:bg-canvas',
               ].join(' ')}
             >
               {m.base}/{m.quote}
@@ -523,7 +526,7 @@ function PublicFeed({
       </div>
 
       {trades.length === 0 ? (
-        <p className="px-6 py-10 text-center text-sm text-neutral-400">
+        <p className="px-6 py-10 text-center text-sm text-brown">
           {publicMarket
             ? 'Waiting for trades…'
             : 'Select a market to see the live feed.'}
@@ -532,36 +535,36 @@ function PublicFeed({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-[11px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-50">
-                <th className="px-5 py-2.5">Time</th>
-                <th className="px-5 py-2.5">Side</th>
-                <th className="px-5 py-2.5 text-right">Price</th>
-                <th className="px-5 py-2.5 text-right">Size</th>
+              <tr className="text-left border-b border-border bg-canvas">
+                <th className="px-5 py-2.5 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Time</th>
+                <th className="px-5 py-2.5 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Side</th>
+                <th className="px-5 py-2.5 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Price</th>
+                <th className="px-5 py-2.5 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Size</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-50">
+            <tbody>
               {trades.map((t) => (
                 <tr
                   key={t.key}
-                  className="hover:bg-neutral-50 transition-colors duration-75"
+                  className="hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-75 border-b border-border last:border-0"
                 >
-                  <td className="px-5 py-[3px] text-[11px] tabular-nums text-neutral-500">
+                  <td className="px-5 py-[3px] text-[11px] tabular-nums text-brown font-mono">
                     {fmtTime(t.ts)}
                   </td>
                   <td className="px-5 py-[3px]">
                     <span
                       className={[
                         'text-[11px] font-semibold',
-                        t.side === 'buy' ? 'text-success' : 'text-error',
+                        t.side === 'buy' ? 'text-sage' : 'text-terra',
                       ].join(' ')}
                     >
                       {t.side}
                     </span>
                   </td>
-                  <td className="px-5 py-[3px] text-right tabular-nums text-[11px] font-medium text-neutral-700">
+                  <td className="px-5 py-[3px] text-right tabular-nums text-[11px] font-medium text-ink font-mono">
                     {parseFloat(t.price).toFixed(4)}
                   </td>
-                  <td className="px-5 py-[3px] text-right tabular-nums text-[11px] text-neutral-500">
+                  <td className="px-5 py-[3px] text-right tabular-nums text-[11px] text-brown font-mono">
                     {parseFloat(t.size).toFixed(4)}
                   </td>
                 </tr>
@@ -733,8 +736,8 @@ export default function HistoryPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-cream">Trade History</h1>
-        <p className="text-sm text-stone mt-1">
+        <h1 className="text-2xl font-bold text-ink">Trade History</h1>
+        <p className="text-sm text-brown mt-1">
           Private fill history and live anonymized trade feed.
         </p>
       </div>
@@ -765,19 +768,19 @@ export default function HistoryPage() {
         </div>
       )}
 
-      <div className="border-t border-neutral-200 pt-8">
+      <div className="border-t border-border pt-8">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-cream">
+          <h2 className="text-lg font-semibold text-ink">
             Aggregate Trade Feed
           </h2>
-          <p className="text-sm text-stone mt-0.5">
+          <p className="text-sm text-brown mt-0.5">
             Public, anonymized — no auth required.
           </p>
         </div>
 
         {state.markets.length === 0 ? (
           <Card>
-            <p className="text-sm text-neutral-400 text-center py-4">
+            <p className="text-sm text-brown text-center py-4">
               Loading markets…
             </p>
           </Card>

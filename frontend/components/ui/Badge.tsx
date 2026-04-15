@@ -19,26 +19,26 @@ export interface BadgeProps {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
-  primary:   'bg-primary/10 text-primary ring-primary/20',
-  secondary: 'bg-secondary/10 text-secondary ring-secondary/20',
-  success:   'bg-success/10 text-success ring-success/20',
-  warning:   'bg-warning/10 text-warning ring-warning/20',
-  error:     'bg-error/10 text-error ring-error/20',
-  neutral:   'bg-neutral-100 text-stone ring-neutral-200',
+  primary:   'bg-[rgba(196,148,58,0.15)] text-ochre border border-[rgba(196,148,58,0.3)]',
+  secondary: 'bg-[rgba(74,109,156,0.15)] text-fresco border border-[rgba(74,109,156,0.3)]',
+  success:   'bg-[rgba(107,140,82,0.15)] text-sage border border-[rgba(107,140,82,0.3)]',
+  warning:   'bg-[rgba(196,148,58,0.15)] text-ochre border border-[rgba(196,148,58,0.3)]',
+  error:     'bg-[rgba(160,64,42,0.15)] text-terra border border-[rgba(160,64,42,0.3)]',
+  neutral:   'bg-[rgba(101,72,42,0.08)] text-brown border border-border',
 }
 
 const dotColors: Record<BadgeVariant, string> = {
-  primary:   'bg-primary',
-  secondary: 'bg-secondary',
-  success:   'bg-success',
-  warning:   'bg-warning',
-  error:     'bg-error',
-  neutral:   'bg-neutral-500',
+  primary:   'bg-ochre',
+  secondary: 'bg-fresco',
+  success:   'bg-sage',
+  warning:   'bg-ochre',
+  error:     'bg-terra',
+  neutral:   'bg-brown',
 }
 
 const sizeStyles: Record<BadgeSize, string> = {
-  sm: 'px-1.5 py-0.5 text-[10px]',
-  md: 'px-2 py-0.5 text-xs',
+  sm: 'px-1.5 py-0.5 text-[0.6rem]',
+  md: 'px-2 py-0.5 text-[0.65rem]',
 }
 
 export function Badge({
@@ -51,7 +51,7 @@ export function Badge({
   return (
     <span
       className={[
-        'inline-flex items-center gap-1 font-medium ring-1 tracking-caps uppercase',
+        'inline-flex items-center gap-1 font-medium uppercase tracking-[0.1em]',
         variantStyles[variant],
         sizeStyles[size],
         className,

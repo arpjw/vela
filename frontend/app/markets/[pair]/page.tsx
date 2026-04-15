@@ -100,25 +100,28 @@ function BookRowItem({
   level: DepthLevel
   side: 'bid' | 'ask'
 }) {
-  const barColor = side === 'bid' ? 'bg-primary/[0.14]' : 'bg-secondary/[0.12]'
-  const priceColor = side === 'bid' ? 'text-success' : 'text-error'
+  const barStyle = side === 'bid'
+    ? 'linear-gradient(to left, rgba(196,148,58,0.25), rgba(196,148,58,0.05))'
+    : 'linear-gradient(to left, rgba(74,109,156,0.25), rgba(74,109,156,0.05))'
+  const priceColor = side === 'bid' ? 'text-ochre' : 'text-terra'
+  const hoverBg = side === 'bid' ? 'hover:bg-[rgba(196,148,58,0.08)]' : 'hover:bg-[rgba(74,109,156,0.08)]'
 
   return (
-    <div className="relative grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-neutral-50 transition-colors duration-75 cursor-default select-none">
+    <div className={`relative grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums ${hoverBg} transition-colors duration-75 cursor-default select-none`}>
       <div
-        className={`absolute inset-y-0 right-0 ${barColor} transition-[width] duration-100`}
-        style={{ width: `${level.depthPct}%` }}
+        className="absolute inset-y-0 right-0 transition-[width] duration-100"
+        style={{ width: `${level.depthPct}%`, background: barStyle }}
       />
       <span className={`relative z-10 font-mono font-medium ${priceColor}`}>{fmt(level.price, 4)}</span>
-      <span className="relative z-10 font-mono text-neutral-600 text-right">{fmt(level.size, 4)}</span>
-      <span className="relative z-10 font-mono text-neutral-400 text-right">{fmt(level.cumSize.toString(), 4)}</span>
+      <span className="relative z-10 font-mono text-ink text-right">{fmt(level.size, 4)}</span>
+      <span className="relative z-10 font-mono text-brown text-right">{fmt(level.cumSize.toString(), 4)}</span>
     </div>
   )
 }
 
 function BookColumnHeader() {
   return (
-    <div className="grid grid-cols-3 px-3 py-1.5 text-[9px] font-medium text-stone uppercase tracking-[0.15em] border-b border-neutral-200 bg-surface sticky top-0">
+    <div className="grid grid-cols-3 px-3 py-1.5 text-[9px] font-medium text-brown uppercase tracking-[0.12em] border-b border-border bg-canvas sticky top-0">
       <span>Price</span>
       <span className="text-right">Size</span>
       <span className="text-right">Total</span>
@@ -141,18 +144,18 @@ function OrderBook({
 
   return (
     <div className="flex flex-col">
-      <div className="px-3 py-2.5 border-b border-neutral-200 flex items-center justify-between">
-        <span className="text-[9px] font-medium text-stone uppercase tracking-[0.15em]">
-          Order Book
+      <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+        <span className="text-[0.65rem] font-medium text-fresco uppercase tracking-[0.15em]">
+          Asks
         </span>
-        {loading && <Spinner size="xs" className="text-stone" />}
+        {loading && <Spinner size="xs" className="text-brown" />}
       </div>
 
       <BookColumnHeader />
 
       <div className="flex flex-col-reverse">
         {askLevels.length === 0 && !loading ? (
-          <p className="px-3 py-4 text-[11px] text-stone text-center">No asks</p>
+          <p className="px-3 py-4 text-[11px] text-brown text-center">No asks</p>
         ) : (
           askLevels.map((lvl) => (
             <BookRowItem key={lvl.price} level={lvl} side="ask" />
@@ -160,23 +163,29 @@ function OrderBook({
         )}
       </div>
 
-      <div className="flex items-center justify-between px-3 py-1.5 bg-raised border-y border-neutral-200">
-        <span className="text-[9px] font-medium text-stone uppercase tracking-[0.15em]">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[rgba(196,148,58,0.12)] border-y border-[rgba(196,148,58,0.3)]">
+        <span className="text-[9px] font-medium text-brown uppercase tracking-[0.15em]">
           Spread
         </span>
         {spread ? (
-          <span className="text-[11px] tabular-nums font-mono font-medium text-primary">
+          <span className="text-[11px] tabular-nums font-mono font-medium text-ochre">
             {spread.abs}
-            <span className="ml-1.5 text-stone font-normal">{spread.bps} bps</span>
+            <span className="ml-1.5 text-brown font-normal">{spread.bps} bps</span>
           </span>
         ) : (
-          <span className="text-[11px] text-stone">—</span>
+          <span className="text-[11px] text-brown">—</span>
         )}
+      </div>
+
+      <div className="px-3 py-1.5 border-b border-border">
+        <span className="text-[0.65rem] font-medium text-ochre uppercase tracking-[0.15em]">
+          Bids
+        </span>
       </div>
 
       <div>
         {bidLevels.length === 0 && !loading ? (
-          <p className="px-3 py-4 text-[11px] text-stone text-center">No bids</p>
+          <p className="px-3 py-4 text-[11px] text-brown text-center">No bids</p>
         ) : (
           bidLevels.map((lvl) => (
             <BookRowItem key={lvl.price} level={lvl} side="bid" />
@@ -190,37 +199,37 @@ function OrderBook({
 function TradesFeed({ trades }: { trades: TradeEntry[] }) {
   return (
     <div className="flex flex-col">
-      <div className="px-3 py-2.5 border-b border-neutral-200">
-        <span className="text-[9px] font-medium text-stone uppercase tracking-[0.15em]">
+      <div className="px-3 py-2.5 border-b border-border">
+        <span className="text-[0.65rem] font-medium text-brown uppercase tracking-[0.15em]">
           Recent Trades
         </span>
       </div>
-      <div className="grid grid-cols-3 px-3 py-1.5 text-[9px] font-medium text-stone uppercase tracking-[0.15em] border-b border-neutral-200">
+      <div className="grid grid-cols-3 px-3 py-1.5 text-[9px] font-medium text-brown uppercase tracking-[0.12em] border-b border-border">
         <span>Price</span>
         <span className="text-right">Size</span>
         <span className="text-right">Time</span>
       </div>
       {trades.length === 0 ? (
-        <p className="px-3 py-8 text-[11px] text-stone text-center">
+        <p className="px-3 py-8 text-[11px] text-brown text-center">
           Waiting for trades…
         </p>
       ) : (
         trades.map((t) => (
           <div
             key={t.key}
-            className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-neutral-50 transition-colors duration-75 cursor-default select-none"
+            className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-75 cursor-default select-none"
           >
             <span
               className={
                 t.side === 'buy'
-                  ? 'font-mono font-medium text-success'
-                  : 'font-mono font-medium text-error'
+                  ? 'font-mono font-medium text-sage'
+                  : 'font-mono font-medium text-terra'
               }
             >
               {fmt(t.price, 4)}
             </span>
-            <span className="font-mono text-neutral-600 text-right">{fmt(t.size, 4)}</span>
-            <span className="font-mono text-stone text-right">{fmtTime(t.ts)}</span>
+            <span className="font-mono text-ink text-right">{fmt(t.size, 4)}</span>
+            <span className="font-mono text-brown text-right text-[0.7rem]">{fmtTime(t.ts)}</span>
           </div>
         ))
       )}
@@ -229,9 +238,9 @@ function TradesFeed({ trades }: { trades: TradeEntry[] }) {
 }
 
 const TIF_OPTIONS: { value: TIF; label: string }[] = [
-  { value: 'gtc',       label: 'GTC'       },
-  { value: 'ioc',       label: 'IOC'       },
-  { value: 'fok',       label: 'FOK'       },
+  { value: 'gtc',       label: 'GTC'  },
+  { value: 'ioc',       label: 'IOC'  },
+  { value: 'fok',       label: 'FOK'  },
   { value: 'post_only', label: 'Post' },
 ]
 
@@ -331,7 +340,7 @@ function OrderEntryForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex border border-neutral-200 bg-raised">
+      <div className="flex border border-border bg-vellum">
         {(['buy', 'sell'] as OrderSide[]).map((s) => (
           <button
             key={s}
@@ -341,9 +350,9 @@ function OrderEntryForm({
               'flex-1 py-2.5 text-xs font-semibold transition-all duration-150 uppercase tracking-[0.12em]',
               side === s
                 ? s === 'buy'
-                  ? 'bg-success text-canvas'
-                  : 'bg-error text-cream'
-                : 'text-stone hover:text-cream',
+                  ? 'bg-sage text-vellum'
+                  : 'bg-terra text-vellum'
+                : 'text-brown hover:text-ink',
             ].join(' ')}
           >
             {s}
@@ -351,7 +360,7 @@ function OrderEntryForm({
         ))}
       </div>
 
-      <div className="flex gap-px bg-neutral-200">
+      <div className="flex gap-px bg-border">
         {(['limit', 'market'] as OrderType[]).map((t) => (
           <button
             key={t}
@@ -360,8 +369,8 @@ function OrderEntryForm({
             className={[
               'flex-1 py-1.5 text-[10px] font-medium transition-all duration-150 uppercase tracking-[0.12em]',
               orderType === t
-                ? 'bg-raised text-cream'
-                : 'bg-surface text-stone hover:text-cream',
+                ? 'bg-violet text-vellum'
+                : 'bg-vellum text-brown hover:text-ink',
             ].join(' ')}
           >
             {t}
@@ -396,10 +405,10 @@ function OrderEntryForm({
       />
 
       {total !== null && (
-        <div className="bg-raised border border-neutral-200 px-4 py-3">
+        <div className="bg-vellum border border-border px-4 py-3">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-stone uppercase tracking-[0.12em]">Total</span>
-            <span className="tabular-nums font-mono font-medium text-cream">
+            <span className="text-brown uppercase tracking-[0.12em]">Total</span>
+            <span className="tabular-nums font-mono font-medium text-ochre">
               {total} {quote}
             </span>
           </div>
@@ -407,7 +416,7 @@ function OrderEntryForm({
       )}
 
       {orderType === 'limit' && (
-        <div className="flex gap-px bg-neutral-200">
+        <div className="flex gap-px bg-border">
           {TIF_OPTIONS.map(({ value, label }) => (
             <button
               key={value}
@@ -416,8 +425,8 @@ function OrderEntryForm({
               className={[
                 'flex-1 py-1 text-[9px] font-medium transition-all duration-150 uppercase tracking-[0.12em]',
                 tif === value
-                  ? 'bg-primary text-canvas'
-                  : 'bg-surface text-stone hover:text-cream',
+                  ? 'bg-violet text-vellum'
+                  : 'bg-vellum border border-[rgba(101,72,42,0.25)] text-brown hover:text-ink',
               ].join(' ')}
             >
               {label}
@@ -427,23 +436,34 @@ function OrderEntryForm({
       )}
 
       {submitError && (
-        <p className="text-xs text-error font-mono">{submitError}</p>
+        <p className="text-xs text-terra font-mono">{submitError}</p>
       )}
       {submitOk && (
-        <p className="text-xs font-medium text-success font-mono">Order submitted</p>
+        <p className="text-xs font-medium text-sage font-mono">Order submitted</p>
       )}
 
       {isConnected ? (
-        <Button
-          variant={side === 'buy' ? 'buy' : 'danger'}
-          size="lg"
-          loading={submitting}
-          disabled={!canSubmit}
+        <button
+          type="button"
           onClick={handleSubmit}
-          className="w-full tracking-[0.12em] uppercase text-sm"
+          disabled={!canSubmit}
+          className={[
+            'w-full h-12 font-sans font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 disabled:opacity-50',
+            side === 'buy'
+              ? 'bg-sage text-vellum hover:bg-[#5A7A42]'
+              : 'bg-terra text-vellum hover:bg-[#8B3020]',
+            submitting ? 'opacity-70' : '',
+          ].join(' ')}
         >
-          {side === 'buy' ? 'Buy' : 'Sell'} {base}
-        </Button>
+          {submitting ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="inline-block w-4 h-4 rounded-full border-2 border-vellum border-t-transparent animate-spin" />
+              {side === 'buy' ? 'Buy' : 'Sell'} {base}
+            </span>
+          ) : (
+            `${side === 'buy' ? 'Buy' : 'Sell'} ${base}`
+          )}
+        </button>
       ) : (
         <Button variant="secondary" size="lg" className="w-full tracking-wide" disabled>
           Connect Wallet to Trade
@@ -462,7 +482,7 @@ function MarketSelector({
   currentPair: string
   loading: boolean
 }) {
-  if (loading) return <Spinner size="xs" className="text-stone" />
+  if (loading) return <Spinner size="xs" className="text-brown" />
   if (markets.length === 0) return null
 
   return (
@@ -474,8 +494,8 @@ function MarketSelector({
           className={[
             'px-2.5 py-1 text-[10px] font-medium transition-colors duration-150 uppercase tracking-[0.1em]',
             m.id === currentPair
-              ? 'bg-primary text-canvas'
-              : 'bg-raised text-stone border border-neutral-200 hover:border-primary/40 hover:text-cream',
+              ? 'bg-ochre text-ink'
+              : 'bg-vellum text-brown border border-border hover:border-ochre/40 hover:text-ink',
           ].join(' ')}
         >
           {m.base}/{m.quote}
@@ -571,37 +591,37 @@ export default function MarketPage({ params }: PageProps) {
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4">
-      <div className="flex flex-wrap items-start gap-x-8 gap-y-4 mb-6 pb-5 border-b border-neutral-200">
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-4 mb-6 pb-5 border-b border-border">
         <div className="flex items-start gap-4">
-          <div className="w-10 h-10 bg-primary/10 flex items-center justify-center text-xs font-bold text-primary font-mono shrink-0">
+          <div className="w-10 h-10 bg-ochre/10 flex items-center justify-center text-xs font-bold text-ochre font-mono shrink-0">
             {marketId.split('-')[0]?.slice(0, 2)}
           </div>
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-base font-bold text-cream tracking-wide uppercase">
+            <div className="flex items-center gap-3 mb-3">
+              <h1 className="text-[1.5rem] font-bold text-ink tracking-wide uppercase">
                 {marketId}
               </h1>
               <WsStatusBadge status={wsStatus} />
             </div>
             <div className="flex items-end gap-5">
               <div>
-                <span className="block text-[9px] uppercase tracking-[0.18em] text-stone mb-0.5">Best Bid</span>
-                <span className="text-2xl font-mono font-bold text-success tabular-nums leading-none">
+                <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">Best Bid</span>
+                <span className="text-[2rem] font-mono font-semibold text-ochre tabular-nums leading-none">
                   {bestBid ? fmt(bestBid, 4) : '—'}
                 </span>
               </div>
-              <div className="pb-0.5">
-                <span className="block text-[9px] uppercase tracking-[0.18em] text-stone mb-0.5">Spread</span>
-                <span className="text-lg font-mono font-bold text-primary tabular-nums leading-none">
+              <div className="pb-0.5 text-center">
+                <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">Spread</span>
+                <span className="text-[1.1rem] font-mono font-medium text-fresco tabular-nums leading-none">
                   {spread?.abs ?? '—'}
                   {spread && (
-                    <span className="text-xs font-normal text-stone ml-1">{spread.bps} bps</span>
+                    <span className="text-xs font-normal text-brown ml-1">{spread.bps} bps</span>
                   )}
                 </span>
               </div>
               <div>
-                <span className="block text-[9px] uppercase tracking-[0.18em] text-stone mb-0.5">Best Ask</span>
-                <span className="text-2xl font-mono font-bold text-error tabular-nums leading-none">
+                <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">Best Ask</span>
+                <span className="text-[2rem] font-mono font-semibold text-terra tabular-nums leading-none">
                   {bestAsk ? fmt(bestAsk, 4) : '—'}
                 </span>
               </div>
@@ -627,7 +647,7 @@ export default function MarketPage({ params }: PageProps) {
           <TradesFeed trades={trades} />
         </Card>
 
-        <Card padding="sm">
+        <div className="bg-canvas border border-border shadow-card p-6">
           <OrderEntryForm
             marketId={marketId}
             address={address}
@@ -635,7 +655,7 @@ export default function MarketPage({ params }: PageProps) {
             bestBid={bestBid}
             bestAsk={bestAsk}
           />
-        </Card>
+        </div>
       </div>
     </div>
   )

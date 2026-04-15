@@ -28,58 +28,66 @@ export default function MarketsPage() {
   return (
     <div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="pt-20 pb-16 border-b border-neutral-200">
-          <div className="flex items-center gap-2 mb-8">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            <span className="text-[10px] uppercase tracking-[0.2em] text-stone font-medium">
-              Live — Verifiable Spot DEX
-            </span>
-          </div>
+        <div className="pt-20 pb-16 border-b border-border">
+          <div className="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-12 items-center">
+            <div>
+              <div className="flex items-center gap-2 mb-8">
+                <span className="w-1.5 h-1.5 rounded-full bg-sage animate-pulse" />
+                <span className="text-[0.7rem] uppercase tracking-[0.15em] text-sage font-medium">
+                  Live — Verifiable Spot DEX
+                </span>
+              </div>
 
-          <h1 className="text-[clamp(2.8rem,7vw,5.5rem)] font-bold text-cream leading-[0.95] tracking-tight mb-6 max-w-3xl">
-            Trade with<br />
-            <span className="text-primary">provable fairness</span>
-          </h1>
+              <h1 className="leading-[0.95] tracking-tight mb-6 max-w-3xl">
+                <span className="block text-[clamp(3rem,6vw,5rem)] font-extrabold text-ink">
+                  Trade with
+                </span>
+                <span className="block text-[clamp(3rem,6vw,5rem)] font-extrabold text-ochre">
+                  provable fairness
+                </span>
+              </h1>
 
-          <p className="text-lg text-stone leading-relaxed max-w-xl mb-10">
-            A high-performance spot exchange where every match is verifiable on-chain.
-            Sub-microsecond matching, transparent order books, and cryptographic proofs.
-          </p>
+              <p className="text-base text-brown leading-[1.7] max-w-[480px] mb-8">
+                A high-performance spot exchange where every match is verifiable on-chain.
+                Sub-microsecond matching, transparent order books, and cryptographic proofs.
+              </p>
 
-          <div className="flex items-center gap-4">
-            {markets.length > 0 && (
-              <Link href={`/markets/${encodeURIComponent(markets[0].id)}`}>
-                <Button size="lg">
-                  Start Trading
-                </Button>
-              </Link>
-            )}
-            <Link href="/analytics">
-              <Button variant="ghost" size="lg">
-                View Analytics
-              </Button>
-            </Link>
+              <div className="flex items-center gap-3 mt-8">
+                {markets.length > 0 && (
+                  <Link href={`/markets/${encodeURIComponent(markets[0].id)}`}>
+                    <Button size="lg">
+                      View Markets
+                    </Button>
+                  </Link>
+                )}
+                <Link href="/analytics">
+                  <Button variant="ghost" size="lg">
+                    View Analytics
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-neutral-200">
+        <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-border">
           {[
-            { label: 'Markets',       value: markets.length > 0 ? markets.length.toString() : '—' },
-            { label: 'Match Latency', value: '1.08 µs' },
-            { label: 'Order Proofs',  value: 'zkVM' },
-            { label: 'Avg Spread',    value: '—' },
-          ].map(({ label, value }, i) => (
+            { label: 'Markets',       value: markets.length > 0 ? markets.length.toString() : '—', color: 'text-ochre'  },
+            { label: 'Match Latency', value: '1.08 µs',                                             color: 'text-fresco' },
+            { label: 'Order Proofs',  value: 'zkVM',                                                color: 'text-violet' },
+            { label: 'Avg Spread',    value: '—',                                                   color: 'text-sage'   },
+          ].map(({ label, value, color }, i) => (
             <div
               key={label}
               className={[
-                'px-6 py-8',
-                i < 3 ? 'border-r border-neutral-200' : '',
+                'px-10 py-7',
+                i < 3 ? 'border-r border-border' : '',
               ].join(' ')}
             >
-              <div className="text-3xl font-mono font-bold text-primary tabular-nums mb-1">
+              <div className={`text-[2.5rem] font-mono font-semibold tabular-nums mb-1 ${color}`}>
                 {value}
               </div>
-              <div className="text-[10px] uppercase tracking-[0.15em] text-stone font-medium">
+              <div className="text-[0.65rem] uppercase tracking-[0.15em] text-brown font-medium">
                 {label}
               </div>
             </div>
@@ -87,8 +95,8 @@ export default function MarketsPage() {
         </div>
 
         <div className="py-8">
-          <div className="flex items-center justify-between mb-0 px-0 pb-3 border-b border-neutral-200">
-            <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone font-medium">
+          <div className="flex items-center justify-between mb-0 pb-3 border-b border-border">
+            <h2 className="text-[0.7rem] uppercase tracking-[0.15em] text-brown font-medium">
               All Markets
             </h2>
             <Badge variant="neutral" dot>
@@ -99,7 +107,7 @@ export default function MarketsPage() {
           {loading && <FullPageSpinner />}
 
           {error && (
-            <div className="py-12 text-center text-sm text-stone">
+            <div className="py-12 text-center text-sm text-brown">
               <p className="mb-4">{error}</p>
               <Button
                 variant="secondary"
@@ -122,7 +130,7 @@ export default function MarketsPage() {
           )}
 
           {!loading && !error && markets.length === 0 && (
-            <p className="py-12 text-center text-sm text-stone">
+            <p className="py-12 text-center text-sm text-brown">
               No markets available yet.
             </p>
           )}
@@ -131,47 +139,58 @@ export default function MarketsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left">
-                    <th className="px-0 py-3 text-[10px] font-medium text-stone uppercase tracking-[0.15em]">Pair</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-medium text-stone uppercase tracking-[0.15em]">Best Bid</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-medium text-stone uppercase tracking-[0.15em]">Best Ask</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-medium text-stone uppercase tracking-[0.15em]">Spread</th>
+                  <tr className="bg-canvas border-b border-[rgba(101,72,42,0.25)]">
+                    <th className="px-0 py-3 text-left text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Pair</th>
+                    <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Last Price</th>
+                    <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">24H Change</th>
+                    <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Bid</th>
+                    <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Ask</th>
+                    <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Spread</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody>
-                  {markets.map((m) => (
+                  {markets.map((m, idx) => (
                     <tr
                       key={m.id}
-                      className="border-t border-neutral-200 hover:bg-primary/[0.04] transition-colors duration-100"
+                      className={[
+                        'border-b border-[rgba(101,72,42,0.1)] hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-100',
+                        idx % 2 === 0 ? 'bg-parchment' : 'bg-vellum',
+                      ].join(' ')}
                     >
                       <td className="px-0 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-7 h-7 bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                          <div className="w-7 h-7 bg-ochre/10 flex items-center justify-center text-[10px] font-bold text-ochre">
                             {m.base.slice(0, 2)}
                           </div>
                           <div>
-                            <div className="font-semibold text-cream text-sm">
+                            <div className="font-semibold text-ink text-sm">
                               {m.base}/{m.quote}
                             </div>
-                            <div className="text-[10px] text-stone uppercase tracking-wide">{m.id}</div>
+                            <div className="text-[10px] text-brown uppercase tracking-wide">{m.id}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-right tabular-nums font-mono font-medium text-success text-sm">
+                      <td className="px-4 py-4 text-right tabular-nums font-mono font-medium text-ink text-sm">
                         {m.best_bid ?? '—'}
                       </td>
-                      <td className="px-4 py-4 text-right tabular-nums font-mono font-medium text-error text-sm">
+                      <td className="px-4 py-4 text-right tabular-nums font-mono text-brown text-sm">
+                        —
+                      </td>
+                      <td className="px-4 py-4 text-right tabular-nums font-mono font-medium text-ochre text-sm">
+                        {m.best_bid ?? '—'}
+                      </td>
+                      <td className="px-4 py-4 text-right tabular-nums font-mono font-medium text-fresco text-sm">
                         {m.best_ask ?? '—'}
                       </td>
-                      <td className="px-4 py-4 text-right tabular-nums font-mono text-stone text-sm">
+                      <td className="px-4 py-4 text-right tabular-nums font-mono text-violet text-sm">
                         {m.spread ?? '—'}
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link href={`/markets/${encodeURIComponent(m.id)}`}>
                           <button
                             type="button"
-                            className="px-4 h-7 border border-primary/40 text-primary text-xs font-medium hover:bg-primary/8 transition-colors duration-150 tracking-wide"
+                            className="px-4 h-7 border border-ochre/40 text-ochre text-xs font-medium uppercase tracking-[0.08em] hover:bg-ochre/8 transition-colors duration-150"
                           >
                             Trade
                           </button>

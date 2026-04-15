@@ -170,7 +170,7 @@ function stepPath(
 
 function ChartEmpty({ label }: { label: string }) {
   return (
-    <div className="flex items-center justify-center h-full text-xs text-stone font-mono">
+    <div className="flex items-center justify-center h-full text-xs text-brown font-mono">
       {label}
     </div>
   )
@@ -237,17 +237,17 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y1={PAD.top + innerH * f}
           x2={PAD.left + innerW}
           y2={PAD.top + innerH * f}
-          stroke="#2E2318"
+          stroke="rgba(101,72,42,0.12)"
           strokeWidth="0.5"
           strokeDasharray="3 3"
         />
       ))}
 
-      <polygon points={fillPoints} fill="#C4943A" fillOpacity="0.08" />
+      <polygon points={fillPoints} fill="#4A6D9C" fillOpacity="0.08" />
       <polyline
         points={linePoints}
         fill="none"
-        stroke="#C4943A"
+        stroke="#4A6D9C"
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -257,7 +257,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         cx={toX(lastPt.ts)}
         cy={toY(lastPt.bps)}
         r="3"
-        fill="#C4943A"
+        fill="#4A6D9C"
       />
 
       {minuteMarks.map(({ ts, label }) => (
@@ -267,7 +267,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y={H - 6}
           textAnchor="middle"
           fontSize="9"
-          fill="#8B7355"
+          fill="#6B4F2E"
           fontFamily="JetBrains Mono, monospace"
         >
           {label}
@@ -281,7 +281,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y={toY(v) + 3}
           textAnchor="end"
           fontSize="9"
-          fill="#8B7355"
+          fill="#6B4F2E"
           fontFamily="JetBrains Mono, monospace"
         >
           {v.toFixed(1)}
@@ -293,7 +293,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         y1={PAD.top}
         x2={PAD.left}
         y2={bottomY}
-        stroke="#2E2318"
+        stroke="rgba(101,72,42,0.12)"
         strokeWidth="0.5"
       />
       <line
@@ -301,7 +301,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         y1={bottomY}
         x2={PAD.left + innerW}
         y2={bottomY}
-        stroke="#2E2318"
+        stroke="rgba(101,72,42,0.12)"
         strokeWidth="0.5"
       />
     </svg>
@@ -315,12 +315,12 @@ function OFIBar({ ofi }: { ofi: number }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between text-[10px] font-medium text-neutral-400 uppercase tracking-wider">
+      <div className="flex items-center justify-between text-[10px] font-medium text-brown uppercase tracking-wider">
         <span>Ask pressure</span>
         <span
           className={[
             'text-xs font-bold tabular-nums',
-            isBidHeavy ? 'text-success' : 'text-error',
+            isBidHeavy ? 'text-sage' : 'text-terra',
           ].join(' ')}
         >
           {ofi >= 0 ? '+' : ''}
@@ -329,29 +329,29 @@ function OFIBar({ ofi }: { ofi: number }) {
         <span>Bid pressure</span>
       </div>
 
-      <div className="relative h-7 bg-raised overflow-hidden">
-        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-neutral-300 z-10" />
+      <div className="relative h-7 bg-vellum overflow-hidden">
+        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(101,72,42,0.4)] z-10" />
 
         {isBidHeavy ? (
           <div
-            className="absolute top-0 bottom-0 bg-success/60 rounded-r-xl transition-[width] duration-300"
+            className="absolute top-0 bottom-0 bg-ochre transition-[width] duration-300"
             style={{ left: '50%', width: `${bidPct}%` }}
           />
         ) : (
           <div
-            className="absolute top-0 bottom-0 bg-error/60 rounded-l-xl transition-[width] duration-300"
+            className="absolute top-0 bottom-0 bg-fresco transition-[width] duration-300"
             style={{ right: '50%', width: `${askPct}%` }}
           />
         )}
 
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="text-[10px] font-semibold text-stone tabular-nums uppercase tracking-[0.1em]">
+          <span className="text-[10px] font-semibold text-brown tabular-nums uppercase tracking-[0.1em]">
             {isBidHeavy ? 'Bid-heavy' : 'Ask-heavy'}
           </span>
         </div>
       </div>
 
-      <div className="flex justify-between text-[10px] text-neutral-400">
+      <div className="flex justify-between text-[10px] text-brown">
         <span>−100%</span>
         <span>0</span>
         <span>+100%</span>
@@ -445,7 +445,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y1={PAD.top + innerH * f}
           x2={PAD.left + innerW}
           y2={PAD.top + innerH * f}
-          stroke="#2E2318"
+          stroke="rgba(101,72,42,0.1)"
           strokeWidth="0.5"
           strokeDasharray="3 3"
         />
@@ -453,7 +453,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
 
       {bidPath && (
         <>
-          <path d={bidPath} fill="#C4943A" fillOpacity="0.18" />
+          <path d={bidPath} fill="rgba(196,148,58,0.12)" />
           <path
             d={bidPath}
             fill="none"
@@ -466,11 +466,11 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
 
       {askPath && (
         <>
-          <path d={askPath} fill="#6B85A8" fillOpacity="0.18" />
+          <path d={askPath} fill="rgba(74,109,156,0.12)" />
           <path
             d={askPath}
             fill="none"
-            stroke="#6B85A8"
+            stroke="#4A6D9C"
             strokeWidth="1.5"
             strokeLinejoin="round"
           />
@@ -483,7 +483,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y1={PAD.top}
           x2={toX(midPrice)}
           y2={bottomY}
-          stroke="#3D3024"
+          stroke="#7B5EA7"
           strokeWidth="1"
           strokeDasharray="4 3"
         />
@@ -496,7 +496,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y={H - 6}
           textAnchor="middle"
           fontSize="8.5"
-          fill="#8B7355"
+          fill="#6B4F2E"
           fontFamily="JetBrains Mono, monospace"
         >
           {p.toFixed(2)}
@@ -510,7 +510,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y={toY(c) + 3}
           textAnchor="end"
           fontSize="8.5"
-          fill="#8B7355"
+          fill="#6B4F2E"
           fontFamily="JetBrains Mono, monospace"
         >
           {c.toFixed(2)}
@@ -522,7 +522,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
         y1={PAD.top}
         x2={PAD.left}
         y2={bottomY}
-        stroke="#2E2318"
+        stroke="rgba(101,72,42,0.12)"
         strokeWidth="0.5"
       />
       <line
@@ -530,7 +530,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
         y1={bottomY}
         x2={PAD.left + innerW}
         y2={bottomY}
-        stroke="#2E2318"
+        stroke="rgba(101,72,42,0.12)"
         strokeWidth="0.5"
       />
     </svg>
@@ -555,32 +555,32 @@ function VWASIndicator({
 
   return (
     <div>
-      <div className="text-[9px] font-medium text-stone uppercase tracking-[0.15em] mb-2">
+      <div className="text-[9px] font-medium text-brown uppercase tracking-[0.15em] mb-2">
         VW Avg Spread
       </div>
-      <div className="text-3xl font-mono font-bold tabular-nums text-primary">
+      <div className="text-[1.8rem] font-mono font-semibold tabular-nums text-ochre">
         {current !== null ? current.toFixed(2) : '—'}
-        <span className="text-sm font-normal text-stone ml-1">bps</span>
+        <span className="text-sm font-normal text-brown ml-1">bps</span>
       </div>
       {trend !== null && (
         <div
           className={[
             'flex items-center gap-1 mt-1.5 text-sm font-medium',
             trend === 'up'
-              ? 'text-error'
+              ? 'text-terra'
               : trend === 'down'
-              ? 'text-success'
-              : 'text-neutral-400',
+              ? 'text-sage'
+              : 'text-brown',
           ].join(' ')}
         >
           <span className="text-lg leading-none">
             {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'}
           </span>
-          <span className="text-xs text-neutral-400 font-normal">vs 60s ago</span>
+          <span className="text-xs text-brown font-normal">vs 60s ago</span>
         </div>
       )}
       {ago60s !== null && (
-        <div className="text-xs text-neutral-400 mt-1 tabular-nums">
+        <div className="text-xs text-brown mt-1 tabular-nums">
           60s ago: {ago60s.toFixed(2)} bps
         </div>
       )}
@@ -599,58 +599,61 @@ interface FillRateRow {
 function FillRateTable({ rows }: { rows: FillRateRow[] }) {
   return (
     <Card padding="none">
-      <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
-        <span className="font-semibold text-neutral-900">Fill Rate by Market</span>
+      <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+        <span className="text-[0.65rem] uppercase tracking-[0.15em] text-brown font-medium">Fill Rate by Market</span>
         <Badge variant="success" dot size="sm">
           Live
         </Badge>
       </div>
 
       {rows.length === 0 ? (
-        <p className="px-6 py-8 text-sm text-neutral-400 text-center">
+        <p className="px-6 py-8 text-sm text-brown text-center">
           No market data
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-[11px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-50">
-                <th className="px-5 py-3">Market</th>
-                <th className="px-5 py-3 text-right">
+              <tr className="text-left border-b border-border bg-canvas">
+                <th className="px-5 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Market</th>
+                <th className="px-5 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">
                   <Tooltip content="Number of trades executed in the last 60 seconds">
                     Trades (1m)
                   </Tooltip>
                 </th>
-                <th className="px-5 py-3 text-right">
+                <th className="px-5 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">
                   <Tooltip content="Average trade size over the 5-minute window">
                     Avg Size
                   </Tooltip>
                 </th>
-                <th className="px-5 py-3 text-right">
+                <th className="px-5 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">
                   <Tooltip content="Current bid-ask spread in basis points">
                     Spread (bps)
                   </Tooltip>
                 </th>
-                <th className="px-5 py-3 min-w-[180px]">
+                <th className="px-5 py-3 min-w-[180px] text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">
                   <Tooltip content="Order flow imbalance = (bid10 − ask10) / total10. Positive = buy pressure.">
                     OFI
                   </Tooltip>
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-50">
-              {rows.map((row) => (
+            <tbody>
+              {rows.map((row, idx) => (
                 <tr
                   key={row.market}
-                  className="hover:bg-neutral-50 transition-colors duration-100"
+                  className={[
+                    'hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-100 border-b border-border last:border-0',
+                    idx % 2 === 0 ? 'bg-parchment' : 'bg-vellum',
+                  ].join(' ')}
                 >
-                  <td className="px-5 py-3 font-semibold text-neutral-900 text-xs">
+                  <td className="px-5 py-3 font-semibold text-ink text-xs">
                     {row.market}
                   </td>
-                  <td className="px-5 py-3 text-right tabular-nums text-xs text-neutral-700">
+                  <td className="px-5 py-3 text-right tabular-nums text-xs text-ink font-mono">
                     {row.trades1m}
                   </td>
-                  <td className="px-5 py-3 text-right tabular-nums text-xs text-neutral-700">
+                  <td className="px-5 py-3 text-right tabular-nums text-xs text-ink font-mono">
                     {row.avgSize !== null ? row.avgSize.toFixed(4) : '—'}
                   </td>
                   <td className="px-5 py-3 text-right tabular-nums">
@@ -668,17 +671,17 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                         {row.spreadBps.toFixed(2)}
                       </Badge>
                     ) : (
-                      <span className="text-xs text-neutral-400">—</span>
+                      <span className="text-xs text-brown">—</span>
                     )}
                   </td>
                   <td className="px-5 py-3 min-w-[180px]">
                     {row.ofi !== null ? (
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden relative">
-                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-neutral-300" />
+                        <div className="flex-1 h-1.5 bg-canvas overflow-hidden relative">
+                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(101,72,42,0.4)]" />
                           {row.ofi >= 0 ? (
                             <div
-                              className="absolute top-0 bottom-0 bg-success rounded-r-full transition-[width] duration-300"
+                              className="absolute top-0 bottom-0 bg-ochre transition-[width] duration-300"
                               style={{
                                 left: '50%',
                                 width: `${Math.abs(row.ofi) * 50}%`,
@@ -686,7 +689,7 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                             />
                           ) : (
                             <div
-                              className="absolute top-0 bottom-0 bg-error rounded-l-full transition-[width] duration-300"
+                              className="absolute top-0 bottom-0 bg-fresco transition-[width] duration-300"
                               style={{
                                 right: '50%',
                                 width: `${Math.abs(row.ofi) * 50}%`,
@@ -696,8 +699,8 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                         </div>
                         <span
                           className={[
-                            'text-[11px] font-medium tabular-nums w-12 text-right',
-                            row.ofi >= 0 ? 'text-success' : 'text-error',
+                            'text-[11px] font-medium tabular-nums w-12 text-right font-mono',
+                            row.ofi >= 0 ? 'text-ochre' : 'text-fresco',
                           ].join(' ')}
                         >
                           {row.ofi >= 0 ? '+' : ''}
@@ -705,7 +708,7 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                         </span>
                       </div>
                     ) : (
-                      <span className="text-xs text-neutral-400">—</span>
+                      <span className="text-xs text-brown">—</span>
                     )}
                   </td>
                 </tr>
@@ -874,17 +877,17 @@ export default function AnalyticsPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-cream">
-          Microstructure Analytics
+        <h1 className="text-[2rem] font-bold text-ink">
+          Analytics
         </h1>
-        <p className="text-sm text-stone mt-1">
+        <p className="text-sm text-brown mt-1">
           Real-time spread decomposition, depth imbalance, and order flow.
         </p>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap mb-6">
         {state.markets.length === 0 ? (
-          <span className="text-sm text-neutral-400">No markets</span>
+          <span className="text-sm text-brown">No markets</span>
         ) : (
           state.markets.map((m) => (
             <button
@@ -894,10 +897,10 @@ export default function AnalyticsPage() {
                 dispatch({ type: 'SELECT_MARKET', market: m.id })
               }
               className={[
-                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-150',
+                'px-3 py-1.5 text-sm font-medium transition-colors duration-150 uppercase tracking-[0.08em]',
                 state.selectedMarket === m.id
-                  ? 'bg-primary text-white'
-                  : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900',
+                  ? 'bg-ochre text-ink'
+                  : 'border border-[rgba(101,72,42,0.25)] text-brown bg-transparent hover:bg-canvas',
               ].join(' ')}
             >
               {m.base}/{m.quote}
@@ -915,8 +918,8 @@ export default function AnalyticsPage() {
         <>
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-5 mb-5">
             <Card padding="none">
-              <div className="px-5 py-3 border-b border-neutral-100 flex items-center justify-between">
-                <span className="text-xs font-semibold text-neutral-700 uppercase tracking-wider">
+              <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+                <span className="text-[0.65rem] font-medium text-brown uppercase tracking-[0.15em]">
                   Bid-Ask Spread — 5 min rolling
                 </span>
                 {selectedDepth?.spreadBps !== null &&
@@ -946,31 +949,31 @@ export default function AnalyticsPage() {
                 ago60s={vwas.ago60s}
               />
 
-              <div className="mt-5 pt-5 border-t border-neutral-100">
-                <div className="text-[10px] font-medium text-neutral-400 uppercase tracking-wider mb-3">
+              <div className="mt-5 pt-5 border-t border-border">
+                <div className="text-[10px] font-medium text-brown uppercase tracking-wider mb-3">
                   Order Flow Imbalance
                 </div>
                 {selectedDepth ? (
                   <OFIBar ofi={selectedDepth.ofi} />
                 ) : (
-                  <p className="text-xs text-neutral-400">Waiting for data…</p>
+                  <p className="text-xs text-brown">Waiting for data…</p>
                 )}
               </div>
             </Card>
           </div>
 
           <Card padding="none" className="mb-5">
-            <div className="px-5 py-3 border-b border-neutral-100 flex items-center justify-between">
-              <span className="text-xs font-semibold text-neutral-700 uppercase tracking-wider">
+            <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+              <span className="text-[0.65rem] font-medium text-brown uppercase tracking-[0.15em]">
                 Depth Chart — 10 levels
               </span>
               <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1.5 text-[10px] text-stone">
-                  <span className="w-3 h-0.5 bg-primary inline-block" />
+                <span className="flex items-center gap-1.5 text-[10px] text-brown">
+                  <span className="w-3 h-0.5 bg-ochre inline-block" />
                   Bids
                 </span>
-                <span className="flex items-center gap-1.5 text-[10px] text-stone">
-                  <span className="w-3 h-0.5 bg-secondary inline-block" />
+                <span className="flex items-center gap-1.5 text-[10px] text-brown">
+                  <span className="w-3 h-0.5 bg-fresco inline-block" />
                   Asks
                 </span>
               </div>

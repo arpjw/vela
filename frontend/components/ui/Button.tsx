@@ -3,7 +3,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { Spinner } from './Spinner'
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'buy'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'buy' | 'sell'
 type Size = 'sm' | 'md' | 'lg'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -16,45 +16,52 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<Variant, string> = {
   primary: [
-    'bg-primary text-canvas',
-    'hover:bg-primary-600 active:bg-primary-700',
-    'focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+    'bg-ochre text-ink',
+    'hover:bg-[#B8860B] active:bg-[#A07808]',
+    'focus-visible:ring-2 focus-visible:ring-ochre/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
 
   buy: [
-    'bg-success text-canvas',
-    'hover:bg-success-dark active:bg-success-dark',
-    'focus-visible:ring-2 focus-visible:ring-success/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+    'bg-sage text-vellum',
+    'hover:bg-[#5A7A42] active:bg-[#4E6B38]',
+    'focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
+    'disabled:opacity-40',
+  ].join(' '),
+
+  sell: [
+    'bg-terra text-vellum',
+    'hover:bg-[#8B3020] active:bg-[#7A2818]',
+    'focus-visible:ring-2 focus-visible:ring-terra/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
 
   secondary: [
-    'bg-transparent text-primary border border-primary/40',
-    'hover:bg-primary/6 hover:border-primary/60 active:bg-primary/10',
-    'focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+    'bg-transparent text-ochre border-[1.5px] border-ochre',
+    'hover:bg-ochre/8 hover:border-ochre active:bg-ochre/12',
+    'focus-visible:ring-2 focus-visible:ring-ochre/30 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
 
   ghost: [
-    'bg-transparent text-stone',
-    'hover:bg-neutral-100 hover:text-cream active:bg-neutral-200',
-    'focus-visible:ring-2 focus-visible:ring-neutral-400/30 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+    'bg-transparent text-brown',
+    'hover:bg-[rgba(101,72,42,0.08)] hover:text-ink active:bg-[rgba(101,72,42,0.12)]',
+    'focus-visible:ring-2 focus-visible:ring-brown/30 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
 
   danger: [
-    'bg-error text-cream',
-    'hover:bg-error-dark active:bg-error-dark',
-    'focus-visible:ring-2 focus-visible:ring-error/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+    'bg-terra text-vellum',
+    'hover:bg-[#8B3020] active:bg-[#7A2818]',
+    'focus-visible:ring-2 focus-visible:ring-terra/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
 }
 
 const sizeStyles: Record<Size, string> = {
-  sm: 'h-8 px-3 text-sm gap-1.5',
-  md: 'h-10 px-4 text-sm gap-2',
-  lg: 'h-12 px-6 text-base gap-2.5',
+  sm: 'h-8 px-3 text-[0.75rem] gap-1.5',
+  md: 'h-10 px-4 text-[0.8rem] gap-2',
+  lg: 'h-12 px-6 text-[0.85rem] gap-2.5',
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -79,7 +86,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={isDisabled}
         className={[
-          'inline-flex items-center justify-center font-medium',
+          'inline-flex items-center justify-center font-medium font-sans',
+          'uppercase tracking-[0.08em]',
           'transition-all duration-150 outline-none select-none',
           'cursor-pointer disabled:cursor-not-allowed',
           variantStyles[variant],
