@@ -158,7 +158,7 @@ cargo bench -p benches
 | [docs/api.md](docs/api.md) | Full HTTP endpoint reference, WebSocket message protocol, and signing message formats |
 | [docs/credit-system.md](docs/credit-system.md) | MM credit system design, credit ratio math, auto-cancel logic, and the asset-backing invariant |
 
-**Technical paper:** Vela white paper — Monolith Research, SSRN (link forthcoming).
+**Technical paper:** [Vela: A High-Performance Verifiable Spot Exchange](https://ssrn.com/abstract=6579199) — Monolith Research, SSRN Abstract 6579199.
 
 ---
 
