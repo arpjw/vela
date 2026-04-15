@@ -7,6 +7,7 @@ use state::mpt::Hash;
 use types::Request;
 use crate::batch::CommitBatch;
 use crate::da::{DaRecord, DataAvailabilityClient};
+use crate::forced_inclusion::{DelayedInbox, ForcedEntry};
 
 // ---------------------------------------------------------------------------
 // Payload serialized to the DA layer for each committed batch.
@@ -29,6 +30,8 @@ pub struct CommitResult {
     pub root: Hash,
     pub batch_size: usize,
     pub timestamp: u64,
+    /// How many requests in this batch were forced via the delayed inbox.
+    pub forced_count: usize,
     /// Populated when the committer has a DA client wired in.
     pub da_record: Option<DaRecord>,
 }
@@ -37,6 +40,11 @@ pub struct CommitterConfig {
     pub batch_interval: Duration,
     pub disk_path: Option<PathBuf>,
     pub max_batch_size: usize,
+    /// How long a transaction must sit in the delayed inbox before the
+    /// committer is required to include it.  Defaults to 24 hours, matching
+    /// the typical Arbitrum delayed-inbox window.  Set to `Duration::ZERO` in
+    /// tests to make every forced tx immediately eligible.
+    pub forced_inclusion_timeout: Duration,
 }
 
 impl Default for CommitterConfig {
@@ -45,6 +53,7 @@ impl Default for CommitterConfig {
             batch_interval: Duration::from_millis(500),
             disk_path: None,
             max_batch_size: 10_000,
+            forced_inclusion_timeout: Duration::from_secs(24 * 60 * 60),
         }
     }
 }
@@ -55,17 +64,20 @@ impl Default for CommitterConfig {
 
 pub struct Committer {
     rx: mpsc::Receiver<CommitBatch>,
+    forced_rx: mpsc::Receiver<ForcedEntry>,
     result_tx: Option<mpsc::Sender<CommitResult>>,
     state_manager: StateManager,
     config: CommitterConfig,
     pending_requests: Vec<Request>,
     total_committed: u64,
     da_client: Option<Box<dyn DataAvailabilityClient>>,
+    inbox: DelayedInbox,
 }
 
 impl Committer {
     pub fn new(
         rx: mpsc::Receiver<CommitBatch>,
+        forced_rx: mpsc::Receiver<ForcedEntry>,
         result_tx: Option<mpsc::Sender<CommitResult>>,
         config: CommitterConfig,
         da_client: Option<Box<dyn DataAvailabilityClient>>,
@@ -73,12 +85,14 @@ impl Committer {
         let disk_path = config.disk_path.clone();
         Committer {
             rx,
+            forced_rx,
             result_tx,
             state_manager: StateManager::new(disk_path),
             config,
             pending_requests: vec![],
             total_committed: 0,
             da_client,
+            inbox: DelayedInbox::new(),
         }
     }
 
@@ -104,13 +118,18 @@ impl Committer {
                     self.accumulate_batch(batch);
 
                     if self.pending_requests.len() >= self.config.max_batch_size {
-                        self.commit_pending().await;
+                        let forced_count = self.drain_and_prepend_forced();
+                        self.commit_pending(forced_count).await;
                     }
                 }
 
                 _ = interval.tick() => {
-                    if !self.pending_requests.is_empty() || self.state_manager.dirty_count() > 0 {
-                        self.commit_pending().await;
+                    let forced_count = self.drain_and_prepend_forced();
+                    if forced_count > 0
+                        || !self.pending_requests.is_empty()
+                        || self.state_manager.dirty_count() > 0
+                    {
+                        self.commit_pending(forced_count).await;
                     }
                 }
             }
@@ -129,7 +148,33 @@ impl Committer {
         }
     }
 
-    async fn commit_pending(&mut self) {
+    /// Receive all pending entries from the forced-inclusion channel into the
+    /// inbox, then drain the inbox for entries that have waited past the
+    /// configured timeout.  Eligible transactions are prepended to
+    /// `pending_requests` so they execute first in the next batch.
+    ///
+    /// Returns the number of forced transactions prepended.
+    fn drain_and_prepend_forced(&mut self) -> usize {
+        // Drain the channel into the inbox (non-blocking).
+        while let Ok(entry) = self.forced_rx.try_recv() {
+            self.inbox.push(entry);
+        }
+
+        let forced = self.inbox.drain_eligible(self.config.forced_inclusion_timeout);
+        let count = forced.len();
+
+        if count > 0 {
+            // Prepend forced transactions ahead of normal pending requests.
+            let normal = std::mem::take(&mut self.pending_requests);
+            self.pending_requests = forced;
+            self.pending_requests.extend(normal);
+            info!(count = count, "forced-inclusion transactions prepended to batch");
+        }
+
+        count
+    }
+
+    async fn commit_pending(&mut self, forced_count: usize) {
         let batch_size = self.pending_requests.len();
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -147,6 +192,7 @@ impl Committer {
         info!(
             sequence = sequence,
             batch_size = batch_size,
+            forced_count = forced_count,
             root = hex::encode(root),
             "committed batch"
         );
@@ -158,7 +204,14 @@ impl Committer {
         self.pending_requests.clear();
 
         if let Some(tx) = &self.result_tx {
-            let result = CommitResult { sequence, root, batch_size, timestamp: ts, da_record };
+            let result = CommitResult {
+                sequence,
+                root,
+                batch_size,
+                timestamp: ts,
+                forced_count,
+                da_record,
+            };
             if tx.send(result).await.is_err() {
                 warn!("commit result receiver dropped");
             }
