@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
@@ -59,6 +59,67 @@ const MOCK_ASKS: BookRow[] = [
 
 const MOCK_BOOK: OrderBook = { bids: MOCK_BIDS, asks: MOCK_ASKS }
 
+type FlashDir = 'up' | 'down' | null
+
+function stepBook(book: OrderBook): OrderBook {
+  const midShift = Math.random() * 0.0004 - 0.0002
+
+  const bids: BookRow[] = book.bids.map((row, i) => ({
+    price: (parseFloat(row.price) * (1 + midShift)).toFixed(2),
+    quantity: Math.max(0.01, parseFloat(row.quantity) * (1 + (i % 2 === 0 ? 1 : -1) * Math.random() * 0.1)).toFixed(4),
+  }))
+
+  const asks: BookRow[] = book.asks.map((row, i) => ({
+    price: (parseFloat(row.price) * (1 + midShift)).toFixed(2),
+    quantity: Math.max(0.01, parseFloat(row.quantity) * (1 + (i % 2 === 0 ? 1 : -1) * Math.random() * 0.1)).toFixed(4),
+  }))
+
+  const numReplace = Math.random() < 0.5 ? 1 : 2
+  for (let r = 0; r < numReplace; r++) {
+    if (Math.random() < 0.5 && bids.length > 2) {
+      const idx = 1 + Math.floor(Math.random() * (bids.length - 1))
+      const base = parseFloat(bids[0].price)
+      bids[idx] = {
+        price: (base - (idx + Math.random()) * 47).toFixed(2),
+        quantity: (0.1 + Math.random() * 4).toFixed(4),
+      }
+    } else if (asks.length > 2) {
+      const idx = 1 + Math.floor(Math.random() * (asks.length - 1))
+      const base = parseFloat(asks[0].price)
+      asks[idx] = {
+        price: (base + (idx + Math.random()) * 51).toFixed(2),
+        quantity: (0.1 + Math.random() * 4).toFixed(4),
+      }
+    }
+  }
+
+  return { bids, asks }
+}
+
+function tradeBook(book: OrderBook): OrderBook {
+  const isBidTrade = Math.random() < 0.5
+
+  if (isBidTrade && book.bids.length > 1) {
+    const newBids = book.bids.slice(1)
+    const base = parseFloat(newBids[newBids.length - 1].price)
+    newBids.push({
+      price: (base - 47 - Math.random() * 50).toFixed(2),
+      quantity: (0.1 + Math.random() * 2).toFixed(4),
+    })
+    return { bids: newBids, asks: book.asks }
+  } else if (book.asks.length > 1) {
+    const newAsks = book.asks.slice(1)
+    const base = parseFloat(newAsks[newAsks.length - 1].price)
+    newAsks.push({
+      price: (base + 51 + Math.random() * 50).toFixed(2),
+      quantity: (0.1 + Math.random() * 2).toFixed(4),
+    })
+    return { bids: book.bids, asks: newAsks }
+  }
+
+  return book
+}
+
 const HEADLINE: { text: string; color: string }[] = [
   { text: 'Trade with', color: '#1A0608' },
   { text: 'provable', color: '#C41E3A' },
@@ -87,7 +148,7 @@ const galleryLabel: CSSProperties = {
   color: '#4A1520',
 }
 
-function OrderBookViz({ book }: { book: OrderBook }) {
+function OrderBookViz({ book, flashDir }: { book: OrderBook; flashDir: FlashDir }) {
   const displayBids = useMemo(
     () => [...book.bids].slice(0, LEVELS).reverse(),
     [book.bids],
@@ -223,9 +284,15 @@ function OrderBookViz({ book }: { book: OrderBook }) {
             style={{
               width: 8,
               height: 8,
-              background: '#C41E3A',
+              background:
+                flashDir === 'up'
+                  ? '#FF1744'
+                  : flashDir === 'down'
+                    ? '#F4A0B0'
+                    : '#C41E3A',
               transform: 'rotate(45deg)',
               flexShrink: 0,
+              transition: 'background 300ms ease',
             }}
           />
           <div
@@ -787,6 +854,38 @@ export default function HomePage() {
   const [markets, setMarkets] = useState<MarketResponse[]>([])
   const [book, setBook] = useState<OrderBook>(MOCK_BOOK)
   const [pair, setPair] = useState<string | null>(null)
+  const [simBook, setSimBook] = useState<OrderBook>(MOCK_BOOK)
+  const [flashDir, setFlashDir] = useState<FlashDir>(null)
+  const simRef = useRef<{ book: OrderBook; tickCount: number; prevMid: number; flashTimer: ReturnType<typeof setTimeout> | null }>({
+    book: MOCK_BOOK,
+    tickCount: 0,
+    prevMid: (parseFloat(MOCK_BOOK.bids[0].price) + parseFloat(MOCK_BOOK.asks[0].price)) / 2,
+    flashTimer: null,
+  })
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const s = simRef.current
+      s.tickCount++
+      const next = s.tickCount % 4 === 0 ? tradeBook(s.book) : stepBook(s.book)
+      s.book = next
+      setSimBook(next)
+
+      const newMid = (parseFloat(next.bids[0].price) + parseFloat(next.asks[0].price)) / 2
+      if (newMid !== s.prevMid) {
+        const dir: FlashDir = newMid > s.prevMid ? 'up' : 'down'
+        setFlashDir(dir)
+        if (s.flashTimer !== null) clearTimeout(s.flashTimer)
+        s.flashTimer = setTimeout(() => setFlashDir(null), 500)
+      }
+      s.prevMid = newMid
+    }, 800)
+
+    return () => {
+      clearInterval(id)
+      if (simRef.current.flashTimer !== null) clearTimeout(simRef.current.flashTimer)
+    }
+  }, [])
 
   useEffect(() => {
     listMarkets()
@@ -830,7 +929,7 @@ export default function HomePage() {
           overflow: 'hidden',
         }}
       >
-        <OrderBookViz book={book} />
+        <OrderBookViz book={simBook} flashDir={flashDir} />
         <TextOverlay />
       </section>
 
