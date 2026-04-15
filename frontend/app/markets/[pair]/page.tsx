@@ -177,69 +177,190 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const w = canvas.offsetWidth
-    const h = canvas.height
-    canvas.width = w
+    const dpr = window.devicePixelRatio || 1
+    const cssW = canvas.offsetWidth
+    const cssH = 200
+    canvas.width = cssW * dpr
+    canvas.height = cssH * dpr
+    canvas.style.height = `${cssH}px`
+    ctx.scale(dpr, dpr)
+
+    const w = cssW
+    const h = cssH
 
     ctx.clearRect(0, 0, w, h)
 
-    const midX = w / 2
+    const PAD_TOP = 8
+    const PAD_BOT = 28
+    const PAD_LEFT = 8
+    const PAD_RIGHT = 8
 
-    const allBidSizes = bids.map(([, s]) => parseFloat(s))
-    const allAskSizes = asks.map(([, s]) => parseFloat(s))
-    const maxSize = Math.max(...allBidSizes, ...allAskSizes, 0.0001)
+    const chartH = h - PAD_TOP - PAD_BOT
+    const chartW = w - PAD_LEFT - PAD_RIGHT
 
-    let bidCum = 0
-    const totalBidCum = bids.reduce((acc, [, s]) => acc + parseFloat(s), 0)
-    bids.slice(0, MAX_BOOK_ROWS).forEach(([, size], i) => {
-      bidCum += parseFloat(size)
-      const alpha = totalBidCum > 0 ? (bidCum / totalBidCum) * 0.8 + 0.1 : 0.2
-      const strokeW = 1.5 + (parseFloat(size) / maxSize) * 3
-      const yBase = h * 0.5
-      const yOff = (i - bids.length / 2) * (h / bids.length) * 1.2
-      const extentX = midX * (bidCum / totalBidCum) * 0.9
+    type CumPoint = { price: number; cum: number }
+
+    const bidPoints: CumPoint[] = []
+    let bidAcc = 0
+    for (const [p, s] of bids) {
+      bidAcc += parseFloat(s)
+      bidPoints.push({ price: parseFloat(p), cum: bidAcc })
+    }
+
+    const askPoints: CumPoint[] = []
+    let askAcc = 0
+    for (const [p, s] of asks) {
+      askAcc += parseFloat(s)
+      askPoints.push({ price: parseFloat(p), cum: askAcc })
+    }
+
+    if (bidPoints.length === 0 && askPoints.length === 0) return
+
+    const maxDepth = Math.max(
+      bidPoints.length > 0 ? bidPoints[bidPoints.length - 1].cum : 0,
+      askPoints.length > 0 ? askPoints[askPoints.length - 1].cum : 0,
+      0.0001,
+    )
+
+    const minPrice = bidPoints.length > 0 ? bidPoints[bidPoints.length - 1].price : askPoints[0].price
+    const maxPrice = askPoints.length > 0 ? askPoints[askPoints.length - 1].price : bidPoints[0].price
+    const priceRange = maxPrice - minPrice || 1
+
+    const toX = (price: number) => PAD_LEFT + ((price - minPrice) / priceRange) * chartW
+    const toY = (cum: number) => PAD_TOP + chartH - (cum / maxDepth) * chartH
+
+    for (const frac of [0.25, 0.5, 0.75]) {
+      const y = PAD_TOP + chartH * (1 - frac)
+      ctx.beginPath()
+      ctx.moveTo(PAD_LEFT, y)
+      ctx.lineTo(PAD_LEFT + chartW, y)
+      ctx.strokeStyle = 'rgba(26,18,8,0.07)'
+      ctx.lineWidth = 0.5
+      ctx.setLineDash([])
+      ctx.stroke()
+    }
+
+    if (bidPoints.length > 0) {
+      ctx.beginPath()
+      const startX = toX(bidPoints[0].price)
+      const baseY = toY(0)
+      ctx.moveTo(startX, baseY)
+      ctx.lineTo(startX, toY(bidPoints[0].cum))
+      for (let i = 1; i < bidPoints.length; i++) {
+        const currX = toX(bidPoints[i].price)
+        ctx.lineTo(currX, toY(bidPoints[i - 1].cum))
+        ctx.lineTo(currX, toY(bidPoints[i].cum))
+      }
+      ctx.lineTo(PAD_LEFT, toY(bidPoints[bidPoints.length - 1].cum))
+      ctx.lineTo(PAD_LEFT, baseY)
+      ctx.closePath()
+      ctx.fillStyle = 'rgba(196,30,58,0.10)'
+      ctx.fill()
 
       ctx.beginPath()
-      ctx.moveTo(midX, yBase + yOff)
-      ctx.bezierCurveTo(
-        midX - extentX * 0.3, yBase + yOff,
-        midX - extentX * 0.7, yBase + yOff + yOff * 0.1,
-        midX - extentX, yBase + yOff,
-      )
-      ctx.strokeStyle = `rgba(196, 30, 58, ${alpha})`
-      ctx.lineWidth = strokeW
+      ctx.moveTo(startX, toY(bidPoints[0].cum))
+      for (let i = 1; i < bidPoints.length; i++) {
+        const currX = toX(bidPoints[i].price)
+        ctx.lineTo(currX, toY(bidPoints[i - 1].cum))
+        ctx.lineTo(currX, toY(bidPoints[i].cum))
+      }
+      ctx.lineTo(PAD_LEFT, toY(bidPoints[bidPoints.length - 1].cum))
+      ctx.strokeStyle = '#C41E3A'
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([])
       ctx.stroke()
-    })
+    }
 
-    let askCum = 0
-    const totalAskCum = asks.reduce((acc, [, s]) => acc + parseFloat(s), 0)
-    asks.slice(0, MAX_BOOK_ROWS).forEach(([, size], i) => {
-      askCum += parseFloat(size)
-      const alpha = totalAskCum > 0 ? (askCum / totalAskCum) * 0.8 + 0.1 : 0.2
-      const strokeW = 1.5 + (parseFloat(size) / maxSize) * 3
-      const yBase = h * 0.5
-      const yOff = (i - asks.length / 2) * (h / asks.length) * 1.2
-      const extentX = midX * (askCum / totalAskCum) * 0.9
+    if (askPoints.length > 0) {
+      ctx.beginPath()
+      const startX = toX(askPoints[0].price)
+      const baseY = toY(0)
+      ctx.moveTo(startX, baseY)
+      ctx.lineTo(startX, toY(askPoints[0].cum))
+      for (let i = 1; i < askPoints.length; i++) {
+        const currX = toX(askPoints[i].price)
+        ctx.lineTo(currX, toY(askPoints[i - 1].cum))
+        ctx.lineTo(currX, toY(askPoints[i].cum))
+      }
+      const lastX = toX(askPoints[askPoints.length - 1].price)
+      ctx.lineTo(lastX, baseY)
+      ctx.closePath()
+      ctx.fillStyle = 'rgba(232,130,154,0.15)'
+      ctx.fill()
 
       ctx.beginPath()
-      ctx.moveTo(midX, yBase + yOff)
-      ctx.bezierCurveTo(
-        midX + extentX * 0.3, yBase + yOff,
-        midX + extentX * 0.7, yBase + yOff + yOff * 0.1,
-        midX + extentX, yBase + yOff,
-      )
-      ctx.strokeStyle = `rgba(232, 130, 154, ${alpha})`
-      ctx.lineWidth = strokeW
+      ctx.moveTo(startX, toY(askPoints[0].cum))
+      for (let i = 1; i < askPoints.length; i++) {
+        const currX = toX(askPoints[i].price)
+        ctx.lineTo(currX, toY(askPoints[i - 1].cum))
+        ctx.lineTo(currX, toY(askPoints[i].cum))
+      }
+      ctx.lineTo(toX(askPoints[askPoints.length - 1].price), toY(askPoints[askPoints.length - 1].cum))
+      ctx.strokeStyle = '#E8829A'
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([])
       ctx.stroke()
-    })
+    }
+
+    if (bidPoints.length > 0 && askPoints.length > 0) {
+      const bestBidP = bidPoints[0].price
+      const bestAskP = askPoints[0].price
+      const mid = (bestBidP + bestAskP) / 2
+      const midX = toX(mid)
+      ctx.beginPath()
+      ctx.moveTo(midX, PAD_TOP)
+      ctx.lineTo(midX, PAD_TOP + chartH)
+      ctx.strokeStyle = 'rgba(26,18,8,0.15)'
+      ctx.lineWidth = 0.5
+      ctx.setLineDash([3, 3])
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+
+    ctx.font = '10px JetBrains Mono, monospace'
+    ctx.fillStyle = 'rgba(107,79,46,0.7)'
+    const labelY = h - 6
+
+    if (bidPoints.length > 0) {
+      ctx.textAlign = 'left'
+      ctx.fillText(minPrice.toFixed(2), PAD_LEFT, labelY)
+    }
+
+    if (bidPoints.length > 0 && askPoints.length > 0) {
+      const mid = (bidPoints[0].price + askPoints[0].price) / 2
+      ctx.textAlign = 'center'
+      ctx.fillText(mid.toFixed(2), toX(mid), labelY)
+    }
+
+    if (askPoints.length > 0) {
+      ctx.textAlign = 'right'
+      ctx.fillText(maxPrice.toFixed(2), PAD_LEFT + chartW, labelY)
+    }
+
+    ctx.font = '10px JetBrains Mono, monospace'
+    ctx.fillStyle = 'rgba(107,79,46,0.5)'
+    ctx.textAlign = 'right'
+    ctx.fillText(maxDepth.toFixed(2), PAD_LEFT + chartW, PAD_TOP + 10)
   }, [bids, asks])
 
   return (
     <div className="border-t border-border">
       <div className="px-3 py-2 border-b border-border">
-        <span className="text-[0.65rem] font-medium text-brown uppercase tracking-[0.2em]">Depth — Live</span>
+        <span
+          style={{
+            fontFamily: 'Inter, sans-serif',
+            fontSize: '0.65rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.15em',
+            color: '#6B4F2E',
+            marginBottom: '8px',
+            display: 'block',
+          }}
+        >
+          Depth — Live
+        </span>
       </div>
-      <canvas ref={canvasRef} height={200} className="w-full block" style={{ background: 'transparent' }} />
+      <canvas ref={canvasRef} className="w-full block" style={{ background: 'transparent', height: '200px' }} />
     </div>
   )
 }
