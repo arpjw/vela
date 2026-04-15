@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { listMarkets, fromFixed, type MarketResponse } from '@/lib/api'
+import { listMarkets, type MarketResponse } from '@/lib/api'
 import { getWsClient, type WsServerMessage } from '@/lib/ws'
 import { Button } from '@/components/ui/Button'
 
@@ -590,7 +590,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           color: '#1A0608',
         }}
       >
-        {m.best_bid != null ? fromFixed(m.best_bid).toFixed(2) : '—'}
+        {m.best_bid ?? '—'}
       </td>
       <td
         style={{
@@ -613,7 +613,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           color: '#C41E3A',
         }}
       >
-        {m.best_bid != null ? fromFixed(m.best_bid).toFixed(2) : '—'}
+        {m.best_bid ?? '—'}
       </td>
       <td
         style={{
@@ -625,7 +625,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           color: '#E8829A',
         }}
       >
-        {m.best_ask != null ? fromFixed(m.best_ask).toFixed(2) : '—'}
+        {m.best_ask ?? '—'}
       </td>
       <td
         style={{
@@ -636,7 +636,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           color: '#6B1525',
         }}
       >
-        {m.spread != null ? fromFixed(m.spread).toFixed(4) : '—'}
+        {m.spread ?? '—'}
       </td>
       <td style={{ padding: '14px 16px', textAlign: 'right' }}>
         <Link href={`/markets/${encodeURIComponent(m.id)}`}>
@@ -908,8 +908,8 @@ export default function HomePage() {
     const removeHandler = ws.onMessage((msg: WsServerMessage) => {
       if (msg.type === 'book_snapshot' && msg.market === pair) {
         setBook({
-          bids: msg.bids.map(([price, quantity]) => ({ price: fromFixed(price).toFixed(2), quantity: fromFixed(quantity).toFixed(4) })),
-          asks: msg.asks.map(([price, quantity]) => ({ price: fromFixed(price).toFixed(2), quantity: fromFixed(quantity).toFixed(4) })),
+          bids: msg.bids.map(([price, quantity]) => ({ price, quantity })),
+          asks: msg.asks.map(([price, quantity]) => ({ price, quantity })),
         })
       }
     })
