@@ -247,20 +247,66 @@ pub struct CancelOrderRequest {
     pub signature: Vec<u8>,
 }
 
+/// Credit a user's exchange balance from an on-chain deposit event.
+///
+/// # Deposit flow (L1 → exchange)
+///
+/// 1. **Lock on L1**: the user calls `deposit(asset, amount)` on the Vela
+///    bridge contract.  The asset is transferred into the contract and an event
+///    is emitted containing the L1 transaction hash.
+/// 2. **Relayer picks up the event**: an off-chain relayer (or the sequencer
+///    itself) observes the L1 event and constructs a `DepositRequest` with the
+///    matching `l1_tx_hash` as proof.
+/// 3. **Sequencer includes the request**: the `DepositRequest` is added to the
+///    next batch.  The matching engine credits `amount` to `user`'s available
+///    balance for `asset`.  Because `l1_tx_hash` uniquely identifies the L1
+///    event, double-crediting is prevented.
+/// 4. **State committed**: the new balance is committed to the MPT and posted
+///    to the DA layer.  ZK / optimistic provers can verify the credit matches
+///    the on-chain event.
+///
+/// Deposits may also be submitted via the forced-inclusion (delayed inbox) path
+/// if the sequencer is censoring the user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DepositRequest {
     pub user: UserId,
     pub asset: AssetId,
     pub amount: u64,
+    /// Hash of the L1 transaction that locked the funds in the bridge contract.
+    /// Acts as a unique nonce to prevent replay.
     pub l1_tx_hash: [u8; 32],
 }
 
+/// Initiate an on-chain settlement from the user's exchange balance.
+///
+/// # Withdrawal flow (exchange → L1)
+///
+/// 1. **User initiates**: the user signs a `WithdrawalRequest` and submits it
+///    to the sequencer API.  The ECDSA `signature` covers `(user, asset,
+///    amount, nonce)` so the sequencer can verify the request is authentic
+///    without a round-trip to L1.
+/// 2. **Sequencer deducts balance**: the matching engine checks `available ≥
+///    amount`, deducts the balance, and includes the request in the next batch.
+///    The `nonce` prevents replay.
+/// 3. **State committed and proven**: the updated balance is committed to the
+///    MPT.  Once the batch is either (a) past its 7-day optimistic challenge
+///    window without dispute, or (b) covered by a fast-finality ZK proof, the
+///    withdrawal is considered final from the L1 perspective.
+/// 4. **L1 settlement**: a relayer (or the user directly) submits the
+///    withdrawal proof to the Vela bridge contract.  The contract verifies the
+///    MPT inclusion proof against the committed root and releases the funds to
+///    the user's L1 address.
+///
+/// Fast-finality proofs (see `zkvm::OptimisticProver::request_fast_finality_proof`)
+/// allow withdrawals to bypass the 7-day window, making the UX comparable to
+/// a centralized exchange.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WithdrawalRequest {
     pub user: UserId,
     pub asset: AssetId,
     pub amount: u64,
     pub nonce: Nonce,
+    /// ECDSA signature over `(user, asset, amount, nonce)`.
     pub signature: Vec<u8>,
 }
 
