@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -636,21 +636,8 @@ function MarketSelector({
   )
 }
 
-interface PageProps {
-  params: Promise<{ pair: string }>
-}
-
-export default function MarketPage({ params }: PageProps) {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <MarketPageContent params={params} />
-    </Suspense>
-  )
-}
-
-function MarketPageContent({ params }: PageProps) {
-  const { pair } = use(params)
-  const marketId = decodeURIComponent(pair)
+export default function MarketPage({ params }: { params: { pair: string } }) {
+  const marketId = decodeURIComponent(params.pair)
 
   const { address, isConnected } = useAuth()
 
