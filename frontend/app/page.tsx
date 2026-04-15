@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { listMarkets, type MarketResponse } from '@/lib/api'
+import { fetchLivePrices, type LivePrices } from '@/lib/prices'
 import { getWsClient, type WsServerMessage } from '@/lib/ws'
 import { Button } from '@/components/ui/Button'
 
@@ -521,8 +522,9 @@ function TextOverlay() {
   )
 }
 
-function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) {
+function MarketRow({ market: m, idx, livePrices }: { market: MarketResponse; idx: number; livePrices: LivePrices }) {
   const [hovered, setHovered] = useState(false)
+  const live = livePrices[m.id]
 
   return (
     <motion.tr
@@ -590,7 +592,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           color: '#1A0608',
         }}
       >
-        {m.best_bid ?? '—'}
+        {live ? live.price.toLocaleString() : (m.best_bid ?? '—')}
       </td>
       <td
         style={{
@@ -598,10 +600,20 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           textAlign: 'right',
           fontFamily: 'var(--font-mono)',
           fontSize: '0.875rem',
-          color: '#4A1520',
+          color: live
+            ? live.change24h > 0
+              ? '#6B8C52'
+              : live.change24h < 0
+                ? '#C41E3A'
+                : '#4A1520'
+            : '#4A1520',
         }}
       >
-        —
+        {live
+          ? live.change24h > 0
+            ? `+${live.change24h.toFixed(2)}%`
+            : `${live.change24h.toFixed(2)}%`
+          : '—'}
       </td>
       <td
         style={{
@@ -663,7 +675,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
   )
 }
 
-function MarketsRoom({ markets }: { markets: MarketResponse[] }) {
+function MarketsRoom({ markets, livePrices }: { markets: MarketResponse[]; livePrices: LivePrices }) {
   const COLS = ['Pair', 'Last Price', '24H Change', 'Bid', 'Ask', 'Spread', '']
 
   return (
@@ -705,7 +717,7 @@ function MarketsRoom({ markets }: { markets: MarketResponse[] }) {
             </thead>
             <tbody>
               {markets.map((m, idx) => (
-                <MarketRow key={m.id} market={m} idx={idx} />
+                <MarketRow key={m.id} market={m} idx={idx} livePrices={livePrices} />
               ))}
             </tbody>
           </table>
@@ -852,6 +864,7 @@ function EnterSection({ markets }: { markets: MarketResponse[] }) {
 
 export default function HomePage() {
   const [markets, setMarkets] = useState<MarketResponse[]>([])
+  const [livePrices, setLivePrices] = useState<LivePrices>({})
   const [book, setBook] = useState<OrderBook>(MOCK_BOOK)
   const [pair, setPair] = useState<string | null>(null)
   const [simBook, setSimBook] = useState<OrderBook>(MOCK_BOOK)
@@ -899,6 +912,10 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
+    fetchLivePrices().then(setLivePrices)
+  }, [])
+
+  useEffect(() => {
     if (!pair) return
     const ws = getWsClient()
     ws.connect()
@@ -933,7 +950,7 @@ export default function HomePage() {
         <TextOverlay />
       </section>
 
-      <MarketsRoom markets={markets} />
+      <MarketsRoom markets={markets} livePrices={livePrices} />
       <PerformanceRoom />
       <EnterSection markets={markets} />
     </div>
