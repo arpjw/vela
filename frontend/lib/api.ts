@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+  process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
 
 // ---------------------------------------------------------------------------
 // Response shapes (mirrors api/src/types.rs)
@@ -115,8 +115,22 @@ async function apiFetch<T>(
 // ---------------------------------------------------------------------------
 
 /** GET /markets */
-export function listMarkets(): Promise<ApiResponse<MarketResponse[]>> {
-  return apiFetch('/markets')
+export async function listMarkets(): Promise<ApiResponse<MarketResponse[]>> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
+  try {
+    const res = await fetch(`${apiUrl}/markets`, {
+      cache: 'no-store',
+      next: { revalidate: 0 },
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText)
+      return { ok: false, error: text }
+    }
+    return res.json() as Promise<ApiResponse<MarketResponse[]>>
+  } catch (err) {
+    console.error(err)
+    return { ok: true, data: [] }
+  }
 }
 
 /** GET /markets/:market/book */
