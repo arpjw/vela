@@ -524,7 +524,8 @@ function TextOverlay() {
 
 function MarketRow({ market: m, idx, livePrices }: { market: MarketResponse; idx: number; livePrices: LivePrices }) {
   const [hovered, setHovered] = useState(false)
-  const live = livePrices[m.id]
+  const livePrice = livePrices[m.id]?.price
+  const change = livePrices[m.id]?.change24h
 
   return (
     <motion.tr
@@ -592,7 +593,7 @@ function MarketRow({ market: m, idx, livePrices }: { market: MarketResponse; idx
           color: '#1A0608',
         }}
       >
-        {live ? live.price.toLocaleString() : (m.best_bid ?? '—')}
+        {livePrice != null ? livePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
       </td>
       <td
         style={{
@@ -600,19 +601,17 @@ function MarketRow({ market: m, idx, livePrices }: { market: MarketResponse; idx
           textAlign: 'right',
           fontFamily: 'var(--font-mono)',
           fontSize: '0.875rem',
-          color: live
-            ? live.change24h > 0
+          color: change != null
+            ? change > 0
               ? '#6B8C52'
-              : live.change24h < 0
+              : change < 0
                 ? '#C41E3A'
                 : '#4A1520'
             : '#4A1520',
         }}
       >
-        {live
-          ? live.change24h > 0
-            ? `+${live.change24h.toFixed(2)}%`
-            : `${live.change24h.toFixed(2)}%`
+        {change != null
+          ? (change >= 0 ? '+' : '') + change.toFixed(2) + '%'
           : '—'}
       </td>
       <td
