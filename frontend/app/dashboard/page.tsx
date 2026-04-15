@@ -1,46 +1,686 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { getBalances, getOrders, cancelOrder, type BalanceResponse, type Order } from '@/lib/api'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import {
+  getBalances,
+  getOrders,
+  cancelOrder,
+  type BalanceResponse,
+  type Order,
+} from '@/lib/api'
 import { getWsClient } from '@/lib/ws'
 import { useAuth } from '@/lib/auth'
-import { Card, CardHeader } from '@/components/ui/Card'
+import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { FullPageSpinner } from '@/components/ui/Spinner'
 
+interface FillEntry {
+  key: string
+  market: string
+  ourSide: 'buy' | 'sell'
+  price: string
+  qty: string
+  fee: string
+  pnl: number
+  ts: number
+}
+
+interface DashState {
+  orders: Order[]
+  fills: FillEntry[]
+  balances: BalanceResponse[]
+  cancelingIds: number[]
+  cancelSnapshot: Record<number, Order>
+  loadingInitial: boolean
+}
+
+type DashAction =
+  | { type: 'INIT'; orders: Order[]; balances: BalanceResponse[] }
+  | { type: 'SET_LOADING'; loading: boolean }
+  | { type: 'ORDER_UPDATE'; orderId: number; status: string; filledQty: string }
+  | {
+      type: 'FILL'
+      makerOrderId: number
+      takerOrderId: number
+      price: string
+      qty: string
+      takerSide: string
+      makerFee: string
+      takerFee: string
+      ts: number
+    }
+  | { type: 'BALANCE_UPDATE'; asset: string; available: string; locked: string }
+  | { type: 'CANCEL_OPTIMISTIC'; orderId: number }
+  | { type: 'CANCEL_ROLLBACK'; order: Order }
+  | { type: 'CANCEL_DONE'; orderId: number }
+
+const initState: DashState = {
+  orders: [],
+  fills: [],
+  balances: [],
+  cancelingIds: [],
+  cancelSnapshot: {},
+  loadingInitial: false,
+}
+
+function omitKey(map: Record<number, Order>, id: number): Record<number, Order> {
+  const next: Record<number, Order> = {}
+  for (const [k, v] of Object.entries(map)) {
+    if (Number(k) !== id) next[Number(k)] = v
+  }
+  return next
+}
+
+function dashReducer(state: DashState, action: DashAction): DashState {
+  switch (action.type) {
+    case 'INIT':
+      return {
+        ...state,
+        orders: action.orders,
+        balances: action.balances,
+        loadingInitial: false,
+      }
+
+    case 'SET_LOADING':
+      return { ...state, loadingInitial: action.loading }
+
+    case 'ORDER_UPDATE': {
+      return {
+        ...state,
+        orders: state.orders.map((o) =>
+          o.id === action.orderId
+            ? { ...o, status: action.status, filled_quantity: action.filledQty }
+            : o,
+        ),
+      }
+    }
+
+    case 'FILL': {
+      const makerOrder = state.orders.find((o) => o.id === action.makerOrderId)
+      const takerOrder = state.orders.find((o) => o.id === action.takerOrderId)
+
+      let market: string | null = null
+      let ourSide: 'buy' | 'sell' | null = null
+      let fee = '0'
+
+      if (makerOrder) {
+        market = makerOrder.market
+        ourSide = action.takerSide === 'buy' ? 'sell' : 'buy'
+        fee = action.makerFee
+      } else if (takerOrder) {
+        market = takerOrder.market
+        ourSide = action.takerSide as 'buy' | 'sell'
+        fee = action.takerFee
+      }
+
+      if (!market || !ourSide) return state
+
+      const price = parseFloat(action.price)
+      const qty = parseFloat(action.qty)
+      const feeAmt = parseFloat(fee)
+      const pnl =
+        ourSide === 'sell'
+          ? price * qty - feeAmt
+          : -(price * qty) - feeAmt
+
+      const entry: FillEntry = {
+        key: `${action.ts}-${action.makerOrderId}-${action.takerOrderId}`,
+        market,
+        ourSide,
+        price: action.price,
+        qty: action.qty,
+        fee,
+        pnl,
+        ts: action.ts,
+      }
+
+      return { ...state, fills: [entry, ...state.fills].slice(0, 500) }
+    }
+
+    case 'BALANCE_UPDATE': {
+      const prev = state.balances.filter((b) => b.asset !== action.asset)
+      return {
+        ...state,
+        balances: [
+          ...prev,
+          {
+            asset: action.asset,
+            available: action.available,
+            locked: action.locked,
+            total: (
+              parseFloat(action.available) + parseFloat(action.locked)
+            ).toFixed(8),
+          },
+        ],
+      }
+    }
+
+    case 'CANCEL_OPTIMISTIC': {
+      const order = state.orders.find((o) => o.id === action.orderId)
+      if (!order) return state
+      return {
+        ...state,
+        orders: state.orders.filter((o) => o.id !== action.orderId),
+        cancelingIds: [...state.cancelingIds, action.orderId],
+        cancelSnapshot: { ...state.cancelSnapshot, [action.orderId]: order },
+      }
+    }
+
+    case 'CANCEL_ROLLBACK': {
+      return {
+        ...state,
+        orders: [...state.orders, action.order].sort((a, b) => a.id - b.id),
+        cancelingIds: state.cancelingIds.filter((id) => id !== action.order.id),
+        cancelSnapshot: omitKey(state.cancelSnapshot, action.order.id),
+      }
+    }
+
+    case 'CANCEL_DONE': {
+      return {
+        ...state,
+        cancelingIds: state.cancelingIds.filter((id) => id !== action.orderId),
+        cancelSnapshot: omitKey(state.cancelSnapshot, action.orderId),
+      }
+    }
+
+    default:
+      return state
+  }
+}
+
+function fmtN(n: string | number, dec = 2): string {
+  const v = typeof n === 'string' ? parseFloat(n) : n
+  return isNaN(v) ? '—' : v.toFixed(dec)
+}
+
+function fmtPnl(pnl: number): string {
+  return `${pnl >= 0 ? '+' : ''}${pnl.toFixed(4)}`
+}
+
+function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
+  const [connecting, setConnecting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleConnect() {
+    setConnecting(true)
+    setError(null)
+    try {
+      await onConnect()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to connect wallet')
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center px-4">
+      <div className="w-full max-w-sm text-center">
+        <div className="w-16 h-16 rounded-2xl bg-primary-50 flex items-center justify-center mx-auto mb-5">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M21 7H3C2.44772 7 2 7.44772 2 8V20C2 20.5523 2.44772 21 3 21H21C21.5523 21 22 20.5523 22 20V8C22 7.44772 21.5523 7 21 7Z"
+              stroke="#5B4FE8"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="14" cy="14" r="2" fill="#5B4FE8" />
+            <path
+              d="M17 7V5C17 3.89543 16.1046 3 15 3H9C7.89543 3 7 3.89543 7 5V7"
+              stroke="#5B4FE8"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </div>
+        <h2 className="text-xl font-semibold text-neutral-900 mb-2">
+          Connect your wallet
+        </h2>
+        <p className="text-sm text-neutral-500 mb-6 leading-relaxed">
+          Connect a wallet to view balances, open orders, credit utilization,
+          and real-time P&amp;L.
+        </p>
+        {error && (
+          <p className="text-xs text-error mb-4 bg-error-light rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+        <Button size="lg" className="w-full" loading={connecting} onClick={handleConnect}>
+          Connect Wallet
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function CreditGauge({
+  utilPct,
+  quotedValue,
+  depositedValue,
+}: {
+  utilPct: number
+  quotedValue: number
+  depositedValue: number
+}) {
+  const R = 38
+  const circumference = 2 * Math.PI * R
+  const clamped = Math.min(100, Math.max(0, utilPct))
+  const dashOffset = circumference - (clamped / 100) * circumference
+  const isDanger = clamped >= 95
+  const isWarning = clamped >= 80
+  const arcColor = isDanger ? '#EF4444' : isWarning ? '#F59E0B' : '#5B4FE8'
+  const textFill = isDanger ? '#EF4444' : isWarning ? '#B45309' : '#18181B'
+
+  return (
+    <div className="flex flex-col items-center gap-5">
+      <svg width="128" height="128" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r={R} stroke="#E4E4E7" strokeWidth="10" fill="none" />
+        <circle
+          cx="50"
+          cy="50"
+          r={R}
+          stroke={arcColor}
+          strokeWidth="10"
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          strokeLinecap="round"
+          transform="rotate(-90 50 50)"
+          style={{ transition: 'stroke-dashoffset 0.5s ease, stroke 0.3s ease' }}
+        />
+        <text
+          x="50"
+          y="46"
+          textAnchor="middle"
+          fontSize="15"
+          fontWeight="700"
+          fontFamily="Inter, system-ui, sans-serif"
+          fill={textFill}
+        >
+          {clamped.toFixed(0)}%
+        </text>
+        <text
+          x="50"
+          y="61"
+          textAnchor="middle"
+          fontSize="8"
+          fill="#A1A1AA"
+          fontFamily="Inter, system-ui, sans-serif"
+        >
+          utilized
+        </text>
+      </svg>
+
+      <div className="w-full space-y-2 text-sm">
+        <div className="flex items-center justify-between">
+          <span className="text-neutral-500">Quoted</span>
+          <span className="tabular-nums font-medium text-neutral-800">
+            {quotedValue.toFixed(2)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-neutral-500">Deposited</span>
+          <span className="tabular-nums font-medium text-neutral-800">
+            {depositedValue.toFixed(2)}
+          </span>
+        </div>
+        {isWarning && (
+          <div
+            className={[
+              'mt-1 px-3 py-2 rounded-lg text-xs font-medium',
+              isDanger
+                ? 'bg-error-light text-error-dark'
+                : 'bg-warning-light text-warning-dark',
+            ].join(' ')}
+          >
+            {isDanger
+              ? 'Credit critical — reduce exposure'
+              : 'High utilization — consider rebalancing'}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function StatusBadge({ status }: { status: string }) {
-  const variant =
-    status === 'open'     ? 'primary' :
-    status === 'filled'   ? 'success' :
-    status === 'canceled' ? 'neutral' :
-    status === 'partial'  ? 'warning' :
-    'neutral'
-  return <Badge variant={variant} dot>{status}</Badge>
+  const variantMap: Record<
+    string,
+    'primary' | 'success' | 'neutral' | 'warning' | 'error'
+  > = {
+    open:     'primary',
+    partial:  'warning',
+    filled:   'success',
+    canceled: 'neutral',
+    rejected: 'error',
+  }
+  return (
+    <Badge variant={variantMap[status] ?? 'neutral'} dot size="sm">
+      {status}
+    </Badge>
+  )
+}
+
+function OpenOrdersTable({
+  orders,
+  cancelingIds,
+  onCancel,
+}: {
+  orders: Order[]
+  cancelingIds: number[]
+  onCancel: (order: Order) => void
+}) {
+  const active = useMemo(
+    () => orders.filter((o) => o.status === 'open' || o.status === 'partial'),
+    [orders],
+  )
+
+  return (
+    <Card padding="none">
+      <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
+        <span className="font-semibold text-neutral-900">Open Orders</span>
+        <Badge variant={active.length > 0 ? 'primary' : 'neutral'}>{active.length}</Badge>
+      </div>
+
+      {active.length === 0 ? (
+        <p className="px-6 py-10 text-center text-sm text-neutral-400">No open orders</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[11px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-50">
+                <th className="px-4 py-3">Market</th>
+                <th className="px-4 py-3">Side</th>
+                <th className="px-4 py-3 text-right">Price</th>
+                <th className="px-4 py-3 text-right">Size</th>
+                <th className="px-4 py-3 text-right">Filled</th>
+                <th className="px-4 py-3">TIF</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-50">
+              {active.map((order) => {
+                const isCanceling = cancelingIds.includes(order.id)
+                const fillPct =
+                  parseFloat(order.quantity) > 0
+                    ? (parseFloat(order.filled_quantity) /
+                        parseFloat(order.quantity)) *
+                      100
+                    : 0
+
+                return (
+                  <tr
+                    key={order.id}
+                    className={[
+                      'transition-opacity duration-150',
+                      isCanceling ? 'opacity-35' : 'hover:bg-neutral-50',
+                    ].join(' ')}
+                  >
+                    <td className="px-4 py-3">
+                      <span className="font-medium text-neutral-900 text-xs">
+                        {order.market}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge
+                        variant={order.side === 'buy' ? 'success' : 'error'}
+                        size="sm"
+                      >
+                        {order.side}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-xs text-neutral-700">
+                      {fmtN(order.price, 4)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-xs text-neutral-700">
+                      {fmtN(order.quantity, 4)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="w-14 h-1 bg-neutral-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-[width] duration-300"
+                            style={{ width: `${fillPct}%` }}
+                          />
+                        </div>
+                        <span className="text-[11px] tabular-nums text-neutral-500 w-7 text-right">
+                          {fillPct.toFixed(0)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-[11px] text-neutral-400 uppercase font-medium">
+                        GTC
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={order.status} />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        loading={isCanceling}
+                        disabled={isCanceling}
+                        onClick={() => onCancel(order)}
+                        className="text-error hover:bg-error-light text-xs"
+                      >
+                        Cancel
+                      </Button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function PnlTracker({
+  fills,
+  pnlByMarket,
+  totalPnl,
+}: {
+  fills: FillEntry[]
+  pnlByMarket: Record<string, number>
+  totalPnl: number
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const markets = Object.keys(pnlByMarket).sort()
+
+  return (
+    <Card padding="none">
+      <button
+        type="button"
+        className="w-full px-6 py-4 border-b border-neutral-100 flex items-center justify-between hover:bg-neutral-50 transition-colors rounded-t-2xl"
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <div className="flex items-center gap-3">
+          <span className="font-semibold text-neutral-900">Realized P&amp;L</span>
+          <span
+            className={[
+              'text-xl font-bold tabular-nums',
+              totalPnl >= 0 ? 'text-success' : 'text-error',
+            ].join(' ')}
+          >
+            {fmtPnl(totalPnl)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="neutral" size="sm">
+            {fills.length} fills
+          </Badge>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            className={[
+              'text-neutral-400 transition-transform duration-200 shrink-0',
+              expanded ? 'rotate-180' : '',
+            ].join(' ')}
+          >
+            <path
+              d="M4 6l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+      </button>
+
+      {expanded && (
+        <div>
+          {markets.length === 0 ? (
+            <p className="px-6 py-8 text-sm text-neutral-400 text-center">
+              No fills yet
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 px-6 py-2 text-[10px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-50">
+                <span>Market</span>
+                <span className="text-right">Fills</span>
+                <span className="text-right">P&amp;L</span>
+              </div>
+              {markets.map((mkt) => {
+                const mktPnl = pnlByMarket[mkt] ?? 0
+                const mktFills = fills.filter((f) => f.market === mkt).length
+                return (
+                  <div
+                    key={mkt}
+                    className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-neutral-50 transition-colors border-b border-neutral-50 last:border-0"
+                  >
+                    <span className="font-medium text-neutral-800">{mkt}</span>
+                    <span className="text-right tabular-nums text-neutral-500">
+                      {mktFills}
+                    </span>
+                    <span
+                      className={[
+                        'text-right tabular-nums font-semibold',
+                        mktPnl >= 0 ? 'text-success' : 'text-error',
+                      ].join(' ')}
+                    >
+                      {fmtPnl(mktPnl)}
+                    </span>
+                  </div>
+                )
+              })}
+            </>
+          )}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+interface MarketSummaryRow {
+  market: string
+  bidCount: number
+  askCount: number
+  bestBid: string | null
+  bestAsk: string | null
+  spread: string | null
+  quotedValue: number
+}
+
+function MarketSummaryTable({ summaries }: { summaries: MarketSummaryRow[] }) {
+  return (
+    <Card padding="none">
+      <div className="px-6 py-4 border-b border-neutral-100">
+        <span className="font-semibold text-neutral-900">Per-Market Quotes</span>
+      </div>
+      {summaries.length === 0 ? (
+        <p className="px-6 py-10 text-sm text-neutral-400 text-center">
+          No active quotes
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[11px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-50">
+                <th className="px-4 py-3">Market</th>
+                <th className="px-4 py-3 text-right">Bid</th>
+                <th className="px-4 py-3 text-right">Ask</th>
+                <th className="px-4 py-3 text-right">Spread</th>
+                <th className="px-4 py-3 text-right"># Orders</th>
+                <th className="px-4 py-3 text-right">Quoted Value</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-50">
+              {summaries.map((row) => (
+                <tr
+                  key={row.market}
+                  className="hover:bg-neutral-50 transition-colors duration-100"
+                >
+                  <td className="px-4 py-3 font-medium text-neutral-900">
+                    {row.market}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-success text-xs">
+                    {row.bestBid ?? '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-error text-xs">
+                    {row.bestAsk ?? '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-neutral-500 text-xs">
+                    {row.spread ?? '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-xs text-neutral-600">
+                    {row.bidCount + row.askCount}
+                    <span className="ml-1 text-neutral-400">
+                      ({row.bidCount}b / {row.askCount}a)
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums font-medium text-neutral-700 text-xs">
+                    {row.quotedValue.toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  )
 }
 
 export default function DashboardPage() {
-  const { address, isConnected, connect } = useAuth()
-
-  const [balances, setBalances] = useState<BalanceResponse[]>([])
-  const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(false)
-  const [canceling, setCanceling] = useState<Record<number, boolean>>({})
-
+  const { address, isConnected, isAuthenticated, connect, signIn } = useAuth()
+  const [state, dispatch] = useReducer(dashReducer, initState)
   const wsRef = useRef(getWsClient())
+
+  const handleConnect = useCallback(async () => {
+    await connect()
+    const ws = wsRef.current
+    ws.connect()
+    try {
+      await signIn(ws)
+    } catch {
+      // wallet connected; WS auth failed — private feed unavailable
+    }
+  }, [connect, signIn])
 
   useEffect(() => {
     if (!address) return
-    setLoading(true)
+    dispatch({ type: 'SET_LOADING', loading: true })
     Promise.all([getBalances(address), getOrders(address)])
       .then(([balRes, ordRes]) => {
-        if (balRes.ok && balRes.data) setBalances(balRes.data)
-        if (ordRes.ok && ordRes.data) setOrders(ordRes.data)
+        dispatch({
+          type: 'INIT',
+          orders: balRes.ok && ordRes.ok && ordRes.data ? ordRes.data : [],
+          balances: balRes.ok && balRes.data ? balRes.data : [],
+        })
       })
-      .finally(() => setLoading(false))
+      .catch(() => dispatch({ type: 'SET_LOADING', loading: false }))
   }, [address])
 
-  // Live balance + order updates via WS private feed
   useEffect(() => {
     if (!address) return
     const ws = wsRef.current
@@ -48,180 +688,298 @@ export default function DashboardPage() {
 
     const unsub = ws.onMessage((msg) => {
       if (msg.type === 'balance_update') {
-        setBalances((prev) => {
-          const updated = prev.filter((b) => b.asset !== msg.asset)
-          return [
-            ...updated,
-            { asset: msg.asset, available: msg.available, locked: msg.locked, total: '' },
-          ]
+        dispatch({
+          type: 'BALANCE_UPDATE',
+          asset: msg.asset,
+          available: msg.available,
+          locked: msg.locked,
         })
       }
       if (msg.type === 'order_update') {
-        setOrders((prev) =>
-          prev.map((o) =>
-            o.id === msg.order_id
-              ? { ...o, status: msg.status, filled_quantity: msg.filled_quantity }
-              : o,
-          ),
-        )
+        dispatch({
+          type: 'ORDER_UPDATE',
+          orderId: msg.order_id,
+          status: msg.status,
+          filledQty: msg.filled_quantity,
+        })
+      }
+      if (msg.type === 'fill') {
+        dispatch({
+          type: 'FILL',
+          makerOrderId: msg.maker_order_id,
+          takerOrderId: msg.taker_order_id,
+          price: msg.price,
+          qty: msg.quantity,
+          takerSide: msg.side,
+          makerFee: msg.maker_fee,
+          takerFee: msg.taker_fee,
+          ts: msg.timestamp,
+        })
       }
     })
 
     return () => unsub()
   }, [address])
 
-  async function handleCancel(orderId: number, nonce: number) {
-    if (!address) return
-    setCanceling((c) => ({ ...c, [orderId]: true }))
-    try {
-      await cancelOrder({
-        order_id: orderId,
-        nonce: nonce + 1,
-        address,
-        signature: '0x', // placeholder — real impl signs with wallet
-      })
-      setOrders((prev) => prev.filter((o) => o.id !== orderId))
-    } finally {
-      setCanceling((c) => ({ ...c, [orderId]: false }))
+  const handleCancel = useCallback(
+    async (order: Order) => {
+      if (!address) return
+      dispatch({ type: 'CANCEL_OPTIMISTIC', orderId: order.id })
+      try {
+        const res = await cancelOrder({
+          order_id: order.id,
+          nonce: order.nonce + 1,
+          address,
+          signature: '0x',
+        })
+        if (res.ok) {
+          dispatch({ type: 'CANCEL_DONE', orderId: order.id })
+        } else {
+          dispatch({ type: 'CANCEL_ROLLBACK', order })
+        }
+      } catch {
+        dispatch({ type: 'CANCEL_ROLLBACK', order })
+      }
+    },
+    [address],
+  )
+
+  const openOrders = useMemo(
+    () => state.orders.filter((o) => o.status === 'open' || o.status === 'partial'),
+    [state.orders],
+  )
+
+  const depositedValue = useMemo(
+    () =>
+      state.balances.reduce(
+        (sum, b) => sum + parseFloat(b.available) + parseFloat(b.locked),
+        0,
+      ),
+    [state.balances],
+  )
+
+  const quotedValue = useMemo(
+    () =>
+      openOrders.reduce(
+        (sum, o) => sum + parseFloat(o.price) * parseFloat(o.quantity),
+        0,
+      ),
+    [openOrders],
+  )
+
+  const utilPct = useMemo(
+    () =>
+      depositedValue > 0
+        ? Math.min(100, (quotedValue / depositedValue) * 100)
+        : 0,
+    [depositedValue, quotedValue],
+  )
+
+  const totalPnl = useMemo(
+    () => state.fills.reduce((sum, f) => sum + f.pnl, 0),
+    [state.fills],
+  )
+
+  const pnlByMarket = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const f of state.fills) {
+      map[f.market] = (map[f.market] ?? 0) + f.pnl
     }
-  }
+    return map
+  }, [state.fills])
+
+  const activeMarkets = useMemo(
+    () => [...new Set(openOrders.map((o) => o.market))],
+    [openOrders],
+  )
+
+  const marketSummaries = useMemo((): MarketSummaryRow[] => {
+    return activeMarkets.map((market) => {
+      const mktOrders = openOrders.filter((o) => o.market === market)
+      const bids = mktOrders.filter((o) => o.side === 'buy')
+      const asks = mktOrders.filter((o) => o.side === 'sell')
+
+      const bestBid =
+        bids.length > 0
+          ? bids.reduce((best, o) =>
+              parseFloat(o.price) > parseFloat(best.price) ? o : best,
+            ).price
+          : null
+
+      const bestAsk =
+        asks.length > 0
+          ? asks.reduce((best, o) =>
+              parseFloat(o.price) < parseFloat(best.price) ? o : best,
+            ).price
+          : null
+
+      const spread =
+        bestBid && bestAsk
+          ? (parseFloat(bestAsk) - parseFloat(bestBid)).toFixed(4)
+          : null
+
+      const quotedVal = mktOrders.reduce(
+        (sum, o) => sum + parseFloat(o.price) * parseFloat(o.quantity),
+        0,
+      )
+
+      return {
+        market,
+        bidCount: bids.length,
+        askCount: asks.length,
+        bestBid: bestBid ? parseFloat(bestBid).toFixed(4) : null,
+        bestAsk: bestAsk ? parseFloat(bestAsk).toFixed(4) : null,
+        spread,
+        quotedValue: quotedVal,
+      }
+    })
+  }, [activeMarkets, openOrders])
 
   if (!isConnected) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-20 flex flex-col items-center gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-primary-50 flex items-center justify-center mb-2">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M21 7H3C2.44772 7 2 7.44772 2 8V20C2 20.5523 2.44772 21 3 21H21C21.5523 21 22 20.5523 22 20V8C22 7.44772 21.5523 7 21 7Z"
-              stroke="#5B4FE8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            />
-            <path d="M16 14C16 15.1046 15.1046 16 14 16C12.8954 16 12 15.1046 12 14C12 12.8954 12.8954 12 14 12C15.1046 12 16 12.8954 16 14Z" fill="#5B4FE8"/>
-            <path d="M17 7V5C17 3.89543 16.1046 3 15 3H9C7.89543 3 7 3.89543 7 5V7" stroke="#5B4FE8" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-        </div>
-        <h2 className="text-xl font-semibold text-neutral-900">Connect your wallet</h2>
-        <p className="text-sm text-neutral-500 text-center max-w-sm">
-          Connect a wallet to view your balances, open orders, and trading history.
-        </p>
-        <Button onClick={() => connect()}>Connect Wallet</Button>
-      </div>
-    )
+    return <ConnectGate onConnect={handleConnect} />
   }
 
-  if (loading) return <FullPageSpinner />
+  if (state.loadingInitial) {
+    return <FullPageSpinner />
+  }
 
-  const totalValue = balances.reduce((sum, b) => sum + parseFloat(b.total || b.available), 0)
-  const openOrders = orders.filter((o) => o.status === 'open' || o.status === 'partial')
+  const shortAddr = address
+    ? `${address.slice(0, 6)}…${address.slice(-4)}`
+    : ''
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-neutral-900">Dashboard</h1>
-        <p className="text-sm text-neutral-500 mt-1">
-          {address?.slice(0, 6)}…{address?.slice(-4)} · {openOrders.length} open order{openOrders.length !== 1 ? 's' : ''}
-        </p>
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-neutral-900">Dashboard</h1>
+          <p className="text-sm text-neutral-500 mt-1 font-mono">{shortAddr}</p>
+        </div>
+        <Badge variant={isAuthenticated ? 'success' : 'warning'} dot>
+          {isAuthenticated ? 'Authenticated' : 'Wallet connected'}
+        </Badge>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <Card>
-          <div className="text-3xl font-bold text-neutral-900 tabular-nums">
-            {totalValue.toFixed(2)}
-          </div>
-          <div className="text-sm text-neutral-500 mt-1">Portfolio value (USD)</div>
-        </Card>
-        <Card>
-          <div className="text-3xl font-bold text-neutral-900 tabular-nums">
-            {openOrders.length}
-          </div>
-          <div className="text-sm text-neutral-500 mt-1">Open orders</div>
-        </Card>
-        <Card>
-          <div className="text-3xl font-bold text-neutral-900 tabular-nums">
-            {balances.length}
-          </div>
-          <div className="text-sm text-neutral-500 mt-1">Assets held</div>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Balances */}
-        <Card padding="none">
-          <div className="px-6 py-4 border-b border-neutral-100">
-            <CardHeader title="Balances" />
-          </div>
-          {balances.length === 0 ? (
-            <p className="px-6 py-8 text-center text-sm text-neutral-500">No balances found.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">
-                  <th className="px-6 py-3">Asset</th>
-                  <th className="px-6 py-3 text-right">Available</th>
-                  <th className="px-6 py-3 text-right">Locked</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-50">
-                {balances.map((b) => (
-                  <tr key={b.asset} className="hover:bg-neutral-50">
-                    <td className="px-6 py-3 font-medium text-neutral-900">{b.asset}</td>
-                    <td className="px-6 py-3 text-right tabular-nums text-neutral-700">
-                      {b.available}
-                    </td>
-                    <td className="px-6 py-3 text-right tabular-nums text-neutral-400">
-                      {b.locked}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
-
-        {/* Open Orders */}
-        <Card padding="none">
-          <div className="px-6 py-4 border-b border-neutral-100">
-            <CardHeader title="Open Orders" />
-          </div>
-          {openOrders.length === 0 ? (
-            <p className="px-6 py-8 text-center text-sm text-neutral-500">
-              No open orders.
-            </p>
-          ) : (
-            <div className="divide-y divide-neutral-50">
-              {openOrders.map((order) => (
-                <div key={order.id} className="px-6 py-4 hover:bg-neutral-50">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-neutral-900">{order.market}</span>
-                        <Badge variant={order.side === 'buy' ? 'success' : 'error'} size="sm">
-                          {order.side}
-                        </Badge>
-                        <StatusBadge status={order.status} />
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-neutral-400 tabular-nums">
-                        <span>Price: <span className="text-neutral-600">{order.price}</span></span>
-                        <span>Qty: <span className="text-neutral-600">{order.quantity}</span></span>
-                        <span>Filled: <span className="text-neutral-600">{order.filled_quantity}</span></span>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      loading={canceling[order.id]}
-                      onClick={() => handleCancel(order.id, order.nonce)}
-                      className="text-error hover:bg-error-light shrink-0"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ))}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+        {(
+          [
+            {
+              label: 'Portfolio Value',
+              value: depositedValue.toFixed(2),
+              suffix: 'USD' as string | undefined,
+              pnl: false,
+              positive: false,
+            },
+            {
+              label: 'Open Orders',
+              value: openOrders.length.toString(),
+              suffix: undefined,
+              pnl: false,
+              positive: false,
+            },
+            {
+              label: 'Active Markets',
+              value: activeMarkets.length.toString(),
+              suffix: undefined,
+              pnl: false,
+              positive: false,
+            },
+            {
+              label: 'Realized P&L',
+              value: fmtPnl(totalPnl),
+              suffix: undefined,
+              pnl: true,
+              positive: totalPnl >= 0,
+            },
+          ] satisfies {
+            label: string
+            value: string
+            suffix: string | undefined
+            pnl: boolean
+            positive: boolean
+          }[]
+        ).map(({ label, value, suffix, pnl, positive }) => (
+          <Card key={label}>
+            <div
+              className={[
+                'text-2xl font-bold tabular-nums',
+                pnl
+                  ? positive
+                    ? 'text-success'
+                    : 'text-error'
+                  : 'text-neutral-900',
+              ].join(' ')}
+            >
+              {value}
+              {suffix && (
+                <span className="text-sm font-normal text-neutral-400 ml-1">
+                  {suffix}
+                </span>
+              )}
             </div>
-          )}
-        </Card>
+            <div className="text-xs text-neutral-500 mt-1">{label}</div>
+          </Card>
+        ))}
       </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[288px_1fr] gap-6 mb-6">
+        <Card>
+          <div className="text-sm font-semibold text-neutral-900 mb-5">
+            Credit Utilization
+          </div>
+          <CreditGauge
+            utilPct={utilPct}
+            quotedValue={quotedValue}
+            depositedValue={depositedValue}
+          />
+          <div className="mt-5 pt-4 border-t border-neutral-100">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-neutral-500">Credit ratio</span>
+              <Badge
+                variant={
+                  utilPct >= 95 ? 'error' : utilPct >= 80 ? 'warning' : 'success'
+                }
+                size="sm"
+              >
+                {utilPct.toFixed(1)}% / 100%
+              </Badge>
+            </div>
+            <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+              <div
+                className={[
+                  'h-full rounded-full transition-[width] duration-500',
+                  utilPct >= 95
+                    ? 'bg-error'
+                    : utilPct >= 80
+                    ? 'bg-warning'
+                    : 'bg-primary',
+                ].join(' ')}
+                style={{ width: `${utilPct}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-neutral-400 mt-1.5">
+              <span>0%</span>
+              <span className="text-warning-dark font-medium">80% warn</span>
+              <span>100%</span>
+            </div>
+          </div>
+        </Card>
+
+        <MarketSummaryTable summaries={marketSummaries} />
+      </div>
+
+      <div className="mb-6">
+        <OpenOrdersTable
+          orders={state.orders}
+          cancelingIds={state.cancelingIds}
+          onCancel={handleCancel}
+        />
+      </div>
+
+      <PnlTracker
+        fills={state.fills}
+        pnlByMarket={pnlByMarket}
+        totalPnl={totalPnl}
+      />
     </div>
   )
 }
