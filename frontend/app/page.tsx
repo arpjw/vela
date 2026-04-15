@@ -60,22 +60,22 @@ const MOCK_ASKS: BookRow[] = [
 const MOCK_BOOK: OrderBook = { bids: MOCK_BIDS, asks: MOCK_ASKS }
 
 const HEADLINE: { text: string; color: string }[] = [
-  { text: 'Trade with', color: '#1A1208' },
-  { text: 'provable', color: '#C4943A' },
-  { text: 'fairness.', color: '#4A6D9C' },
+  { text: 'Trade with', color: '#1A0608' },
+  { text: 'provable', color: '#C41E3A' },
+  { text: 'fairness.', color: '#E8829A' },
 ]
 
 const OVERLAY_STATS: { num: string; label: string; color: string }[] = [
-  { num: '1.08 μs', label: 'MATCH LATENCY', color: '#4A6D9C' },
-  { num: '57.3k',   label: 'OPS / SEC',     color: '#C4943A' },
-  { num: '4.7×',    label: 'FASTER THAN PULSE', color: '#7B5EA7' },
+  { num: '1.08 μs', label: 'MATCH LATENCY', color: '#E8829A' },
+  { num: '57.3k',   label: 'OPS / SEC',     color: '#C41E3A' },
+  { num: '4.7×',    label: 'FASTER THAN PULSE', color: '#6B1525' },
 ]
 
 const PERF_BLOCKS: { num: string; unit: string; label: string; sub: string; color: string }[] = [
-  { num: '1.08', unit: 'μs', label: 'MATCH LATENCY', sub: 'p50, release build, Apple Silicon M2', color: '#4A6D9C' },
-  { num: '57.3k', unit: '', label: 'OPS / SECOND', sub: 'realistic MM workload, 98% cancel/2% fill', color: '#C4943A' },
-  { num: '4.7×', unit: '', label: 'FASTER THAN PULSE', sub: 'the leading open-source DEX engine', color: '#7B5EA7' },
-  { num: '73', unit: '', label: 'TESTS PASSING', sub: 'engine, state, API, committer, zkVM', color: '#6B8C52' },
+  { num: '1.08', unit: 'μs', label: 'MATCH LATENCY', sub: 'p50, release build, Apple Silicon M2', color: '#E8829A' },
+  { num: '57.3k', unit: '', label: 'OPS / SECOND', sub: 'realistic MM workload, 98% cancel/2% fill', color: '#C41E3A' },
+  { num: '4.7×', unit: '', label: 'FASTER THAN PULSE', sub: 'the leading open-source DEX engine', color: '#6B1525' },
+  { num: '73', unit: '', label: 'TESTS PASSING', sub: 'engine, state, API, committer, zkVM', color: '#D4607A' },
 ]
 
 const galleryLabel: CSSProperties = {
@@ -84,7 +84,7 @@ const galleryLabel: CSSProperties = {
   textTransform: 'uppercase',
   letterSpacing: '0.25em',
   fontSize: '0.65rem',
-  color: '#6B4F2E',
+  color: '#4A1520',
 }
 
 function OrderBookViz({ book }: { book: OrderBook }) {
@@ -149,7 +149,7 @@ function OrderBookViz({ book }: { book: OrderBook }) {
                   top: 0,
                   height: '100%',
                   width: `${pct}%`,
-                  background: 'linear-gradient(to left, rgba(196,148,58,0.35), rgba(196,148,58,0.0))',
+                  background: 'linear-gradient(to left, rgba(196,30,58,0.35), rgba(196,30,58,0.0))',
                   transition: 'width 400ms cubic-bezier(0.25,0.1,0.25,1)',
                 }}
               />
@@ -166,7 +166,7 @@ function OrderBookViz({ book }: { book: OrderBook }) {
                   style={{
                     fontFamily: 'var(--font-mono)',
                     fontSize: 'clamp(0.65rem,1vw,0.85rem)',
-                    color: '#C4943A',
+                    color: '#C41E3A',
                     opacity: 0.9,
                   }}
                 >
@@ -176,7 +176,7 @@ function OrderBookViz({ book }: { book: OrderBook }) {
                   style={{
                     fontFamily: 'var(--font-mono)',
                     fontSize: '0.65rem',
-                    color: 'rgba(196,148,58,0.6)',
+                    color: 'rgba(196,30,58,0.6)',
                   }}
                 >
                   {bid.quantity}
@@ -223,7 +223,7 @@ function OrderBookViz({ book }: { book: OrderBook }) {
             style={{
               width: 8,
               height: 8,
-              background: '#C4943A',
+              background: '#C41E3A',
               transform: 'rotate(45deg)',
               flexShrink: 0,
             }}
@@ -232,7 +232,7 @@ function OrderBookViz({ book }: { book: OrderBook }) {
             style={{
               fontFamily: 'var(--font-mono)',
               fontSize: '0.7rem',
-              color: '#6B4F2E',
+              color: '#4A1520',
               whiteSpace: 'nowrap',
             }}
           >
@@ -269,7 +269,7 @@ function OrderBookViz({ book }: { book: OrderBook }) {
                   top: 0,
                   height: '100%',
                   width: `${pct}%`,
-                  background: 'linear-gradient(to right, rgba(74,109,156,0.35), rgba(74,109,156,0.0))',
+                  background: 'linear-gradient(to right, rgba(232,130,154,0.35), rgba(232,130,154,0.0))',
                   transition: 'width 400ms cubic-bezier(0.25,0.1,0.25,1)',
                 }}
               />
@@ -286,7 +286,7 @@ function OrderBookViz({ book }: { book: OrderBook }) {
                   style={{
                     fontFamily: 'var(--font-mono)',
                     fontSize: 'clamp(0.65rem,1vw,0.85rem)',
-                    color: '#4A6D9C',
+                    color: '#E8829A',
                     opacity: 0.9,
                   }}
                 >
@@ -296,7 +296,7 @@ function OrderBookViz({ book }: { book: OrderBook }) {
                   style={{
                     fontFamily: 'var(--font-mono)',
                     fontSize: '0.65rem',
-                    color: 'rgba(74,109,156,0.6)',
+                    color: 'rgba(232,130,154,0.6)',
                   }}
                 >
                   {ask.quantity}
@@ -334,7 +334,7 @@ function TextOverlay() {
         <motion.span
           animate={{ opacity: [0, 1, 0] }}
           transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ color: '#6B8C52', display: 'inline-block' }}
+          style={{ color: '#D4607A', display: 'inline-block' }}
         >
           ●
         </motion.span>
@@ -344,7 +344,7 @@ function TextOverlay() {
             textTransform: 'uppercase',
             letterSpacing: '0.15em',
             fontSize: '0.65rem',
-            color: '#6B8C52',
+            color: '#D4607A',
           }}
         >
           LIVE
@@ -422,7 +422,7 @@ function TextOverlay() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.15em',
                 fontSize: '0.58rem',
-                color: '#6B4F2E',
+                color: '#4A1520',
                 marginTop: 3,
               }}
             >
@@ -444,7 +444,7 @@ function TextOverlay() {
           textTransform: 'uppercase',
           letterSpacing: '0.2em',
           fontSize: '0.65rem',
-          color: '#6B4F2E',
+          color: '#4A1520',
           whiteSpace: 'nowrap',
         }}
       >
@@ -467,8 +467,8 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
       onMouseLeave={() => setHovered(false)}
       style={{
         borderBottom: '1px solid rgba(26,18,8,0.06)',
-        borderLeft: hovered ? '3px solid #C4943A' : '3px solid transparent',
-        background: hovered ? 'rgba(196,148,58,0.04)' : 'transparent',
+        borderLeft: hovered ? '3px solid #C41E3A' : '3px solid transparent',
+        background: hovered ? 'rgba(196,30,58,0.04)' : 'transparent',
         transition: 'background 150ms ease, border-left-color 150ms ease',
       }}
     >
@@ -478,13 +478,13 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
             style={{
               width: 28,
               height: 28,
-              background: 'rgba(196,148,58,0.1)',
+              background: 'rgba(196,30,58,0.1)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: 10,
               fontWeight: 700,
-              color: '#C4943A',
+              color: '#C41E3A',
               flexShrink: 0,
             }}
           >
@@ -495,7 +495,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
               style={{
                 fontWeight: 600,
                 fontSize: '0.875rem',
-                color: '#1A1208',
+                color: '#1A0608',
               }}
             >
               {m.base}/{m.quote}
@@ -503,7 +503,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
             <div
               style={{
                 fontSize: '0.625rem',
-                color: '#6B4F2E',
+                color: '#4A1520',
                 textTransform: 'uppercase',
                 letterSpacing: '0.08em',
               }}
@@ -520,7 +520,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           fontFamily: 'var(--font-mono)',
           fontWeight: 500,
           fontSize: '0.875rem',
-          color: '#1A1208',
+          color: '#1A0608',
         }}
       >
         {m.best_bid ?? '—'}
@@ -531,7 +531,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           textAlign: 'right',
           fontFamily: 'var(--font-mono)',
           fontSize: '0.875rem',
-          color: '#6B4F2E',
+          color: '#4A1520',
         }}
       >
         —
@@ -543,7 +543,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           fontFamily: 'var(--font-mono)',
           fontWeight: 500,
           fontSize: '0.875rem',
-          color: '#C4943A',
+          color: '#C41E3A',
         }}
       >
         {m.best_bid ?? '—'}
@@ -555,7 +555,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           fontFamily: 'var(--font-mono)',
           fontWeight: 500,
           fontSize: '0.875rem',
-          color: '#4A6D9C',
+          color: '#E8829A',
         }}
       >
         {m.best_ask ?? '—'}
@@ -566,7 +566,7 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
           textAlign: 'right',
           fontFamily: 'var(--font-mono)',
           fontSize: '0.875rem',
-          color: '#7B5EA7',
+          color: '#6B1525',
         }}
       >
         {m.spread ?? '—'}
@@ -577,8 +577,8 @@ function MarketRow({ market: m, idx }: { market: MarketResponse; idx: number }) 
             type="button"
             style={{
               padding: '4px 16px',
-              border: '1px solid rgba(196,148,58,0.4)',
-              color: '#C4943A',
+              border: '1px solid rgba(196,30,58,0.4)',
+              color: '#C41E3A',
               fontSize: '0.7rem',
               fontWeight: 500,
               textTransform: 'uppercase',
@@ -611,7 +611,7 @@ function MarketsRoom({ markets }: { markets: MarketResponse[] }) {
         }}
       />
       {markets.length === 0 ? (
-        <p style={{ color: '#6B4F2E', fontSize: '0.85rem' }}>
+        <p style={{ color: '#4A1520', fontSize: '0.85rem' }}>
           No markets available.
         </p>
       ) : (
@@ -694,7 +694,7 @@ function PerformanceRoom() {
               style={{
                 fontFamily: 'var(--font-inter)',
                 fontSize: '0.7rem',
-                color: '#6B4F2E',
+                color: '#4A1520',
                 marginTop: 6,
               }}
             >
@@ -714,9 +714,9 @@ function EnterSection({ markets }: { markets: MarketResponse[] }) {
       : '/markets/ETH-USDC'
 
   const LINES: { text: string; color: string }[] = [
-    { text: 'Every trade.', color: '#1A1208' },
-    { text: 'Verifiable.', color: '#C4943A' },
-    { text: 'On-chain.', color: '#4A6D9C' },
+    { text: 'Every trade.', color: '#1A0608' },
+    { text: 'Verifiable.', color: '#C41E3A' },
+    { text: 'On-chain.', color: '#E8829A' },
   ]
 
   return (
@@ -773,7 +773,7 @@ function EnterSection({ markets }: { markets: MarketResponse[] }) {
         style={{
           fontFamily: 'var(--font-inter)',
           fontSize: '0.7rem',
-          color: '#6B4F2E',
+          color: '#4A1520',
           marginTop: 24,
         }}
       >

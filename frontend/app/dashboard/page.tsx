@@ -221,15 +221,15 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path
               d="M21 7H3C2.44772 7 2 7.44772 2 8V20C2 20.5523 2.44772 21 3 21H21C21.5523 21 22 20.5523 22 20V8C22 7.44772 21.5523 7 21 7Z"
-              stroke="#C4943A"
+              stroke="#C41E3A"
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            <circle cx="14" cy="14" r="2" fill="#C4943A" />
+            <circle cx="14" cy="14" r="2" fill="#C41E3A" />
             <path
               d="M17 7V5C17 3.89543 16.1046 3 15 3H9C7.89543 3 7 3.89543 7 5V7"
-              stroke="#C4943A"
+              stroke="#C41E3A"
               strokeWidth="1.5"
               strokeLinecap="round"
             />
@@ -270,8 +270,8 @@ function CreditGauge({
   const dashOffset = circumference - (clamped / 100) * circumference
   const isDanger = clamped >= 95
   const isWarning = clamped >= 80
-  const arcColor = isDanger ? '#A0402A' : isWarning ? '#C4943A' : '#6B8C52'
-  const textFill = '#1A1208'
+  const arcColor = isDanger ? '#8B0F22' : isWarning ? '#C41E3A' : '#D4607A'
+  const textFill = '#1A0608'
 
   return (
     <div className="flex flex-col items-center gap-5">
@@ -306,7 +306,7 @@ function CreditGauge({
           y="61"
           textAnchor="middle"
           fontSize="8"
-          fill="#6B4F2E"
+          fill="#4A1520"
           fontFamily="Inter, system-ui, sans-serif"
         >
           utilized
@@ -416,7 +416,7 @@ function OpenOrdersTable({
                     key={order.id}
                     className={[
                       'transition-opacity duration-150 border-b border-border last:border-0',
-                      isCanceling ? 'opacity-35' : 'hover:bg-[rgba(196,148,58,0.08)]',
+                      isCanceling ? 'opacity-35' : 'hover:bg-[rgba(196,30,58,0.08)]',
                     ].join(' ')}
                   >
                     <td className="px-4 py-3">
@@ -503,7 +503,7 @@ function PnlTracker({
     <Card padding="none">
       <button
         type="button"
-        className="w-full px-6 py-4 border-b border-border flex items-center justify-between hover:bg-[rgba(196,148,58,0.05)] transition-colors"
+        className="w-full px-6 py-4 border-b border-border flex items-center justify-between hover:bg-[rgba(196,30,58,0.05)] transition-colors"
         onClick={() => setExpanded((e) => !e)}
       >
         <div className="flex items-center gap-3">
@@ -561,7 +561,7 @@ function PnlTracker({
                 return (
                   <div
                     key={mkt}
-                    className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-[rgba(196,148,58,0.05)] transition-colors border-b border-border last:border-0"
+                    className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-[rgba(196,30,58,0.05)] transition-colors border-b border-border last:border-0"
                   >
                     <span className="font-medium text-ink">{mkt}</span>
                     <span className="text-right tabular-nums text-brown font-mono">
@@ -623,7 +623,7 @@ function MarketSummaryTable({ summaries }: { summaries: MarketSummaryRow[] }) {
               {summaries.map((row) => (
                 <tr
                   key={row.market}
-                  className="hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-100 border-b border-border last:border-0"
+                  className="hover:bg-[rgba(196,30,58,0.08)] transition-colors duration-100 border-b border-border last:border-0"
                 >
                   <td className="px-4 py-3 font-medium text-ink">
                     {row.market}

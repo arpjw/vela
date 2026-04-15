@@ -117,10 +117,10 @@ function BookRowItem({
   }, [level.price])
 
   const barStyle = side === 'bid'
-    ? 'linear-gradient(to left, rgba(196,148,58,0.25), rgba(196,148,58,0.05))'
-    : 'linear-gradient(to left, rgba(74,109,156,0.25), rgba(74,109,156,0.05))'
-  const priceColor = side === 'bid' ? 'text-ochre' : 'text-terra'
-  const hoverBg = side === 'bid' ? 'hover:bg-[rgba(196,148,58,0.08)]' : 'hover:bg-[rgba(74,109,156,0.08)]'
+    ? 'linear-gradient(to left, rgba(196,30,58,0.25), rgba(196,30,58,0.05))'
+    : 'linear-gradient(to left, rgba(232,130,154,0.25), rgba(232,130,154,0.05))'
+  const priceColor = side === 'bid' ? 'text-ochre' : 'text-fresco'
+  const hoverBg = side === 'bid' ? 'hover:bg-[rgba(196,30,58,0.08)]' : 'hover:bg-[rgba(232,130,154,0.08)]'
 
   return (
     <div
@@ -205,7 +205,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
         midX - extentX * 0.7, yBase + yOff + yOff * 0.1,
         midX - extentX, yBase + yOff,
       )
-      ctx.strokeStyle = `rgba(196, 148, 58, ${alpha})`
+      ctx.strokeStyle = `rgba(196, 30, 58, ${alpha})`
       ctx.lineWidth = strokeW
       ctx.stroke()
     })
@@ -227,7 +227,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
         midX + extentX * 0.7, yBase + yOff + yOff * 0.1,
         midX + extentX, yBase + yOff,
       )
-      ctx.strokeStyle = `rgba(74, 109, 156, ${alpha})`
+      ctx.strokeStyle = `rgba(232, 130, 154, ${alpha})`
       ctx.lineWidth = strokeW
       ctx.stroke()
     })
@@ -341,7 +341,7 @@ function TradesFeed({ trades }: { trades: TradeEntry[] }) {
               initial={{ opacity: 0, x: -20, height: 0 }}
               animate={{ opacity: 1, x: 0, height: 'auto' }}
               transition={{ duration: 0.25 }}
-              className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-75 cursor-default select-none overflow-hidden"
+              className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-[rgba(196,30,58,0.08)] transition-colors duration-75 cursor-default select-none overflow-hidden"
             >
               <span
                 className={
@@ -581,8 +581,8 @@ function OrderEntryForm({
           className={[
             'w-full h-12 font-sans font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 disabled:opacity-50',
             side === 'buy'
-              ? 'bg-sage text-parchment hover:bg-[#5A7A42]'
-              : 'bg-terra text-parchment hover:bg-[#8B3020]',
+              ? 'bg-sage text-parchment hover:bg-[#C0506A]'
+              : 'bg-terra text-parchment hover:bg-[#7A0D1E]',
             submitting ? 'opacity-70' : '',
           ].join(' ')}
         >
@@ -745,7 +745,7 @@ export default function MarketPage({ params }: PageProps) {
               <WsStatusBadge status={wsStatus} />
             </div>
             <div className="flex items-end gap-5">
-              <BestPriceDisplay value={bestBid} label="Best Bid" color="#C4943A" />
+              <BestPriceDisplay value={bestBid} label="Best Bid" color="#C41E3A" />
               <div className="pb-0.5 text-center">
                 <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">Spread</span>
                 <motion.span
@@ -761,7 +761,7 @@ export default function MarketPage({ params }: PageProps) {
                   )}
                 </motion.span>
               </div>
-              <BestPriceDisplay value={bestAsk} label="Best Ask" color="#A0402A" />
+              <BestPriceDisplay value={bestAsk} label="Best Ask" color="#E8829A" />
             </div>
           </div>
         </div>

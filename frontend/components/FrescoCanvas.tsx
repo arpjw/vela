@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 
-const COLORS = ['#C4943A', '#4A6D9C', '#A0402A', '#6B8C52', '#7B5EA7', '#6B4F2E']
+const COLORS = ['#C41E3A', '#E8829A', '#8B0F22', '#D4607A', '#6B1525', '#4A1520']
 const COUNT = 120
 const MOUSE_RADIUS = 120
 

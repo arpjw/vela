@@ -243,11 +243,11 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         />
       ))}
 
-      <polygon points={fillPoints} fill="#4A6D9C" fillOpacity="0.08" />
+      <polygon points={fillPoints} fill="#E8829A" fillOpacity="0.08" />
       <polyline
         points={linePoints}
         fill="none"
-        stroke="#4A6D9C"
+        stroke="#E8829A"
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -257,7 +257,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         cx={toX(lastPt.ts)}
         cy={toY(lastPt.bps)}
         r="3"
-        fill="#4A6D9C"
+        fill="#E8829A"
       />
 
       {minuteMarks.map(({ ts, label }) => (
@@ -267,7 +267,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y={H - 6}
           textAnchor="middle"
           fontSize="9"
-          fill="#6B4F2E"
+          fill="#4A1520"
           fontFamily="JetBrains Mono, monospace"
         >
           {label}
@@ -281,7 +281,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y={toY(v) + 3}
           textAnchor="end"
           fontSize="9"
-          fill="#6B4F2E"
+          fill="#4A1520"
           fontFamily="JetBrains Mono, monospace"
         >
           {v.toFixed(1)}
@@ -453,11 +453,11 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
 
       {bidPath && (
         <>
-          <path d={bidPath} fill="rgba(196,148,58,0.12)" />
+          <path d={bidPath} fill="rgba(196,30,58,0.12)" />
           <path
             d={bidPath}
             fill="none"
-            stroke="#C4943A"
+            stroke="#C41E3A"
             strokeWidth="1.5"
             strokeLinejoin="round"
           />
@@ -466,11 +466,11 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
 
       {askPath && (
         <>
-          <path d={askPath} fill="rgba(74,109,156,0.12)" />
+          <path d={askPath} fill="rgba(232,130,154,0.12)" />
           <path
             d={askPath}
             fill="none"
-            stroke="#4A6D9C"
+            stroke="#E8829A"
             strokeWidth="1.5"
             strokeLinejoin="round"
           />
@@ -483,7 +483,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y1={PAD.top}
           x2={toX(midPrice)}
           y2={bottomY}
-          stroke="#7B5EA7"
+          stroke="#6B1525"
           strokeWidth="1"
           strokeDasharray="4 3"
         />
@@ -496,7 +496,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y={H - 6}
           textAnchor="middle"
           fontSize="8.5"
-          fill="#6B4F2E"
+          fill="#4A1520"
           fontFamily="JetBrains Mono, monospace"
         >
           {p.toFixed(2)}
@@ -510,7 +510,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y={toY(c) + 3}
           textAnchor="end"
           fontSize="8.5"
-          fill="#6B4F2E"
+          fill="#4A1520"
           fontFamily="JetBrains Mono, monospace"
         >
           {c.toFixed(2)}
@@ -643,7 +643,7 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                 <tr
                   key={row.market}
                   className={[
-                    'hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-100 border-b border-border last:border-0',
+                    'hover:bg-[rgba(196,30,58,0.08)] transition-colors duration-100 border-b border-border last:border-0',
                     idx % 2 === 0 ? 'bg-parchment' : 'bg-canvas',
                   ].join(' ')}
                 >
