@@ -237,7 +237,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y1={PAD.top + innerH * f}
           x2={PAD.left + innerW}
           y2={PAD.top + innerH * f}
-          stroke="rgba(101,72,42,0.12)"
+          stroke="rgba(26,18,8,0.08)"
           strokeWidth="0.5"
           strokeDasharray="3 3"
         />
@@ -293,7 +293,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         y1={PAD.top}
         x2={PAD.left}
         y2={bottomY}
-        stroke="rgba(101,72,42,0.12)"
+        stroke="rgba(26,18,8,0.08)"
         strokeWidth="0.5"
       />
       <line
@@ -301,7 +301,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         y1={bottomY}
         x2={PAD.left + innerW}
         y2={bottomY}
-        stroke="rgba(101,72,42,0.12)"
+        stroke="rgba(26,18,8,0.08)"
         strokeWidth="0.5"
       />
     </svg>
@@ -329,8 +329,8 @@ function OFIBar({ ofi }: { ofi: number }) {
         <span>Bid pressure</span>
       </div>
 
-      <div className="relative h-7 bg-vellum overflow-hidden">
-        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(101,72,42,0.4)] z-10" />
+      <div className="relative h-7 bg-canvas overflow-hidden">
+        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(26,18,8,0.3)] z-10" />
 
         {isBidHeavy ? (
           <div
@@ -445,7 +445,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y1={PAD.top + innerH * f}
           x2={PAD.left + innerW}
           y2={PAD.top + innerH * f}
-          stroke="rgba(101,72,42,0.1)"
+          stroke="rgba(26,18,8,0.07)"
           strokeWidth="0.5"
           strokeDasharray="3 3"
         />
@@ -522,7 +522,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
         y1={PAD.top}
         x2={PAD.left}
         y2={bottomY}
-        stroke="rgba(101,72,42,0.12)"
+        stroke="rgba(26,18,8,0.08)"
         strokeWidth="0.5"
       />
       <line
@@ -530,7 +530,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
         y1={bottomY}
         x2={PAD.left + innerW}
         y2={bottomY}
-        stroke="rgba(101,72,42,0.12)"
+        stroke="rgba(26,18,8,0.08)"
         strokeWidth="0.5"
       />
     </svg>
@@ -614,7 +614,7 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left border-b border-border bg-canvas">
+              <tr className="text-left border-b border-border bg-canvas sticky top-0">
                 <th className="px-5 py-3 text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Market</th>
                 <th className="px-5 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">
                   <Tooltip content="Number of trades executed in the last 60 seconds">
@@ -644,7 +644,7 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                   key={row.market}
                   className={[
                     'hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-100 border-b border-border last:border-0',
-                    idx % 2 === 0 ? 'bg-parchment' : 'bg-vellum',
+                    idx % 2 === 0 ? 'bg-parchment' : 'bg-canvas',
                   ].join(' ')}
                 >
                   <td className="px-5 py-3 font-semibold text-ink text-xs">
@@ -678,7 +678,7 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                     {row.ofi !== null ? (
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-1.5 bg-canvas overflow-hidden relative">
-                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(101,72,42,0.4)]" />
+                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(26,18,8,0.3)]" />
                           {row.ofi >= 0 ? (
                             <div
                               className="absolute top-0 bottom-0 bg-ochre transition-[width] duration-300"
@@ -900,7 +900,7 @@ export default function AnalyticsPage() {
                 'px-3 py-1.5 text-sm font-medium transition-colors duration-150 uppercase tracking-[0.08em]',
                 state.selectedMarket === m.id
                   ? 'bg-ochre text-ink'
-                  : 'border border-[rgba(101,72,42,0.25)] text-brown bg-transparent hover:bg-canvas',
+                  : 'border border-border text-brown bg-transparent hover:bg-canvas',
               ].join(' ')}
             >
               {m.base}/{m.quote}

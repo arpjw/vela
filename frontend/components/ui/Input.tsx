@@ -33,10 +33,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <div
           className={[
             'flex items-center gap-2 h-10 px-3',
-            'bg-vellum border transition-colors duration-150',
+            'bg-parchment border transition-colors duration-150',
             hasError
               ? 'border-terra focus-within:border-terra focus-within:shadow-[0_0_0_2px_rgba(160,64,42,0.2)]'
-              : 'border-[rgba(101,72,42,0.25)] focus-within:border-ochre focus-within:shadow-[0_0_0_2px_rgba(196,148,58,0.2)]',
+              : 'border-border focus-within:border-ochre focus-within:shadow-[0_0_0_2px_rgba(196,148,58,0.2)]',
           ].join(' ')}
         >
           {startAdornment && (

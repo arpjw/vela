@@ -20,9 +20,9 @@ const config: Config = {
     },
     extend: {
       colors: {
-        parchment: '#E8DCBF',
-        canvas: '#DDD0A8',
-        vellum: '#F2EAD5',
+        parchment: '#FFFFFF',
+        canvas: '#F7F5F0',
+        vellum: '#EFEDE8',
         ink: '#1A1208',
         brown: '#6B4F2E',
         ochre: '#C4943A',
@@ -30,16 +30,16 @@ const config: Config = {
         terra: '#A0402A',
         sage: '#6B8C52',
         violet: '#7B5EA7',
-        border: 'rgba(101,72,42,0.18)',
+        border: 'rgba(26,18,8,0.1)',
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'Inter', 'sans-serif'],
         mono: ['var(--font-mono)', 'JetBrains Mono', 'monospace'],
       },
       boxShadow: {
-        card: '2px 4px 16px rgba(101,72,42,0.12)',
-        'card-hover': '2px 4px 16px rgba(101,72,42,0.12)',
-        modal: '0 20px 60px -10px rgba(101,72,42,0.3)',
+        card: '0 2px 20px rgba(26,18,8,0.06)',
+        'card-hover': '0 2px 20px rgba(26,18,8,0.08)',
+        modal: '0 20px 60px -10px rgba(26,18,8,0.15)',
       },
     },
   },

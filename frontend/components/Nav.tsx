@@ -43,7 +43,7 @@ export default function Nav() {
               <path d="M2 10L7 2l5 8H2z" fill="#1A1208" />
             </svg>
           </div>
-          <span className="font-bold text-ochre text-base tracking-[0.08em] uppercase">VELA</span>
+          <span className="font-bold text-ink text-base tracking-[0.06em] uppercase">VELA</span>
         </Link>
 
         <nav className="hidden sm:flex items-center gap-0">
@@ -79,7 +79,7 @@ export default function Nav() {
         <div className="flex items-center gap-3">
           {isConnected && shortAddress ? (
             <div className="flex items-center gap-2">
-              <span className="hidden sm:block px-3 py-1.5 bg-canvas border border-[rgba(101,72,42,0.25)] text-xs font-mono text-brown">
+              <span className="hidden sm:block px-3 py-1.5 bg-canvas border border-border text-xs font-mono text-brown">
                 {shortAddress}
               </span>
               <button
@@ -98,10 +98,10 @@ export default function Nav() {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
               transition={{ duration: 0.15 }}
-              className="flex items-center gap-2 px-4 h-8 border-[1.5px] border-terra text-terra text-[0.8rem] font-medium uppercase tracking-[0.08em] hover:bg-terra hover:text-vellum active:bg-terra active:text-vellum transition-colors duration-150 disabled:opacity-50"
+              className="flex items-center gap-2 px-4 h-8 border-[1.5px] border-ink text-ink text-[0.8rem] font-medium uppercase tracking-[0.08em] hover:bg-ink hover:text-parchment active:bg-ink active:text-parchment transition-colors duration-150 disabled:opacity-50"
             >
               {connecting ? (
-                <Spinner size="xs" className="text-terra" />
+                <Spinner size="xs" className="text-ink" />
               ) : null}
               Connect Wallet
             </motion.button>

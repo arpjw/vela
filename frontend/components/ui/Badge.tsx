@@ -24,7 +24,7 @@ const variantStyles: Record<BadgeVariant, string> = {
   success:   'bg-[rgba(107,140,82,0.15)] text-sage border border-[rgba(107,140,82,0.3)]',
   warning:   'bg-[rgba(196,148,58,0.15)] text-ochre border border-[rgba(196,148,58,0.3)]',
   error:     'bg-[rgba(160,64,42,0.15)] text-terra border border-[rgba(160,64,42,0.3)]',
-  neutral:   'bg-[rgba(101,72,42,0.08)] text-brown border border-border',
+  neutral:   'bg-canvas text-brown border border-border',
 }
 
 const dotColors: Record<BadgeVariant, string> = {

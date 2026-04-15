@@ -75,7 +75,7 @@ export default function FrescoCanvas() {
       rafId = requestAnimationFrame(draw)
       time += 0.016
 
-      ctx!.fillStyle = 'rgba(232, 220, 191, 0.15)'
+      ctx!.fillStyle = 'rgba(255, 255, 255, 0.15)'
       ctx!.fillRect(0, 0, w, h)
 
       for (const p of particles) {

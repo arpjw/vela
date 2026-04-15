@@ -23,14 +23,14 @@ const variantStyles: Record<Variant, string> = {
   ].join(' '),
 
   buy: [
-    'bg-sage text-vellum',
+    'bg-sage text-parchment',
     'hover:bg-[#5A7A42] active:bg-[#4E6B38]',
     'focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
 
   sell: [
-    'bg-terra text-vellum',
+    'bg-terra text-parchment',
     'hover:bg-[#8B3020] active:bg-[#7A2818]',
     'focus-visible:ring-2 focus-visible:ring-terra/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
@@ -45,13 +45,13 @@ const variantStyles: Record<Variant, string> = {
 
   ghost: [
     'bg-transparent text-brown',
-    'hover:bg-[rgba(101,72,42,0.08)] hover:text-ink active:bg-[rgba(101,72,42,0.12)]',
+    'hover:bg-[rgba(26,18,8,0.06)] hover:text-ink active:bg-[rgba(26,18,8,0.1)]',
     'focus-visible:ring-2 focus-visible:ring-brown/30 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',
   ].join(' '),
 
   danger: [
-    'bg-terra text-vellum',
+    'bg-terra text-parchment',
     'hover:bg-[#8B3020] active:bg-[#7A2818]',
     'focus-visible:ring-2 focus-visible:ring-terra/40 focus-visible:ring-offset-2 focus-visible:ring-offset-parchment',
     'disabled:opacity-40',

@@ -308,7 +308,7 @@ function Filters({
               value: e.target.value,
             })
           }
-          className="h-10 px-3 pr-8 bg-vellum border border-[rgba(101,72,42,0.25)] text-sm text-ink outline-none focus:border-ochre cursor-pointer appearance-none min-w-[140px]"
+          className="h-10 px-3 pr-8 bg-parchment border border-border text-sm text-ink outline-none focus:border-ochre cursor-pointer appearance-none min-w-[140px]"
         >
           <option value="">All markets</option>
           {markets.map((m) => (
@@ -435,7 +435,7 @@ function FillHistoryTable({
                     key={f.key}
                     className={[
                       'hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-75 border-b border-border last:border-0',
-                      idx % 2 === 0 ? 'bg-parchment' : 'bg-vellum',
+                      idx % 2 === 0 ? 'bg-parchment' : 'bg-canvas',
                     ].join(' ')}
                   >
                     <td className="px-5 py-2.5">

@@ -216,7 +216,7 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm text-center bg-canvas border border-border shadow-card p-8">
+      <div className="w-full max-w-sm text-center bg-canvas border border-border shadow-[0_4px_24px_rgba(26,18,8,0.08)] p-8">
         <div className="w-16 h-16 bg-ochre/10 flex items-center justify-center mx-auto mb-5">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path
@@ -276,7 +276,7 @@ function CreditGauge({
   return (
     <div className="flex flex-col items-center gap-5">
       <svg width="128" height="128" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r={R} stroke="rgba(101,72,42,0.15)" strokeWidth="10" fill="none" />
+        <circle cx="50" cy="50" r={R} stroke="rgba(26,18,8,0.1)" strokeWidth="10" fill="none" />
         <circle
           cx="50"
           cy="50"
@@ -445,7 +445,7 @@ function OpenOrdersTable({
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <div className="w-14 h-1 bg-canvas overflow-hidden">
+                        <div className="w-14 h-1 bg-vellum overflow-hidden">
                           <div
                             className="h-full bg-sage transition-[width] duration-300"
                             style={{ width: `${fillPct}%` }}
@@ -948,7 +948,7 @@ export default function DashboardPage() {
                 {utilPct.toFixed(1)}% / 100%
               </Badge>
             </div>
-            <div className="h-1.5 bg-canvas overflow-hidden">
+            <div className="h-1.5 bg-vellum overflow-hidden">
               <div
                 className={[
                   'h-full transition-[width] duration-500',

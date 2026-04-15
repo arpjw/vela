@@ -75,7 +75,7 @@ function StatBar({ markets }: { markets: MarketResponse[] }) {
   ]
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-border">
+    <div className="grid grid-cols-2 sm:grid-cols-4 bg-canvas border-t border-b border-border">
       {stats.map(({ label, value, color }, i) => (
         <div key={label} className={['px-10 py-7', i < 3 ? 'border-r border-border' : ''].join(' ')}>
           <motion.div
@@ -187,8 +187,9 @@ export default function MarketsPage() {
                   animate={{ x: 0, opacity: 1 }}
                   transition={{ delay: 0.6 + i * 0.12, duration: 0.55, ease: EASE }}
                   style={{
-                    background: '#DDD0A8',
-                    border: '1px solid rgba(101,72,42,0.18)',
+                    background: '#F7F5F0',
+                    border: '1px solid rgba(26,18,8,0.08)',
+                    boxShadow: '0 4px 24px rgba(26,18,8,0.08)',
                     padding: '16px 20px',
                     minWidth: 180,
                   }}
@@ -261,7 +262,7 @@ export default function MarketsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-canvas border-b border-[rgba(101,72,42,0.25)]">
+                  <tr className="bg-canvas border-b border-border">
                     <th className="px-0 py-3 text-left text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Pair</th>
                     <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">Last Price</th>
                     <th className="px-4 py-3 text-right text-[0.65rem] font-medium text-brown uppercase tracking-[0.12em]">24H Change</th>
@@ -280,8 +281,8 @@ export default function MarketsPage() {
                       transition={{ duration: 0.5, ease: EASE, delay: idx * 0.06 }}
                       whileHover={{ backgroundColor: 'rgba(196,148,58,0.08)' }}
                       className={[
-                        'border-b border-[rgba(101,72,42,0.1)] transition-colors duration-100',
-                        idx % 2 === 0 ? 'bg-parchment' : 'bg-vellum',
+                        'border-b border-border transition-colors duration-100',
+                        idx % 2 === 0 ? 'bg-parchment' : 'bg-canvas',
                       ].join(' ')}
                     >
                       <td className="px-0 py-4">

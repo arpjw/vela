@@ -4,9 +4,9 @@
 
 @layer base {
   :root {
-    --background: #E8DCBF;
+    --background: #FFFFFF;
     --foreground: #1A1208;
-    --border: rgba(101, 72, 42, 0.18);
+    --border: rgba(26, 18, 8, 0.1);
   }
 
   html {
@@ -16,7 +16,7 @@
   }
 
   body {
-    background-color: #E8DCBF;
+    background-color: #FFFFFF;
     color: #1A1208;
     font-family: 'Inter', sans-serif;
     min-height: 100vh;
@@ -29,7 +29,7 @@
     inset: 0;
     pointer-events: none;
     z-index: 0;
-    opacity: 0.04;
+    opacity: 0.025;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   }
 
@@ -52,18 +52,18 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(101, 72, 42, 0.25);
+    background: rgba(26, 18, 8, 0.15);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(101, 72, 42, 0.4);
+    background: rgba(26, 18, 8, 0.3);
   }
 
   input,
   select,
   textarea {
-    background: #F2EAD5;
-    border: 1px solid rgba(101, 72, 42, 0.25);
+    background: #FFFFFF;
+    border: 1px solid rgba(26, 18, 8, 0.12);
     color: #1A1208;
     font-family: 'JetBrains Mono', monospace;
     outline: none;
@@ -110,8 +110,8 @@
   }
 
   .card {
-    background: #DDD0A8;
-    border: 1px solid rgba(101, 72, 42, 0.18);
-    box-shadow: 2px 4px 16px rgba(101, 72, 42, 0.12);
+    background: #F7F5F0;
+    border: 1px solid rgba(26, 18, 8, 0.08);
+    box-shadow: 0 2px 20px rgba(26, 18, 8, 0.06);
   }
 }

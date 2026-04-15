@@ -139,7 +139,7 @@ function BookRowItem({
 
 function BookColumnHeader() {
   return (
-    <div className="grid grid-cols-3 px-3 py-1.5 text-[9px] font-medium text-brown uppercase tracking-[0.12em] border-b border-border bg-canvas sticky top-0">
+    <div className="grid grid-cols-3 px-3 py-1.5 text-[0.65rem] font-medium text-brown uppercase tracking-[0.2em] border-b border-border bg-canvas sticky top-0">
       <span>Price</span>
       <span className="text-right">Size</span>
       <span className="text-right">Total</span>
@@ -150,7 +150,7 @@ function BookColumnHeader() {
 function BestPriceDisplay({ value, label, color }: { value: string | null; label: string; color: string }) {
   return (
     <div>
-      <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">{label}</span>
+      <span className="block text-[0.65rem] uppercase tracking-[0.2em] text-brown mb-1">{label}</span>
       <AnimatePresence mode="wait">
         <motion.span
           key={value ?? 'empty'}
@@ -158,7 +158,7 @@ function BestPriceDisplay({ value, label, color }: { value: string | null; label
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.2 }}
           className="tabular-nums leading-none font-mono font-semibold"
-          style={{ fontSize: '2rem', color, display: 'block' }}
+          style={{ fontSize: '2.5rem', color, display: 'block' }}
         >
           {value ? fmt(value, 4) : '—'}
         </motion.span>
@@ -236,9 +236,9 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
   return (
     <div className="border-t border-border">
       <div className="px-3 py-2 border-b border-border">
-        <span className="text-[0.65rem] font-medium text-brown uppercase tracking-[0.15em]">Depth</span>
+        <span className="text-[0.65rem] font-medium text-brown uppercase tracking-[0.2em]">Depth — Live</span>
       </div>
-      <canvas ref={canvasRef} height={160} className="w-full block" style={{ background: 'transparent' }} />
+      <canvas ref={canvasRef} height={200} className="w-full block" style={{ background: 'transparent' }} />
     </div>
   )
 }
@@ -259,7 +259,7 @@ function OrderBook({
   return (
     <div className="flex flex-col">
       <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-        <span className="text-[0.65rem] font-medium text-fresco uppercase tracking-[0.15em]">
+        <span className="text-[0.65rem] font-medium text-fresco uppercase tracking-[0.2em]">
           Asks
         </span>
         {loading && <Spinner size="xs" className="text-brown" />}
@@ -280,9 +280,9 @@ function OrderBook({
       <motion.div
         animate={{ opacity: [0.7, 1, 0.7] }}
         transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        className="flex items-center justify-between px-3 py-1.5 bg-[rgba(196,148,58,0.12)] border-y border-[rgba(196,148,58,0.3)]"
+        className="flex items-center justify-between px-3 py-1.5 bg-canvas border-y border-border"
       >
-        <span className="text-[9px] font-medium text-brown uppercase tracking-[0.15em]">
+        <span className="text-[0.65rem] font-medium text-brown uppercase tracking-[0.2em]">
           Spread
         </span>
         {spread ? (
@@ -296,7 +296,7 @@ function OrderBook({
       </motion.div>
 
       <div className="px-3 py-1.5 border-b border-border">
-        <span className="text-[0.65rem] font-medium text-ochre uppercase tracking-[0.15em]">
+        <span className="text-[0.65rem] font-medium text-ochre uppercase tracking-[0.2em]">
           Bids
         </span>
       </div>
@@ -465,7 +465,7 @@ function OrderEntryForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex border border-border bg-vellum">
+      <div className="flex border border-border bg-parchment">
         {(['buy', 'sell'] as OrderSide[]).map((s) => (
           <motion.button
             key={s}
@@ -478,8 +478,8 @@ function OrderEntryForm({
               'flex-1 py-2.5 text-xs font-semibold transition-all duration-150 uppercase tracking-[0.12em]',
               side === s
                 ? s === 'buy'
-                  ? 'bg-sage text-vellum'
-                  : 'bg-terra text-vellum'
+                  ? 'bg-sage text-parchment'
+                  : 'bg-terra text-parchment'
                 : 'text-brown hover:text-ink',
             ].join(' ')}
           >
@@ -497,8 +497,8 @@ function OrderEntryForm({
             className={[
               'flex-1 py-1.5 text-[10px] font-medium transition-all duration-150 uppercase tracking-[0.12em]',
               orderType === t
-                ? 'bg-violet text-vellum'
-                : 'bg-vellum text-brown hover:text-ink',
+                ? 'bg-violet text-parchment'
+                : 'bg-parchment text-brown hover:text-ink',
             ].join(' ')}
           >
             {t}
@@ -533,7 +533,7 @@ function OrderEntryForm({
       />
 
       {total !== null && (
-        <div className="bg-vellum border border-border px-4 py-3">
+        <div className="bg-parchment border border-border px-4 py-3">
           <div className="flex items-center justify-between text-xs">
             <span className="text-brown uppercase tracking-[0.12em]">Total</span>
             <span className="tabular-nums font-mono font-medium text-ochre">
@@ -553,8 +553,8 @@ function OrderEntryForm({
               className={[
                 'flex-1 py-1 text-[9px] font-medium transition-all duration-150 uppercase tracking-[0.12em]',
                 tif === value
-                  ? 'bg-violet text-vellum'
-                  : 'bg-vellum border border-[rgba(101,72,42,0.25)] text-brown hover:text-ink',
+                  ? 'bg-violet text-parchment'
+                  : 'bg-parchment border border-border text-brown hover:text-ink',
               ].join(' ')}
             >
               {label}
@@ -581,14 +581,14 @@ function OrderEntryForm({
           className={[
             'w-full h-12 font-sans font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 disabled:opacity-50',
             side === 'buy'
-              ? 'bg-sage text-vellum hover:bg-[#5A7A42]'
-              : 'bg-terra text-vellum hover:bg-[#8B3020]',
+              ? 'bg-sage text-parchment hover:bg-[#5A7A42]'
+              : 'bg-terra text-parchment hover:bg-[#8B3020]',
             submitting ? 'opacity-70' : '',
           ].join(' ')}
         >
           {submitting ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="inline-block w-4 h-4 rounded-full border-2 border-vellum border-t-transparent animate-spin" />
+              <span className="inline-block w-4 h-4 rounded-full border-2 border-parchment border-t-transparent animate-spin" />
               {side === 'buy' ? 'Buy' : 'Sell'} {base}
             </span>
           ) : (
@@ -626,7 +626,7 @@ function MarketSelector({
             'px-2.5 py-1 text-[10px] font-medium transition-colors duration-150 uppercase tracking-[0.1em]',
             m.id === currentPair
               ? 'bg-ochre text-ink'
-              : 'bg-vellum text-brown border border-border hover:border-ochre/40 hover:text-ink',
+              : 'bg-canvas text-brown border border-border hover:border-ochre/40 hover:text-ink',
           ].join(' ')}
         >
           {m.base}/{m.quote}
@@ -800,7 +800,7 @@ export default function MarketPage({ params }: PageProps) {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: EASE, delay: 0.3 }}
-          className="bg-canvas border border-border shadow-card p-6"
+          className="bg-canvas border border-border shadow-card p-6 shadow-[0_4px_24px_rgba(26,18,8,0.08)]"
         >
           <OrderEntryForm
             marketId={marketId}
