@@ -6,11 +6,8 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   label?: string
   hint?: string
   error?: string
-  /** Node rendered before the input (e.g. currency symbol, icon) */
   startAdornment?: ReactNode
-  /** Node rendered after the input (e.g. asset ticker, unit) */
   endAdornment?: ReactNode
-  /** @deprecated use startAdornment */
   prefix?: never
 }
 
@@ -27,7 +24,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="text-sm font-medium text-neutral-700"
+            className="text-[10px] font-medium text-stone uppercase tracking-caps"
           >
             {label}
           </label>
@@ -36,22 +33,22 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <div
           className={[
             'flex items-center gap-2 h-10 px-3',
-            'bg-white border rounded-xl transition-colors duration-150',
-            'focus-within:ring-2 focus-within:ring-offset-0',
+            'bg-raised border transition-colors duration-150',
+            'focus-within:ring-1 focus-within:ring-offset-0',
             hasError
-              ? 'border-error focus-within:ring-error/30'
-              : 'border-neutral-200 focus-within:border-primary focus-within:ring-primary/20',
+              ? 'border-error focus-within:ring-error/40'
+              : 'border-neutral-200 focus-within:border-primary focus-within:ring-primary/30',
           ].join(' ')}
         >
           {startAdornment && (
-            <span className="shrink-0 text-neutral-400 text-sm">{startAdornment}</span>
+            <span className="shrink-0 text-stone text-sm">{startAdornment}</span>
           )}
 
           <input
             ref={ref}
             id={inputId}
             className={[
-              'flex-1 min-w-0 bg-transparent text-sm text-neutral-900 outline-none',
+              'flex-1 min-w-0 bg-transparent text-sm text-cream font-mono outline-none',
               'placeholder:text-neutral-400',
               'disabled:text-neutral-400 disabled:cursor-not-allowed',
               className,
@@ -60,7 +57,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           />
 
           {endAdornment && (
-            <span className="shrink-0 text-neutral-400 text-sm">{endAdornment}</span>
+            <span className="shrink-0 text-stone text-xs font-medium uppercase tracking-caps">{endAdornment}</span>
           )}
         </div>
 
@@ -68,7 +65,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <p
             className={[
               'text-xs',
-              hasError ? 'text-error' : 'text-neutral-500',
+              hasError ? 'text-error' : 'text-stone',
             ].join(' ')}
           >
             {error ?? hint}

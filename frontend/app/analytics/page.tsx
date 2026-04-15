@@ -170,7 +170,7 @@ function stepPath(
 
 function ChartEmpty({ label }: { label: string }) {
   return (
-    <div className="flex items-center justify-center h-full text-xs text-neutral-400">
+    <div className="flex items-center justify-center h-full text-xs text-stone font-mono">
       {label}
     </div>
   )
@@ -237,17 +237,17 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y1={PAD.top + innerH * f}
           x2={PAD.left + innerW}
           y2={PAD.top + innerH * f}
-          stroke="#E4E4E7"
+          stroke="#2E2318"
           strokeWidth="0.5"
           strokeDasharray="3 3"
         />
       ))}
 
-      <polygon points={fillPoints} fill="#5B4FE8" fillOpacity="0.07" />
+      <polygon points={fillPoints} fill="#C4943A" fillOpacity="0.08" />
       <polyline
         points={linePoints}
         fill="none"
-        stroke="#5B4FE8"
+        stroke="#C4943A"
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -257,7 +257,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         cx={toX(lastPt.ts)}
         cy={toY(lastPt.bps)}
         r="3"
-        fill="#5B4FE8"
+        fill="#C4943A"
       />
 
       {minuteMarks.map(({ ts, label }) => (
@@ -267,8 +267,8 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y={H - 6}
           textAnchor="middle"
           fontSize="9"
-          fill="#A1A1AA"
-          fontFamily="Inter, system-ui, sans-serif"
+          fill="#8B7355"
+          fontFamily="JetBrains Mono, monospace"
         >
           {label}
         </text>
@@ -281,8 +281,8 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y={toY(v) + 3}
           textAnchor="end"
           fontSize="9"
-          fill="#A1A1AA"
-          fontFamily="Inter, system-ui, sans-serif"
+          fill="#8B7355"
+          fontFamily="JetBrains Mono, monospace"
         >
           {v.toFixed(1)}
         </text>
@@ -293,7 +293,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         y1={PAD.top}
         x2={PAD.left}
         y2={bottomY}
-        stroke="#E4E4E7"
+        stroke="#2E2318"
         strokeWidth="0.5"
       />
       <line
@@ -301,7 +301,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         y1={bottomY}
         x2={PAD.left + innerW}
         y2={bottomY}
-        stroke="#E4E4E7"
+        stroke="#2E2318"
         strokeWidth="0.5"
       />
     </svg>
@@ -329,7 +329,7 @@ function OFIBar({ ofi }: { ofi: number }) {
         <span>Bid pressure</span>
       </div>
 
-      <div className="relative h-7 bg-neutral-100 rounded-xl overflow-hidden">
+      <div className="relative h-7 bg-raised overflow-hidden">
         <div className="absolute left-1/2 top-0 bottom-0 w-px bg-neutral-300 z-10" />
 
         {isBidHeavy ? (
@@ -345,7 +345,7 @@ function OFIBar({ ofi }: { ofi: number }) {
         )}
 
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="text-[11px] font-semibold text-neutral-700 tabular-nums">
+          <span className="text-[10px] font-semibold text-stone tabular-nums uppercase tracking-[0.1em]">
             {isBidHeavy ? 'Bid-heavy' : 'Ask-heavy'}
           </span>
         </div>
@@ -445,7 +445,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y1={PAD.top + innerH * f}
           x2={PAD.left + innerW}
           y2={PAD.top + innerH * f}
-          stroke="#E4E4E7"
+          stroke="#2E2318"
           strokeWidth="0.5"
           strokeDasharray="3 3"
         />
@@ -453,11 +453,11 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
 
       {bidPath && (
         <>
-          <path d={bidPath} fill="#5B4FE8" fillOpacity="0.2" />
+          <path d={bidPath} fill="#C4943A" fillOpacity="0.18" />
           <path
             d={bidPath}
             fill="none"
-            stroke="#5B4FE8"
+            stroke="#C4943A"
             strokeWidth="1.5"
             strokeLinejoin="round"
           />
@@ -466,11 +466,11 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
 
       {askPath && (
         <>
-          <path d={askPath} fill="#00D4FF" fillOpacity="0.2" />
+          <path d={askPath} fill="#6B85A8" fillOpacity="0.18" />
           <path
             d={askPath}
             fill="none"
-            stroke="#00D4FF"
+            stroke="#6B85A8"
             strokeWidth="1.5"
             strokeLinejoin="round"
           />
@@ -483,7 +483,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y1={PAD.top}
           x2={toX(midPrice)}
           y2={bottomY}
-          stroke="#A1A1AA"
+          stroke="#3D3024"
           strokeWidth="1"
           strokeDasharray="4 3"
         />
@@ -496,8 +496,8 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y={H - 6}
           textAnchor="middle"
           fontSize="8.5"
-          fill="#A1A1AA"
-          fontFamily="Inter, system-ui, sans-serif"
+          fill="#8B7355"
+          fontFamily="JetBrains Mono, monospace"
         >
           {p.toFixed(2)}
         </text>
@@ -510,8 +510,8 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y={toY(c) + 3}
           textAnchor="end"
           fontSize="8.5"
-          fill="#A1A1AA"
-          fontFamily="Inter, system-ui, sans-serif"
+          fill="#8B7355"
+          fontFamily="JetBrains Mono, monospace"
         >
           {c.toFixed(2)}
         </text>
@@ -522,7 +522,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
         y1={PAD.top}
         x2={PAD.left}
         y2={bottomY}
-        stroke="#E4E4E7"
+        stroke="#2E2318"
         strokeWidth="0.5"
       />
       <line
@@ -530,7 +530,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
         y1={bottomY}
         x2={PAD.left + innerW}
         y2={bottomY}
-        stroke="#E4E4E7"
+        stroke="#2E2318"
         strokeWidth="0.5"
       />
     </svg>
@@ -555,12 +555,12 @@ function VWASIndicator({
 
   return (
     <div>
-      <div className="text-[10px] font-medium text-neutral-400 uppercase tracking-wider mb-2">
+      <div className="text-[9px] font-medium text-stone uppercase tracking-[0.15em] mb-2">
         VW Avg Spread
       </div>
-      <div className="text-3xl font-bold tabular-nums text-neutral-900">
+      <div className="text-3xl font-mono font-bold tabular-nums text-primary">
         {current !== null ? current.toFixed(2) : '—'}
-        <span className="text-sm font-normal text-neutral-400 ml-1">bps</span>
+        <span className="text-sm font-normal text-stone ml-1">bps</span>
       </div>
       {trend !== null && (
         <div
@@ -874,10 +874,10 @@ export default function AnalyticsPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-neutral-900">
+        <h1 className="text-2xl font-bold text-cream">
           Microstructure Analytics
         </h1>
-        <p className="text-sm text-neutral-500 mt-1">
+        <p className="text-sm text-stone mt-1">
           Real-time spread decomposition, depth imbalance, and order flow.
         </p>
       </div>
@@ -965,12 +965,12 @@ export default function AnalyticsPage() {
                 Depth Chart — 10 levels
               </span>
               <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1.5 text-xs text-neutral-500">
-                  <span className="w-3 h-0.5 bg-primary rounded inline-block" />
+                <span className="flex items-center gap-1.5 text-[10px] text-stone">
+                  <span className="w-3 h-0.5 bg-primary inline-block" />
                   Bids
                 </span>
-                <span className="flex items-center gap-1.5 text-xs text-neutral-500">
-                  <span className="w-3 h-0.5 bg-secondary rounded inline-block" />
+                <span className="flex items-center gap-1.5 text-[10px] text-stone">
+                  <span className="w-3 h-0.5 bg-secondary inline-block" />
                   Asks
                 </span>
               </div>

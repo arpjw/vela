@@ -217,28 +217,28 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4">
       <div className="w-full max-w-sm text-center">
-        <div className="w-16 h-16 rounded-2xl bg-primary-50 flex items-center justify-center mx-auto mb-5">
+        <div className="w-16 h-16 bg-primary/10 flex items-center justify-center mx-auto mb-5">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path
               d="M21 7H3C2.44772 7 2 7.44772 2 8V20C2 20.5523 2.44772 21 3 21H21C21.5523 21 22 20.5523 22 20V8C22 7.44772 21.5523 7 21 7Z"
-              stroke="#5B4FE8"
+              stroke="#C4943A"
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            <circle cx="14" cy="14" r="2" fill="#5B4FE8" />
+            <circle cx="14" cy="14" r="2" fill="#C4943A" />
             <path
               d="M17 7V5C17 3.89543 16.1046 3 15 3H9C7.89543 3 7 3.89543 7 5V7"
-              stroke="#5B4FE8"
+              stroke="#C4943A"
               strokeWidth="1.5"
               strokeLinecap="round"
             />
           </svg>
         </div>
-        <h2 className="text-xl font-semibold text-neutral-900 mb-2">
+        <h2 className="text-xl font-semibold text-cream mb-2">
           Connect your wallet
         </h2>
-        <p className="text-sm text-neutral-500 mb-6 leading-relaxed">
+        <p className="text-sm text-stone mb-6 leading-relaxed">
           Connect a wallet to view balances, open orders, credit utilization,
           and real-time P&amp;L.
         </p>
@@ -270,13 +270,13 @@ function CreditGauge({
   const dashOffset = circumference - (clamped / 100) * circumference
   const isDanger = clamped >= 95
   const isWarning = clamped >= 80
-  const arcColor = isDanger ? '#EF4444' : isWarning ? '#F59E0B' : '#5B4FE8'
-  const textFill = isDanger ? '#EF4444' : isWarning ? '#B45309' : '#18181B'
+  const arcColor = isDanger ? '#A0402A' : isWarning ? '#C4943A' : '#C4943A'
+  const textFill = isDanger ? '#A0402A' : isWarning ? '#C4943A' : '#E8DCBF'
 
   return (
     <div className="flex flex-col items-center gap-5">
       <svg width="128" height="128" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r={R} stroke="#E4E4E7" strokeWidth="10" fill="none" />
+        <circle cx="50" cy="50" r={R} stroke="#2E2318" strokeWidth="10" fill="none" />
         <circle
           cx="50"
           cy="50"
@@ -296,7 +296,7 @@ function CreditGauge({
           textAnchor="middle"
           fontSize="15"
           fontWeight="700"
-          fontFamily="Inter, system-ui, sans-serif"
+          fontFamily="JetBrains Mono, monospace"
           fill={textFill}
         >
           {clamped.toFixed(0)}%
@@ -306,7 +306,7 @@ function CreditGauge({
           y="61"
           textAnchor="middle"
           fontSize="8"
-          fill="#A1A1AA"
+          fill="#8B7355"
           fontFamily="Inter, system-ui, sans-serif"
         >
           utilized
@@ -851,8 +851,8 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Dashboard</h1>
-          <p className="text-sm text-neutral-500 mt-1 font-mono">{shortAddr}</p>
+          <h1 className="text-2xl font-bold text-cream">Dashboard</h1>
+          <p className="text-sm text-stone mt-1 font-mono">{shortAddr}</p>
         </div>
         <Badge variant={isAuthenticated ? 'success' : 'warning'} dot>
           {isAuthenticated ? 'Authenticated' : 'Wallet connected'}
@@ -901,12 +901,12 @@ export default function DashboardPage() {
           <Card key={label}>
             <div
               className={[
-                'text-2xl font-bold tabular-nums',
+                'text-2xl font-mono font-bold tabular-nums',
                 pnl
                   ? positive
                     ? 'text-success'
                     : 'text-error'
-                  : 'text-neutral-900',
+                  : 'text-primary',
               ].join(' ')}
             >
               {value}
@@ -916,14 +916,14 @@ export default function DashboardPage() {
                 </span>
               )}
             </div>
-            <div className="text-xs text-neutral-500 mt-1">{label}</div>
+            <div className="text-[10px] text-stone mt-1 uppercase tracking-[0.12em]">{label}</div>
           </Card>
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[288px_1fr] gap-6 mb-6">
         <Card>
-          <div className="text-sm font-semibold text-neutral-900 mb-5">
+          <div className="text-[10px] font-medium text-stone mb-5 uppercase tracking-[0.15em]">
             Credit Utilization
           </div>
           <CreditGauge

@@ -232,24 +232,23 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
 
   return (
     <Card className="text-center py-10">
-      <div className="w-14 h-14 rounded-2xl bg-primary-50 flex items-center justify-center mx-auto mb-4">
+      <div className="w-14 h-14 bg-primary/10 flex items-center justify-center mx-auto mb-4">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
           <rect
             x="2" y="7" width="20" height="14"
-            rx="2"
-            stroke="#5B4FE8" strokeWidth="1.5"
+            stroke="#C4943A" strokeWidth="1.5"
           />
-          <circle cx="14" cy="14" r="2" fill="#5B4FE8" />
+          <circle cx="14" cy="14" r="2" fill="#C4943A" />
           <path
             d="M17 7V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2"
-            stroke="#5B4FE8" strokeWidth="1.5" strokeLinecap="round"
+            stroke="#C4943A" strokeWidth="1.5" strokeLinecap="round"
           />
         </svg>
       </div>
-      <h3 className="text-lg font-semibold text-neutral-900 mb-2">
+      <h3 className="text-lg font-semibold text-cream mb-2">
         Connect wallet to view trade history
       </h3>
-      <p className="text-sm text-neutral-500 mb-6 max-w-xs mx-auto leading-relaxed">
+      <p className="text-sm text-stone mb-6 max-w-xs mx-auto leading-relaxed">
         Trade history is private. Connect and authenticate to see your fills,
         fees, and maker/taker role.
       </p>
@@ -309,7 +308,7 @@ function Filters({
               value: e.target.value,
             })
           }
-          className="h-10 px-3 pr-8 bg-white border border-neutral-200 rounded-xl text-sm text-neutral-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer appearance-none min-w-[140px]"
+          className="h-10 px-3 pr-8 bg-raised border border-neutral-200 text-sm text-cream outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 cursor-pointer appearance-none min-w-[140px]"
         >
           <option value="">All markets</option>
           {markets.map((m) => (
@@ -734,8 +733,8 @@ export default function HistoryPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-neutral-900">Trade History</h1>
-        <p className="text-sm text-neutral-500 mt-1">
+        <h1 className="text-2xl font-bold text-cream">Trade History</h1>
+        <p className="text-sm text-stone mt-1">
           Private fill history and live anonymized trade feed.
         </p>
       </div>
@@ -766,12 +765,12 @@ export default function HistoryPage() {
         </div>
       )}
 
-      <div className="border-t border-neutral-100 pt-8">
+      <div className="border-t border-neutral-200 pt-8">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-neutral-900">
+          <h2 className="text-lg font-semibold text-cream">
             Aggregate Trade Feed
           </h2>
-          <p className="text-sm text-neutral-500 mt-0.5">
+          <p className="text-sm text-stone mt-0.5">
             Public, anonymized — no auth required.
           </p>
         </div>

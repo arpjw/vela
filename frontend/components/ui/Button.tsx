@@ -3,11 +3,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { Spinner } from './Spinner'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'buy'
 type Size = 'sm' | 'md' | 'lg'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -18,37 +14,40 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   iconPosition?: 'left' | 'right'
 }
 
-// ---------------------------------------------------------------------------
-// Style maps
-// ---------------------------------------------------------------------------
-
 const variantStyles: Record<Variant, string> = {
   primary: [
-    'bg-primary text-white',
+    'bg-primary text-canvas',
     'hover:bg-primary-600 active:bg-primary-700',
-    'focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2',
-    'disabled:bg-primary-200 disabled:text-primary-400',
+    'focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+    'disabled:opacity-40',
+  ].join(' '),
+
+  buy: [
+    'bg-success text-canvas',
+    'hover:bg-success-dark active:bg-success-dark',
+    'focus-visible:ring-2 focus-visible:ring-success/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+    'disabled:opacity-40',
   ].join(' '),
 
   secondary: [
-    'bg-white text-primary border border-primary/30',
-    'hover:bg-primary-50 hover:border-primary/50 active:bg-primary-100',
-    'focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2',
-    'disabled:opacity-50',
+    'bg-transparent text-primary border border-primary/40',
+    'hover:bg-primary/6 hover:border-primary/60 active:bg-primary/10',
+    'focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+    'disabled:opacity-40',
   ].join(' '),
 
   ghost: [
-    'bg-transparent text-neutral-700',
-    'hover:bg-neutral-100 active:bg-neutral-200',
-    'focus-visible:ring-2 focus-visible:ring-neutral-300 focus-visible:ring-offset-2',
-    'disabled:opacity-50',
+    'bg-transparent text-stone',
+    'hover:bg-neutral-100 hover:text-cream active:bg-neutral-200',
+    'focus-visible:ring-2 focus-visible:ring-neutral-400/30 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+    'disabled:opacity-40',
   ].join(' '),
 
   danger: [
-    'bg-error text-white',
-    'hover:bg-error-dark active:bg-red-700',
-    'focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2',
-    'disabled:bg-red-200 disabled:text-red-400',
+    'bg-error text-cream',
+    'hover:bg-error-dark active:bg-error-dark',
+    'focus-visible:ring-2 focus-visible:ring-error/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+    'disabled:opacity-40',
   ].join(' '),
 }
 
@@ -57,10 +56,6 @@ const sizeStyles: Record<Size, string> = {
   md: 'h-10 px-4 text-sm gap-2',
   lg: 'h-12 px-6 text-base gap-2.5',
 }
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   function Button(
@@ -84,7 +79,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={isDisabled}
         className={[
-          'inline-flex items-center justify-center font-medium rounded-xl',
+          'inline-flex items-center justify-center font-medium',
           'transition-all duration-150 outline-none select-none',
           'cursor-pointer disabled:cursor-not-allowed',
           variantStyles[variant],

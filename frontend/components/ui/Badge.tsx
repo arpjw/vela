@@ -19,12 +19,12 @@ export interface BadgeProps {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
-  primary:   'bg-primary-50 text-primary-700 ring-primary-200',
-  secondary: 'bg-secondary-50 text-secondary-700 ring-secondary-200',
-  success:   'bg-success-light text-success-dark ring-green-200',
-  warning:   'bg-warning-light text-warning-dark ring-yellow-200',
-  error:     'bg-error-light text-error-dark ring-red-200',
-  neutral:   'bg-neutral-100 text-neutral-600 ring-neutral-200',
+  primary:   'bg-primary/10 text-primary ring-primary/20',
+  secondary: 'bg-secondary/10 text-secondary ring-secondary/20',
+  success:   'bg-success/10 text-success ring-success/20',
+  warning:   'bg-warning/10 text-warning ring-warning/20',
+  error:     'bg-error/10 text-error ring-error/20',
+  neutral:   'bg-neutral-100 text-stone ring-neutral-200',
 }
 
 const dotColors: Record<BadgeVariant, string> = {
@@ -33,12 +33,12 @@ const dotColors: Record<BadgeVariant, string> = {
   success:   'bg-success',
   warning:   'bg-warning',
   error:     'bg-error',
-  neutral:   'bg-neutral-400',
+  neutral:   'bg-neutral-500',
 }
 
 const sizeStyles: Record<BadgeSize, string> = {
-  sm: 'px-1.5 py-0.5 text-xs',
-  md: 'px-2.5 py-1 text-xs',
+  sm: 'px-1.5 py-0.5 text-[10px]',
+  md: 'px-2 py-0.5 text-xs',
 }
 
 export function Badge({
@@ -51,7 +51,7 @@ export function Badge({
   return (
     <span
       className={[
-        'inline-flex items-center gap-1 font-medium rounded-full ring-1',
+        'inline-flex items-center gap-1 font-medium ring-1 tracking-caps uppercase',
         variantStyles[variant],
         sizeStyles[size],
         className,

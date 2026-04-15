@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth'
-import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 
 const LINKS = [
@@ -35,20 +34,18 @@ export default function Nav() {
     : null
 
   return (
-    <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-neutral-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-6">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M2 10L7 2l5 8H2z" fill="white" />
+    <header className="sticky top-0 z-40 bg-canvas/95 backdrop-blur-sm border-b border-neutral-200">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[60px] flex items-center justify-between gap-6">
+        <Link href="/" className="flex items-center gap-2.5 shrink-0">
+          <div className="w-6 h-6 bg-primary flex items-center justify-center">
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+              <path d="M2 10L7 2l5 8H2z" fill="#0F0B06" />
             </svg>
           </div>
-          <span className="font-semibold text-neutral-900 text-lg tracking-tight">Vela</span>
+          <span className="font-semibold text-cream text-base tracking-wide">VELA</span>
         </Link>
 
-        {/* Nav links */}
-        <nav className="hidden sm:flex items-center gap-1">
+        <nav className="hidden sm:flex items-center gap-0">
           {LINKS.map(({ href, label }) => {
             const active =
               href === '/' ? pathname === '/' : pathname.startsWith(href)
@@ -57,51 +54,47 @@ export default function Nav() {
                 key={href}
                 href={href}
                 className={[
-                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-150',
+                  'relative px-4 py-[18px] text-sm font-medium transition-colors duration-150 tracking-wide',
                   active
-                    ? 'bg-primary/8 text-primary'
-                    : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100',
+                    ? 'text-primary'
+                    : 'text-stone hover:text-cream',
                 ].join(' ')}
               >
                 {label}
+                {active && (
+                  <span className="absolute bottom-0 left-4 right-4 h-px bg-primary" />
+                )}
               </Link>
             )
           })}
         </nav>
 
-        {/* Wallet */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {isConnected && shortAddress ? (
             <div className="flex items-center gap-2">
-              <span className="hidden sm:block px-3 py-1.5 bg-neutral-100 rounded-lg text-sm font-mono text-neutral-700">
+              <span className="hidden sm:block px-3 py-1.5 bg-raised border border-neutral-200 text-xs font-mono text-stone">
                 {shortAddress}
               </span>
-              <Button variant="ghost" size="sm" onClick={signOut}>
+              <button
+                type="button"
+                onClick={signOut}
+                className="px-3 py-1.5 text-xs font-medium text-stone hover:text-cream transition-colors duration-150 tracking-wide"
+              >
                 Disconnect
-              </Button>
+              </button>
             </div>
           ) : (
-            <Button
-              size="sm"
+            <button
+              type="button"
               onClick={handleConnect}
-              loading={connecting}
-              icon={
-                connecting ? undefined : (
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path
-                      d="M1 7h12M7 1l6 6-6 6"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )
-              }
-              iconPosition="right"
+              disabled={connecting}
+              className="flex items-center gap-2 px-4 h-8 border border-primary/60 text-primary text-sm font-medium hover:bg-primary/8 active:bg-primary/12 transition-colors duration-150 disabled:opacity-50 tracking-wide"
             >
+              {connecting ? (
+                <Spinner size="xs" className="text-primary" />
+              ) : null}
               Connect Wallet
-            </Button>
+            </button>
           )}
         </div>
       </div>

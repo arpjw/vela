@@ -4,9 +4,9 @@
 
 @layer base {
   :root {
-    --background: #FAFAFA;
-    --foreground: #111111;
-    --border: #E4E4E7;
+    --background: #0F0B06;
+    --foreground: #E8DCBF;
+    --border: rgba(196, 148, 58, 0.12);
   }
 
   html {
@@ -16,8 +16,10 @@
   }
 
   body {
-    background-color: var(--background);
-    color: var(--foreground);
+    background-color: #0F0B06;
+    background-image: radial-gradient(ellipse at 50% 0%, #1C1508 0%, #0F0B06 65%);
+    color: #E8DCBF;
+    min-height: 100vh;
   }
 
   * {
@@ -25,14 +27,13 @@
   }
 
   ::selection {
-    background-color: #5B4FE8;
-    color: white;
+    background-color: rgba(196, 148, 58, 0.35);
+    color: #E8DCBF;
   }
 
-  /* Scrollbar styling */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
 
   ::-webkit-scrollbar-track {
@@ -40,12 +41,11 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #D4D4D8;
-    border-radius: 3px;
+    background: #2E2318;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #A1A1AA;
+    background: #3D3024;
   }
 }
 
@@ -56,5 +56,9 @@
 
   .text-balance {
     text-wrap: balance;
+  }
+
+  .tracking-caps {
+    letter-spacing: 0.12em;
   }
 }

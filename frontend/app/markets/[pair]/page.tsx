@@ -85,7 +85,7 @@ function calcSpread(
 function WsStatusBadge({ status }: { status: WsStatus }) {
   const map: Record<WsStatus, { label: string; variant: 'success' | 'warning' | 'error' }> = {
     connected:    { label: 'Live',         variant: 'success' },
-    connecting:   { label: 'Connecting…',  variant: 'warning' },
+    connecting:   { label: 'Connecting',   variant: 'warning' },
     reconnecting: { label: 'Reconnecting', variant: 'warning' },
     disconnected: { label: 'Offline',      variant: 'error'   },
   }
@@ -100,7 +100,7 @@ function BookRowItem({
   level: DepthLevel
   side: 'bid' | 'ask'
 }) {
-  const barColor = side === 'bid' ? 'bg-primary/[0.08]' : 'bg-secondary/[0.10]'
+  const barColor = side === 'bid' ? 'bg-primary/[0.14]' : 'bg-secondary/[0.12]'
   const priceColor = side === 'bid' ? 'text-success' : 'text-error'
 
   return (
@@ -109,16 +109,16 @@ function BookRowItem({
         className={`absolute inset-y-0 right-0 ${barColor} transition-[width] duration-100`}
         style={{ width: `${level.depthPct}%` }}
       />
-      <span className={`relative z-10 font-medium ${priceColor}`}>{fmt(level.price, 4)}</span>
-      <span className="relative z-10 text-neutral-600 text-right">{fmt(level.size, 4)}</span>
-      <span className="relative z-10 text-neutral-400 text-right">{fmt(level.cumSize.toString(), 4)}</span>
+      <span className={`relative z-10 font-mono font-medium ${priceColor}`}>{fmt(level.price, 4)}</span>
+      <span className="relative z-10 font-mono text-neutral-600 text-right">{fmt(level.size, 4)}</span>
+      <span className="relative z-10 font-mono text-neutral-400 text-right">{fmt(level.cumSize.toString(), 4)}</span>
     </div>
   )
 }
 
 function BookColumnHeader() {
   return (
-    <div className="grid grid-cols-3 px-3 py-1.5 text-[10px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-100 bg-white sticky top-0">
+    <div className="grid grid-cols-3 px-3 py-1.5 text-[9px] font-medium text-stone uppercase tracking-[0.15em] border-b border-neutral-200 bg-surface sticky top-0">
       <span>Price</span>
       <span className="text-right">Size</span>
       <span className="text-right">Total</span>
@@ -141,18 +141,18 @@ function OrderBook({
 
   return (
     <div className="flex flex-col">
-      <div className="px-3 py-2.5 border-b border-neutral-100 flex items-center justify-between">
-        <span className="text-xs font-semibold text-neutral-700 uppercase tracking-wider">
+      <div className="px-3 py-2.5 border-b border-neutral-200 flex items-center justify-between">
+        <span className="text-[9px] font-medium text-stone uppercase tracking-[0.15em]">
           Order Book
         </span>
-        {loading && <Spinner size="xs" className="text-neutral-400" />}
+        {loading && <Spinner size="xs" className="text-stone" />}
       </div>
 
       <BookColumnHeader />
 
       <div className="flex flex-col-reverse">
         {askLevels.length === 0 && !loading ? (
-          <p className="px-3 py-4 text-[11px] text-neutral-400 text-center">No asks</p>
+          <p className="px-3 py-4 text-[11px] text-stone text-center">No asks</p>
         ) : (
           askLevels.map((lvl) => (
             <BookRowItem key={lvl.price} level={lvl} side="ask" />
@@ -160,23 +160,23 @@ function OrderBook({
         )}
       </div>
 
-      <div className="flex items-center justify-between px-3 py-1.5 bg-neutral-50 border-y border-neutral-100">
-        <span className="text-[10px] font-medium text-neutral-400 uppercase tracking-wider">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-raised border-y border-neutral-200">
+        <span className="text-[9px] font-medium text-stone uppercase tracking-[0.15em]">
           Spread
         </span>
         {spread ? (
-          <span className="text-[11px] tabular-nums font-medium text-neutral-600">
+          <span className="text-[11px] tabular-nums font-mono font-medium text-primary">
             {spread.abs}
-            <span className="ml-1.5 text-neutral-400 font-normal">{spread.bps} bps</span>
+            <span className="ml-1.5 text-stone font-normal">{spread.bps} bps</span>
           </span>
         ) : (
-          <span className="text-[11px] text-neutral-400">—</span>
+          <span className="text-[11px] text-stone">—</span>
         )}
       </div>
 
       <div>
         {bidLevels.length === 0 && !loading ? (
-          <p className="px-3 py-4 text-[11px] text-neutral-400 text-center">No bids</p>
+          <p className="px-3 py-4 text-[11px] text-stone text-center">No bids</p>
         ) : (
           bidLevels.map((lvl) => (
             <BookRowItem key={lvl.price} level={lvl} side="bid" />
@@ -190,18 +190,18 @@ function OrderBook({
 function TradesFeed({ trades }: { trades: TradeEntry[] }) {
   return (
     <div className="flex flex-col">
-      <div className="px-3 py-2.5 border-b border-neutral-100">
-        <span className="text-xs font-semibold text-neutral-700 uppercase tracking-wider">
+      <div className="px-3 py-2.5 border-b border-neutral-200">
+        <span className="text-[9px] font-medium text-stone uppercase tracking-[0.15em]">
           Recent Trades
         </span>
       </div>
-      <div className="grid grid-cols-3 px-3 py-1.5 text-[10px] font-medium text-neutral-400 uppercase tracking-wider border-b border-neutral-100">
+      <div className="grid grid-cols-3 px-3 py-1.5 text-[9px] font-medium text-stone uppercase tracking-[0.15em] border-b border-neutral-200">
         <span>Price</span>
         <span className="text-right">Size</span>
         <span className="text-right">Time</span>
       </div>
       {trades.length === 0 ? (
-        <p className="px-3 py-8 text-[11px] text-neutral-400 text-center">
+        <p className="px-3 py-8 text-[11px] text-stone text-center">
           Waiting for trades…
         </p>
       ) : (
@@ -213,14 +213,14 @@ function TradesFeed({ trades }: { trades: TradeEntry[] }) {
             <span
               className={
                 t.side === 'buy'
-                  ? 'font-medium text-success'
-                  : 'font-medium text-error'
+                  ? 'font-mono font-medium text-success'
+                  : 'font-mono font-medium text-error'
               }
             >
               {fmt(t.price, 4)}
             </span>
-            <span className="text-neutral-600 text-right">{fmt(t.size, 4)}</span>
-            <span className="text-neutral-400 text-right">{fmtTime(t.ts)}</span>
+            <span className="font-mono text-neutral-600 text-right">{fmt(t.size, 4)}</span>
+            <span className="font-mono text-stone text-right">{fmtTime(t.ts)}</span>
           </div>
         ))
       )}
@@ -232,7 +232,7 @@ const TIF_OPTIONS: { value: TIF; label: string }[] = [
   { value: 'gtc',       label: 'GTC'       },
   { value: 'ioc',       label: 'IOC'       },
   { value: 'fok',       label: 'FOK'       },
-  { value: 'post_only', label: 'Post-Only' },
+  { value: 'post_only', label: 'Post' },
 ]
 
 function OrderEntryForm({
@@ -331,19 +331,19 @@ function OrderEntryForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex rounded-xl border border-neutral-200 p-0.5">
+      <div className="flex border border-neutral-200 bg-raised">
         {(['buy', 'sell'] as OrderSide[]).map((s) => (
           <button
             key={s}
             type="button"
             onClick={() => handleSide(s)}
             className={[
-              'flex-1 py-2 text-sm font-semibold rounded-[10px] transition-all duration-150 capitalize',
+              'flex-1 py-2.5 text-xs font-semibold transition-all duration-150 uppercase tracking-[0.12em]',
               side === s
                 ? s === 'buy'
-                  ? 'bg-success text-white shadow-sm'
-                  : 'bg-error text-white shadow-sm'
-                : 'text-neutral-500 hover:text-neutral-700',
+                  ? 'bg-success text-canvas'
+                  : 'bg-error text-cream'
+                : 'text-stone hover:text-cream',
             ].join(' ')}
           >
             {s}
@@ -351,17 +351,17 @@ function OrderEntryForm({
         ))}
       </div>
 
-      <div className="flex gap-1 bg-neutral-100 rounded-lg p-1">
+      <div className="flex gap-px bg-neutral-200">
         {(['limit', 'market'] as OrderType[]).map((t) => (
           <button
             key={t}
             type="button"
             onClick={() => handleType(t)}
             className={[
-              'flex-1 py-1 text-xs font-medium rounded-md transition-all duration-150 capitalize',
+              'flex-1 py-1.5 text-[10px] font-medium transition-all duration-150 uppercase tracking-[0.12em]',
               orderType === t
-                ? 'bg-white text-neutral-900 shadow-sm'
-                : 'text-neutral-500 hover:text-neutral-700',
+                ? 'bg-raised text-cream'
+                : 'bg-surface text-stone hover:text-cream',
             ].join(' ')}
           >
             {t}
@@ -396,10 +396,10 @@ function OrderEntryForm({
       />
 
       {total !== null && (
-        <div className="rounded-xl bg-neutral-50 px-4 py-3">
+        <div className="bg-raised border border-neutral-200 px-4 py-3">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-neutral-500">Total</span>
-            <span className="tabular-nums font-medium text-neutral-700">
+            <span className="text-stone uppercase tracking-[0.12em]">Total</span>
+            <span className="tabular-nums font-mono font-medium text-cream">
               {total} {quote}
             </span>
           </div>
@@ -407,17 +407,17 @@ function OrderEntryForm({
       )}
 
       {orderType === 'limit' && (
-        <div className="flex gap-1">
+        <div className="flex gap-px bg-neutral-200">
           {TIF_OPTIONS.map(({ value, label }) => (
             <button
               key={value}
               type="button"
               onClick={() => setTif(value)}
               className={[
-                'flex-1 py-1 text-[10px] font-medium rounded-md border transition-all duration-150',
+                'flex-1 py-1 text-[9px] font-medium transition-all duration-150 uppercase tracking-[0.12em]',
                 tif === value
-                  ? 'border-primary bg-primary-50 text-primary'
-                  : 'border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:text-neutral-700',
+                  ? 'bg-primary text-canvas'
+                  : 'bg-surface text-stone hover:text-cream',
               ].join(' ')}
             >
               {label}
@@ -427,25 +427,25 @@ function OrderEntryForm({
       )}
 
       {submitError && (
-        <p className="text-xs text-error">{submitError}</p>
+        <p className="text-xs text-error font-mono">{submitError}</p>
       )}
       {submitOk && (
-        <p className="text-xs font-medium text-success">Order submitted</p>
+        <p className="text-xs font-medium text-success font-mono">Order submitted</p>
       )}
 
       {isConnected ? (
         <Button
-          variant={side === 'buy' ? 'primary' : 'danger'}
+          variant={side === 'buy' ? 'buy' : 'danger'}
           size="lg"
           loading={submitting}
           disabled={!canSubmit}
           onClick={handleSubmit}
-          className="w-full"
+          className="w-full tracking-[0.12em] uppercase text-sm"
         >
           {side === 'buy' ? 'Buy' : 'Sell'} {base}
         </Button>
       ) : (
-        <Button variant="secondary" size="lg" className="w-full" disabled>
+        <Button variant="secondary" size="lg" className="w-full tracking-wide" disabled>
           Connect Wallet to Trade
         </Button>
       )}
@@ -462,20 +462,20 @@ function MarketSelector({
   currentPair: string
   loading: boolean
 }) {
-  if (loading) return <Spinner size="xs" className="text-neutral-400" />
+  if (loading) return <Spinner size="xs" className="text-stone" />
   if (markets.length === 0) return null
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex items-center gap-1 flex-wrap">
       {markets.map((m) => (
         <Link
           key={m.id}
           href={`/markets/${encodeURIComponent(m.id)}`}
           className={[
-            'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors duration-150',
+            'px-2.5 py-1 text-[10px] font-medium transition-colors duration-150 uppercase tracking-[0.1em]',
             m.id === currentPair
-              ? 'bg-primary text-white'
-              : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900',
+              ? 'bg-primary text-canvas'
+              : 'bg-raised text-stone border border-neutral-200 hover:border-primary/40 hover:text-cream',
           ].join(' ')}
         >
           {m.base}/{m.quote}
@@ -571,28 +571,40 @@ export default function MarketPage({ params }: PageProps) {
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-5">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-primary-50 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-4 mb-6 pb-5 border-b border-neutral-200">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 bg-primary/10 flex items-center justify-center text-xs font-bold text-primary font-mono shrink-0">
             {marketId.split('-')[0]?.slice(0, 2)}
           </div>
           <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-lg font-bold text-neutral-900 tracking-tight leading-none">
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-base font-bold text-cream tracking-wide uppercase">
                 {marketId}
               </h1>
               <WsStatusBadge status={wsStatus} />
             </div>
-            <div className="mt-1 text-xs text-neutral-500 tabular-nums">
-              {spread ? (
-                <>
-                  Spread:{' '}
-                  <span className="font-medium text-neutral-700">{spread.abs}</span>
-                  <span className="ml-1 text-neutral-400">({spread.bps} bps)</span>
-                </>
-              ) : (
-                <span className="text-neutral-300">—</span>
-              )}
+            <div className="flex items-end gap-5">
+              <div>
+                <span className="block text-[9px] uppercase tracking-[0.18em] text-stone mb-0.5">Best Bid</span>
+                <span className="text-2xl font-mono font-bold text-success tabular-nums leading-none">
+                  {bestBid ? fmt(bestBid, 4) : '—'}
+                </span>
+              </div>
+              <div className="pb-0.5">
+                <span className="block text-[9px] uppercase tracking-[0.18em] text-stone mb-0.5">Spread</span>
+                <span className="text-lg font-mono font-bold text-primary tabular-nums leading-none">
+                  {spread?.abs ?? '—'}
+                  {spread && (
+                    <span className="text-xs font-normal text-stone ml-1">{spread.bps} bps</span>
+                  )}
+                </span>
+              </div>
+              <div>
+                <span className="block text-[9px] uppercase tracking-[0.18em] text-stone mb-0.5">Best Ask</span>
+                <span className="text-2xl font-mono font-bold text-error tabular-nums leading-none">
+                  {bestAsk ? fmt(bestAsk, 4) : '—'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
