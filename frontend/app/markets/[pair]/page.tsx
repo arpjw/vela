@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -641,6 +641,14 @@ interface PageProps {
 }
 
 export default function MarketPage({ params }: PageProps) {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <MarketPageContent params={params} />
+    </Suspense>
+  )
+}
+
+function MarketPageContent({ params }: PageProps) {
   const { pair } = use(params)
   const marketId = decodeURIComponent(pair)
 
