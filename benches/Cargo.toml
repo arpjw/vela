@@ -9,6 +9,7 @@ license.workspace = true
 types = { workspace = true }
 engine = { workspace = true }
 criterion = { workspace = true }
+rand = { workspace = true }
 
 [[bench]]
 name = "matching"
