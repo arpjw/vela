@@ -5,3 +5,4 @@ node_modules/
 cargo-flamegraph.trace/
 Launch_*.trace/
 .env*.local
+.vercel
