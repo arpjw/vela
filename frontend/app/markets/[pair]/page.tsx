@@ -90,6 +90,7 @@ function WsStatusBadge({ status }: { status: WsStatus }) {
     connecting:   { label: 'Connecting',   variant: 'warning' },
     reconnecting: { label: 'Reconnecting', variant: 'warning' },
     disconnected: { label: 'Offline',      variant: 'error'   },
+    polling:      { label: 'Polling',      variant: 'warning' },
   }
   const { label, variant } = map[status]
   return <Badge variant={variant} dot size="sm">{label}</Badge>
@@ -684,7 +685,7 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
 
     const unsubStatus = ws.onStatus((s) => {
       setWsStatus(s)
-      if (s === 'connected') ws.subscribe(channels)
+      if (s === 'connected' || s === 'polling') ws.subscribe(channels)
     })
 
     const unsubMsg = ws.onMessage((msg) => {
