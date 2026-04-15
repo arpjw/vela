@@ -4,13 +4,33 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 use state::StateManager;
 use state::mpt::Hash;
+use types::Request;
 use crate::batch::CommitBatch;
+use crate::da::{DaRecord, DataAvailabilityClient};
+
+// ---------------------------------------------------------------------------
+// Payload serialized to the DA layer for each committed batch.
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Serialize)]
+struct DaBatch<'a> {
+    sequence: u64,
+    root: Hash,
+    snapshot: &'a [(Vec<u8>, Vec<u8>)],
+    requests: &'a [Request],
+}
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
 
 pub struct CommitResult {
     pub sequence: u64,
     pub root: Hash,
     pub batch_size: usize,
     pub timestamp: u64,
+    /// Populated when the committer has a DA client wired in.
+    pub da_record: Option<DaRecord>,
 }
 
 pub struct CommitterConfig {
@@ -29,13 +49,18 @@ impl Default for CommitterConfig {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Committer
+// ---------------------------------------------------------------------------
+
 pub struct Committer {
     rx: mpsc::Receiver<CommitBatch>,
     result_tx: Option<mpsc::Sender<CommitResult>>,
     state_manager: StateManager,
     config: CommitterConfig,
-    pending_requests: Vec<types::Request>,
+    pending_requests: Vec<Request>,
     total_committed: u64,
+    da_client: Option<Box<dyn DataAvailabilityClient>>,
 }
 
 impl Committer {
@@ -43,6 +68,7 @@ impl Committer {
         rx: mpsc::Receiver<CommitBatch>,
         result_tx: Option<mpsc::Sender<CommitResult>>,
         config: CommitterConfig,
+        da_client: Option<Box<dyn DataAvailabilityClient>>,
     ) -> Self {
         let disk_path = config.disk_path.clone();
         Committer {
@@ -52,6 +78,7 @@ impl Committer {
             config,
             pending_requests: vec![],
             total_committed: 0,
+            da_client,
         }
     }
 
@@ -97,7 +124,7 @@ impl Committer {
         for ((user, asset), balance) in &batch.balances {
             self.state_manager.observe_balance_change(user, asset, balance);
         }
-        for (user, meta) in &batch.metadata {
+        for (_user, meta) in &batch.metadata {
             self.state_manager.observe_metadata_change(meta);
         }
     }
@@ -109,9 +136,11 @@ impl Committer {
             .unwrap_or_default()
             .as_micros() as u64;
 
+        // Take the pre-commit snapshot for DA submission before mutating state.
         let snapshot = self.state_manager.take_snapshot();
-        let root = self.state_manager.commit_full(snapshot);
+        let requests_for_da = self.pending_requests.clone();
 
+        let root = self.state_manager.commit_full(snapshot.clone());
         self.total_committed += batch_size as u64;
         let sequence = self.state_manager.batch_sequence;
 
@@ -122,12 +151,53 @@ impl Committer {
             "committed batch"
         );
 
+        // Publish the batch (snapshot + requests) to the DA layer so anyone
+        // can reconstruct state and generate independent ZK proofs.
+        let da_record = self.submit_to_da(sequence, root, &snapshot, &requests_for_da);
+
         self.pending_requests.clear();
 
         if let Some(tx) = &self.result_tx {
-            let result = CommitResult { sequence, root, batch_size, timestamp: ts };
+            let result = CommitResult { sequence, root, batch_size, timestamp: ts, da_record };
             if tx.send(result).await.is_err() {
                 warn!("commit result receiver dropped");
+            }
+        }
+    }
+
+    /// Serialize and submit the batch to the DA client.  Failures are logged
+    /// but never propagate — DA unavailability must not block state commits.
+    fn submit_to_da(
+        &self,
+        sequence: u64,
+        root: Hash,
+        snapshot: &[(Vec<u8>, Vec<u8>)],
+        requests: &[Request],
+    ) -> Option<DaRecord> {
+        let client = self.da_client.as_ref()?;
+
+        let payload = DaBatch { sequence, root, snapshot, requests };
+        let data = match serde_json::to_vec(&payload) {
+            Ok(b) => b,
+            Err(e) => {
+                warn!(sequence = sequence, error = %e, "DA serialization failed");
+                return None;
+            }
+        };
+
+        match client.submit(sequence, &data) {
+            Ok(receipt) => {
+                info!(
+                    sequence = sequence,
+                    backend = client.name(),
+                    hash = hex::encode(receipt.content_hash),
+                    "batch posted to DA"
+                );
+                Some(DaRecord { receipt, backend: client.name().to_string() })
+            }
+            Err(e) => {
+                warn!(sequence = sequence, backend = client.name(), error = %e, "DA submission failed");
+                None
             }
         }
     }
