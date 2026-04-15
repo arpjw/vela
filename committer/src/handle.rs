@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use crate::batch::CommitBatch;
 use crate::committer::{CommitResult, Committer, CommitterConfig};
+use crate::da::DataAvailabilityClient;
 
 pub struct CommitterHandle {
     tx: mpsc::Sender<CommitBatch>,
@@ -12,11 +13,23 @@ pub struct CommitterHandle {
 }
 
 impl CommitterHandle {
+    /// Spawn a committer without a DA client.
     pub fn spawn(
         batch_interval: Duration,
         disk_path: Option<PathBuf>,
         channel_capacity: usize,
         with_results: bool,
+    ) -> Self {
+        Self::spawn_with_da(batch_interval, disk_path, channel_capacity, with_results, None)
+    }
+
+    /// Spawn a committer with an optional DA client.
+    pub fn spawn_with_da(
+        batch_interval: Duration,
+        disk_path: Option<PathBuf>,
+        channel_capacity: usize,
+        with_results: bool,
+        da_client: Option<Box<dyn DataAvailabilityClient>>,
     ) -> Self {
         let (batch_tx, batch_rx) = mpsc::channel(channel_capacity);
         let (result_tx, result_rx) = if with_results {
@@ -32,7 +45,7 @@ impl CommitterHandle {
             max_batch_size: 10_000,
         };
 
-        let committer = Committer::new(batch_rx, result_tx, config);
+        let committer = Committer::new(batch_rx, result_tx, config, da_client);
         let join_handle = tokio::spawn(committer.run());
 
         CommitterHandle {
