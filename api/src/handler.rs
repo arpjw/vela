@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use axum::{
     extract::{Path, State, WebSocketUpgrade},
-    http::StatusCode,
+    http::{HeaderValue, Method, StatusCode},
     response::{IntoResponse, Json, Response},
     routing::{get, post},
     Router,
 };
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use types::{
     AssetId, CancelOrderRequest, DepositRequest, MarketId, PostOrderRequest,
     Request, UserId, WithdrawalRequest, PRICE_DECIMALS, QUANTITY_DECIMALS,
@@ -21,6 +22,15 @@ use crate::{
 };
 
 pub fn build_router(state: Arc<AppState>) -> Router {
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::list([
+            "https://vela.monolithsystematic.com".parse::<HeaderValue>().unwrap(),
+            "https://vela-vert.vercel.app".parse::<HeaderValue>().unwrap(),
+            "http://localhost:3000".parse::<HeaderValue>().unwrap(),
+        ]))
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(tower_http::cors::Any);
+
     Router::new()
         .route("/health", get(health))
         .route("/markets", get(list_markets))
@@ -32,6 +42,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/withdrawals", post(initiate_withdrawal))
         .route("/ws", get(ws_handler))
         .with_state(state)
+        .layer(cors)
 }
 
 async fn health() -> &'static str {
