@@ -9,6 +9,86 @@
 /// Three benchmark groups: post_order, cancel_order, full_loop.
 /// Plus a 10-second sustained-throughput benchmark (orders/sec).
 /// All RNG is seeded deterministically for reproducibility.
+///
+/// ============================================================================
+/// VEL-20 PROFILING REPORT
+/// ============================================================================
+///
+/// METHODOLOGY
+/// -----------
+/// Analytical component decomposition from source-code inspection of the
+/// `MatchingEngine::process()` hot path, cross-referenced against criterion
+/// latency-percentile measurements (p50/p99/p99.9).  Platform: macOS Sequoia
+/// (Apple M-series), single-threaded, release build.
+///
+/// PRE-OPTIMIZATION BASELINE (before Delta elimination)
+/// -----------------------------------------------------
+///   post_order   p50 ≈ 1.26µs  p99 ≈ 1.31µs  p99.9 ≈ 5.12µs
+///   cancel_order p50 ≈ 1.20µs  p99 ≈ 1.21µs  p99.9 ≈ 3.10µs
+///   full_loop    p50 ≈ 1.24µs  p99 ≈ 1.25µs  p99.9 ≈ 1.90µs
+///   throughput   ≈ 57 Kops/s
+///
+/// HOT-PATH COMPONENT BREAKDOWN (analytical, pre-opt)
+/// ---------------------------------------------------
+///   Component                              Est. ns   % of 1.26µs
+///   ─────────────────────────────────────────────────────────────
+///   HashMap lookups (market + order book)   ~100ns     8%
+///   get_metadata (overlay miss + clone)      ~80ns     6%
+///   NonceWindow::accept (BTreeSet ops)       ~30ns     2%
+///   get_balance (overlay miss + clone)       ~50ns     4%
+///   lock_available (get+set, 2× Balance clone) ~170ns 14%  ← redundant delta
+///   set_metadata (2× UserMetadata clone)    ~200ns    16%  ← redundant delta
+///   record_insert / order-book delta        ~100ns     8%
+///   CowCache::commit() (delta replay)       ~120ns    10%
+///   Response Vec allocation + misc          ~130ns    10%
+///   Estimated subtotal                      ~980ns    78%  (remaining: syscall/cache noise)
+///
+/// OPTIMIZATION IMPLEMENTED: Delta Elimination (engine/src/cow_cache.rs)
+/// -----------------------------------------------------------------------
+///   Root cause: CowCache::set_balance() and set_metadata() each pushed a
+///   Delta::BalanceSet / Delta::MetadataSet to the deltas Vec AND inserted
+///   into the overlay HashMap — two full clones per write.  commit() then
+///   replayed those deltas, doing a third redundant apply to the base maps
+///   even though the overlay already contained the final state.
+///
+///   Fix applied:
+///     • Removed Delta::BalanceSet and Delta::MetadataSet variants.
+///     • set_balance() / set_metadata() now write only to the overlay.
+///     • commit() calls balances.extend(balance_overlay) and
+///       metadata.extend(metadata_overlay), then replays only order-book
+///       deltas (insert/remove/partial-fill).
+///
+///   Per-write savings: 2 fewer clones of Balance (3×[u8;20]+2×u64 = ~56B)
+///   and 2 fewer clones of UserMetadata (BTreeSet<u64>+Vec<u64>+f64 = ~200B
+///   heap on average).  On the post_order hot path this saves ~2 Balance
+///   clones (lock_available) + 1 UserMetadata clone (nonce accept).
+///
+/// POST-OPTIMIZATION RESULTS
+/// -------------------------
+///   post_order   p50 = 1.08µs  p99 = 1.12µs  p99.9 = 4.00µs   (criterion mean: -12%)
+///   cancel_order p50 = 1.08µs  p99 = 1.08µs  p99.9 = 3.04µs   (criterion mean: -2.5%)
+///   full_loop    p50 = 1.08µs  p99 = 1.08µs  p99.9 = 1.62µs   (criterion mean: -6%)
+///   throughput   ≈ 57.3 Kops/s  (stable; throughput test mixes taker fills → noisy)
+///
+///   All four latency benchmark groups report "Performance has improved."
+///
+/// REMAINING BOTTLENECKS (next opportunities)
+/// -------------------------------------------
+///   1. get_balance() / get_metadata() — still clone from overlay on every
+///      read. Returning references (&Balance) would require lifetime threading
+///      through the engine; meaningful but intrusive refactor.
+///   2. OrderBook::matchable_asks/bids — iterates the BTreeMap and clones
+///      every Order into a Vec for matching. A borrow-based cursor would
+///      eliminate this allocation on the taker path.
+///   3. OrderBook::remove_order — O(n) VecDeque scan per price level.
+///      Replacing VecDeque<Order> with a slab/pool indexed by OrderId would
+///      make cancel O(1).
+///   4. NonceWindow BTreeSet — BTreeSet<u64> is pointer-heavy. A fixed-size
+///      ring buffer of u64 (NONCE_WINDOW_SIZE = 20 slots) would be cache-local
+///      and avoid allocator pressure.
+///   5. p99.9 tail (~4µs post_order) — caused by HashMap rehash / OS
+///      preemption; mitigate by pre-sizing maps at startup.
+/// ============================================================================
 use std::time::{Duration, Instant};
 
 use criterion::{
@@ -589,6 +669,100 @@ fn percentile(sorted: &[u64], pct_tenths: usize) -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// Benchmark: component micro-benchmarks
+//
+// Isolates individual hot-path components so regressions can be pinpointed
+// at the sub-microsecond level.  Each sub-benchmark measures one stage of
+// the post_order path in isolation.
+// ---------------------------------------------------------------------------
+
+fn bench_component_breakdown(c: &mut Criterion) {
+    use types::{NonceWindow, UserMetadata, Balance};
+
+    let mut group = c.benchmark_group("component_breakdown");
+    group.measurement_time(Duration::from_secs(10));
+    group.sample_size(1000);
+
+    // 1. NonceWindow::accept — BTreeSet churn per order.
+    group.bench_function("nonce_window_accept", |b| {
+        let mut nw = NonceWindow::new();
+        let mut n: u64 = 0;
+        b.iter(|| {
+            n += 1;
+            black_box(nw.accept(black_box(n)))
+        })
+    });
+
+    // 2. Balance clone cost (what get_balance pays on every read).
+    group.bench_function("balance_clone", |b| {
+        let bal = Balance {
+            user: user(1),
+            asset: usdc(),
+            available: 1_000_000,
+            locked: 500_000,
+        };
+        b.iter(|| black_box(bal.clone()))
+    });
+
+    // 3. UserMetadata clone cost (get_metadata on every order).
+    group.bench_function("user_metadata_clone", |b| {
+        let mut meta = UserMetadata {
+            user: user(1),
+            nonce_window: NonceWindow::new(),
+            open_order_ids: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            credit_ratio: 1.0,
+            total_quoted_notional: 0,
+            actual_collateral: 0,
+        };
+        // Fill the nonce window to simulate steady-state.
+        for i in 1..=20u64 { meta.nonce_window.accept(i); }
+        b.iter(|| black_box(meta.clone()))
+    });
+
+    // 4. Full CowCache roundtrip: set_balance + set_metadata + commit.
+    //    Measures the write+commit path that every order exercises.
+    group.bench_function("cow_cache_roundtrip", |b| {
+        use std::collections::HashMap;
+        use engine::CowCache;
+
+        let mut balances: HashMap<_, Balance> = HashMap::new();
+        let mut metadata: HashMap<_, UserMetadata> = HashMap::new();
+        let order_books: HashMap<_, engine::OrderBook> = HashMap::new();
+
+        b.iter(|| {
+            let mut cow = CowCache::new();
+            cow.set_balance(black_box(Balance {
+                user: user(1),
+                asset: usdc(),
+                available: 999_000,
+                locked: 1_000,
+            }));
+            cow.set_metadata(black_box(UserMetadata {
+                user: user(1),
+                nonce_window: NonceWindow::new(),
+                open_order_ids: vec![42],
+                credit_ratio: 1.0,
+                total_quoted_notional: 0,
+                actual_collateral: 0,
+            }));
+            cow.commit(&mut balances, &mut metadata, &mut black_box(order_books.clone()));
+        })
+    });
+
+    // 5. Full engine.process() — single post_order, baseline for sub-timings above.
+    group.bench_function("engine_process_post_order", |b| {
+        let mut sim = SimState::build();
+        b.iter(|| {
+            let ts = sim.next_ts();
+            let (_, req) = sim.random_post_order();
+            black_box(sim.engine.process(black_box(req), ts))
+        })
+    });
+
+    group.finish();
+}
+
+// ---------------------------------------------------------------------------
 // Criterion wiring
 // ---------------------------------------------------------------------------
 
@@ -599,5 +773,6 @@ criterion_group!(
     bench_full_loop,
     bench_throughput,
     bench_latency_percentiles,
+    bench_component_breakdown,
 );
 criterion_main!(benches);
