@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "api"
+path = "src/main.rs"
+
 [dependencies]
 types = { workspace = true }
 engine = { workspace = true }
