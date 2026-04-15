@@ -1,5 +1,111 @@
 use engine::MatchingEngine;
-use types::{AssetId, DepositRequest, FeeConfig, Market, MarketId, UserId};
+use types::{
+    AssetId, DepositRequest, FeeConfig, Market, MarketId, OrderSide, OrderType, PostOrderRequest,
+    Request, UserId,
+};
+
+fn seed_order_books(engine: &mut MatchingEngine) {
+    let seed_user = UserId([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+
+    let make_hash = |a: u8, b: u8| -> [u8; 32] {
+        let mut h = [0u8; 32];
+        h[0] = 2;
+        h[30] = a;
+        h[31] = b;
+        h
+    };
+
+    engine.process(
+        Request::Deposit(DepositRequest {
+            user: seed_user.clone(),
+            asset: AssetId("USDC".into()),
+            amount: 10_000_000_000_000_000,
+            l1_tx_hash: make_hash(0, 0),
+        }),
+        0,
+    );
+
+    for (i, asset) in [
+        "BTC", "ETH", "SOL", "AVAX", "MATIC", "LINK", "UNI", "ARB", "OP", "AAVE", "DOGE",
+    ]
+    .iter()
+    .enumerate()
+    {
+        engine.process(
+            Request::Deposit(DepositRequest {
+                user: seed_user.clone(),
+                asset: AssetId(asset.to_string()),
+                amount: 100_000_000_000_000,
+                l1_tx_hash: make_hash(1, i as u8),
+            }),
+            0,
+        );
+    }
+
+    let markets: &[(&str, u64, u64)] = &[
+        ("BTC-USDC", 94_000 * 1_000_000, 100_000),
+        ("ETH-USDC", 3_200 * 1_000_000, 500_000),
+        ("SOL-USDC", 145 * 1_000_000, 10_000_000),
+        ("AVAX-USDC", 35 * 1_000_000, 5_000_000),
+        ("MATIC-USDC", 850_000, 1_000_000_000),
+        ("LINK-USDC", 14 * 1_000_000, 50_000_000),
+        ("UNI-USDC", 9 * 1_000_000, 50_000_000),
+        ("ARB-USDC", 1_100_000, 500_000_000),
+        ("OP-USDC", 2_400_000, 200_000_000),
+        ("AAVE-USDC", 280 * 1_000_000, 1_000_000),
+        ("DOGE-USDC", 180_000, 10_000_000_000),
+    ];
+
+    let mut nonce: u64 = 1000;
+
+    for &(market_name, mid, base_size) in markets {
+        let half_spread = mid * 5 / 10_000;
+        let best_bid = mid - half_spread;
+        let best_ask = mid + half_spread;
+
+        let mut bid_price = best_bid;
+        for i in 0u64..20 {
+            let quantity = ((i % 5) + 3) * base_size;
+            engine.process(
+                Request::PostOrder(PostOrderRequest {
+                    user: seed_user.clone(),
+                    market: MarketId(market_name.to_string()),
+                    side: OrderSide::Bid,
+                    order_type: OrderType::GoodTillCanceled,
+                    price: bid_price,
+                    quantity,
+                    nonce,
+                    client_order_id: None,
+                    signature: vec![],
+                }),
+                0,
+            );
+            nonce += 1;
+            bid_price = bid_price * 9_995 / 10_000;
+        }
+
+        let mut ask_price = best_ask;
+        for i in 0u64..20 {
+            let quantity = ((i % 5) + 3) * base_size;
+            engine.process(
+                Request::PostOrder(PostOrderRequest {
+                    user: seed_user.clone(),
+                    market: MarketId(market_name.to_string()),
+                    side: OrderSide::Ask,
+                    order_type: OrderType::GoodTillCanceled,
+                    price: ask_price,
+                    quantity,
+                    nonce,
+                    client_order_id: None,
+                    signature: vec![],
+                }),
+                0,
+            );
+            nonce += 1;
+            ask_price = ask_price * 10_005 / 10_000;
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -27,8 +133,7 @@ async fn main() {
     }
 
     let test_user = UserId([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
     ]);
 
     for (i, asset) in [
@@ -41,7 +146,7 @@ async fn main() {
         hash[31] = i as u8;
 
         engine.process(
-            types::Request::Deposit(DepositRequest {
+            Request::Deposit(DepositRequest {
                 user: test_user.clone(),
                 asset: AssetId(asset.to_string()),
                 amount: 1_000_000_000_000,
@@ -50,6 +155,8 @@ async fn main() {
             0,
         );
     }
+
+    seed_order_books(&mut engine);
 
     let state = api::AppState::new(engine);
     let router = api::build_router(state);
