@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { useAuth } from '@/lib/auth'
 import { Spinner } from '@/components/ui/Spinner'
 
@@ -46,25 +47,31 @@ export default function Nav() {
         </Link>
 
         <nav className="hidden sm:flex items-center gap-0">
-          {LINKS.map(({ href, label }) => {
+          {LINKS.map(({ href, label }, i) => {
             const active =
               href === '/' ? pathname === '/' : pathname.startsWith(href)
             return (
-              <Link
+              <motion.div
                 key={href}
-                href={href}
-                className={[
-                  'relative px-4 py-[18px] text-[0.8rem] font-medium transition-colors duration-150 uppercase tracking-[0.1em]',
-                  active
-                    ? 'text-ink'
-                    : 'text-brown hover:text-ink',
-                ].join(' ')}
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 + i * 0.08, duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
               >
-                {label}
-                {active && (
-                  <span className="absolute bottom-0 left-4 right-4 h-[2px] bg-ochre" />
-                )}
-              </Link>
+                <Link
+                  href={href}
+                  className={[
+                    'relative px-4 py-[18px] text-[0.8rem] font-medium transition-colors duration-150 uppercase tracking-[0.1em] block',
+                    active
+                      ? 'text-ink'
+                      : 'text-brown hover:text-ink',
+                  ].join(' ')}
+                >
+                  {label}
+                  {active && (
+                    <span className="absolute bottom-0 left-4 right-4 h-[2px] bg-ochre" />
+                  )}
+                </Link>
+              </motion.div>
             )
           })}
         </nav>
@@ -84,17 +91,20 @@ export default function Nav() {
               </button>
             </div>
           ) : (
-            <button
+            <motion.button
               type="button"
               onClick={handleConnect}
               disabled={connecting}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.15 }}
               className="flex items-center gap-2 px-4 h-8 border-[1.5px] border-terra text-terra text-[0.8rem] font-medium uppercase tracking-[0.08em] hover:bg-terra hover:text-vellum active:bg-terra active:text-vellum transition-colors duration-150 disabled:opacity-50"
             >
               {connecting ? (
                 <Spinner size="xs" className="text-terra" />
               ) : null}
               Connect Wallet
-            </button>
+            </motion.button>
           )}
         </div>
       </div>

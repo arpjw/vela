@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   getBook,
   listMarkets,
@@ -19,6 +20,7 @@ import { Card } from '@/components/ui/Card'
 
 const MAX_BOOK_ROWS = 15
 const MAX_TRADES = 50
+const EASE = [0.25, 0.1, 0.25, 1] as const
 
 type RawLevel = [string, string]
 
@@ -100,6 +102,20 @@ function BookRowItem({
   level: DepthLevel
   side: 'bid' | 'ask'
 }) {
+  const prevPrice = useRef<string>(level.price)
+  const [flashClass, setFlashClass] = useState('')
+
+  useEffect(() => {
+    if (prevPrice.current === level.price) return
+    const prev = parseFloat(prevPrice.current)
+    const curr = parseFloat(level.price)
+    prevPrice.current = level.price
+    const cls = curr > prev ? 'flash-up' : 'flash-down'
+    setFlashClass(cls)
+    const t = setTimeout(() => setFlashClass(''), 400)
+    return () => clearTimeout(t)
+  }, [level.price])
+
   const barStyle = side === 'bid'
     ? 'linear-gradient(to left, rgba(196,148,58,0.25), rgba(196,148,58,0.05))'
     : 'linear-gradient(to left, rgba(74,109,156,0.25), rgba(74,109,156,0.05))'
@@ -107,10 +123,12 @@ function BookRowItem({
   const hoverBg = side === 'bid' ? 'hover:bg-[rgba(196,148,58,0.08)]' : 'hover:bg-[rgba(74,109,156,0.08)]'
 
   return (
-    <div className={`relative grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums ${hoverBg} transition-colors duration-75 cursor-default select-none`}>
+    <div
+      className={`relative grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums ${hoverBg} transition-colors duration-75 cursor-default select-none ${flashClass}`}
+    >
       <div
-        className="absolute inset-y-0 right-0 transition-[width] duration-100"
-        style={{ width: `${level.depthPct}%`, background: barStyle }}
+        className="absolute inset-y-0 right-0"
+        style={{ width: `${level.depthPct}%`, background: barStyle, transition: 'width 300ms cubic-bezier(0.25, 0.1, 0.25, 1)' }}
       />
       <span className={`relative z-10 font-mono font-medium ${priceColor}`}>{fmt(level.price, 4)}</span>
       <span className="relative z-10 font-mono text-ink text-right">{fmt(level.size, 4)}</span>
@@ -125,6 +143,102 @@ function BookColumnHeader() {
       <span>Price</span>
       <span className="text-right">Size</span>
       <span className="text-right">Total</span>
+    </div>
+  )
+}
+
+function BestPriceDisplay({ value, label, color }: { value: string | null; label: string; color: string }) {
+  return (
+    <div>
+      <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">{label}</span>
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={value ?? 'empty'}
+          initial={{ scale: 1.08, opacity: 0.5 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          className="tabular-nums leading-none font-mono font-semibold"
+          style={{ fontSize: '2rem', color, display: 'block' }}
+        >
+          {value ? fmt(value, 4) : '—'}
+        </motion.span>
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const w = canvas.offsetWidth
+    const h = canvas.height
+    canvas.width = w
+
+    ctx.clearRect(0, 0, w, h)
+
+    const midX = w / 2
+
+    const allBidSizes = bids.map(([, s]) => parseFloat(s))
+    const allAskSizes = asks.map(([, s]) => parseFloat(s))
+    const maxSize = Math.max(...allBidSizes, ...allAskSizes, 0.0001)
+
+    let bidCum = 0
+    const totalBidCum = bids.reduce((acc, [, s]) => acc + parseFloat(s), 0)
+    bids.slice(0, MAX_BOOK_ROWS).forEach(([, size], i) => {
+      bidCum += parseFloat(size)
+      const alpha = totalBidCum > 0 ? (bidCum / totalBidCum) * 0.8 + 0.1 : 0.2
+      const strokeW = 1.5 + (parseFloat(size) / maxSize) * 3
+      const yBase = h * 0.5
+      const yOff = (i - bids.length / 2) * (h / bids.length) * 1.2
+      const extentX = midX * (bidCum / totalBidCum) * 0.9
+
+      ctx.beginPath()
+      ctx.moveTo(midX, yBase + yOff)
+      ctx.bezierCurveTo(
+        midX - extentX * 0.3, yBase + yOff,
+        midX - extentX * 0.7, yBase + yOff + yOff * 0.1,
+        midX - extentX, yBase + yOff,
+      )
+      ctx.strokeStyle = `rgba(196, 148, 58, ${alpha})`
+      ctx.lineWidth = strokeW
+      ctx.stroke()
+    })
+
+    let askCum = 0
+    const totalAskCum = asks.reduce((acc, [, s]) => acc + parseFloat(s), 0)
+    asks.slice(0, MAX_BOOK_ROWS).forEach(([, size], i) => {
+      askCum += parseFloat(size)
+      const alpha = totalAskCum > 0 ? (askCum / totalAskCum) * 0.8 + 0.1 : 0.2
+      const strokeW = 1.5 + (parseFloat(size) / maxSize) * 3
+      const yBase = h * 0.5
+      const yOff = (i - asks.length / 2) * (h / asks.length) * 1.2
+      const extentX = midX * (askCum / totalAskCum) * 0.9
+
+      ctx.beginPath()
+      ctx.moveTo(midX, yBase + yOff)
+      ctx.bezierCurveTo(
+        midX + extentX * 0.3, yBase + yOff,
+        midX + extentX * 0.7, yBase + yOff + yOff * 0.1,
+        midX + extentX, yBase + yOff,
+      )
+      ctx.strokeStyle = `rgba(74, 109, 156, ${alpha})`
+      ctx.lineWidth = strokeW
+      ctx.stroke()
+    })
+  }, [bids, asks])
+
+  return (
+    <div className="border-t border-border">
+      <div className="px-3 py-2 border-b border-border">
+        <span className="text-[0.65rem] font-medium text-brown uppercase tracking-[0.15em]">Depth</span>
+      </div>
+      <canvas ref={canvasRef} height={160} className="w-full block" style={{ background: 'transparent' }} />
     </div>
   )
 }
@@ -163,7 +277,11 @@ function OrderBook({
         )}
       </div>
 
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[rgba(196,148,58,0.12)] border-y border-[rgba(196,148,58,0.3)]">
+      <motion.div
+        animate={{ opacity: [0.7, 1, 0.7] }}
+        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+        className="flex items-center justify-between px-3 py-1.5 bg-[rgba(196,148,58,0.12)] border-y border-[rgba(196,148,58,0.3)]"
+      >
         <span className="text-[9px] font-medium text-brown uppercase tracking-[0.15em]">
           Spread
         </span>
@@ -175,7 +293,7 @@ function OrderBook({
         ) : (
           <span className="text-[11px] text-brown">—</span>
         )}
-      </div>
+      </motion.div>
 
       <div className="px-3 py-1.5 border-b border-border">
         <span className="text-[0.65rem] font-medium text-ochre uppercase tracking-[0.15em]">
@@ -192,6 +310,8 @@ function OrderBook({
           ))
         )}
       </div>
+
+      <DepthCanvas bids={bids} asks={asks} />
     </div>
   )
 }
@@ -214,24 +334,29 @@ function TradesFeed({ trades }: { trades: TradeEntry[] }) {
           Waiting for trades…
         </p>
       ) : (
-        trades.map((t) => (
-          <div
-            key={t.key}
-            className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-75 cursor-default select-none"
-          >
-            <span
-              className={
-                t.side === 'buy'
-                  ? 'font-mono font-medium text-sage'
-                  : 'font-mono font-medium text-terra'
-              }
+        <AnimatePresence initial={false}>
+          {trades.map((t) => (
+            <motion.div
+              key={t.key}
+              initial={{ opacity: 0, x: -20, height: 0 }}
+              animate={{ opacity: 1, x: 0, height: 'auto' }}
+              transition={{ duration: 0.25 }}
+              className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-[rgba(196,148,58,0.08)] transition-colors duration-75 cursor-default select-none overflow-hidden"
             >
-              {fmt(t.price, 4)}
-            </span>
-            <span className="font-mono text-ink text-right">{fmt(t.size, 4)}</span>
-            <span className="font-mono text-brown text-right text-[0.7rem]">{fmtTime(t.ts)}</span>
-          </div>
-        ))
+              <span
+                className={
+                  t.side === 'buy'
+                    ? 'font-mono font-medium text-sage'
+                    : 'font-mono font-medium text-terra'
+                }
+              >
+                {fmt(t.price, 4)}
+              </span>
+              <span className="font-mono text-ink text-right">{fmt(t.size, 4)}</span>
+              <span className="font-mono text-brown text-right text-[0.7rem]">{fmtTime(t.ts)}</span>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       )}
     </div>
   )
@@ -342,10 +467,13 @@ function OrderEntryForm({
     <div className="flex flex-col gap-4">
       <div className="flex border border-border bg-vellum">
         {(['buy', 'sell'] as OrderSide[]).map((s) => (
-          <button
+          <motion.button
             key={s}
             type="button"
             onClick={() => handleSide(s)}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ duration: 0.15 }}
             className={[
               'flex-1 py-2.5 text-xs font-semibold transition-all duration-150 uppercase tracking-[0.12em]',
               side === s
@@ -356,7 +484,7 @@ function OrderEntryForm({
             ].join(' ')}
           >
             {s}
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -443,10 +571,13 @@ function OrderEntryForm({
       )}
 
       {isConnected ? (
-        <button
+        <motion.button
           type="button"
           onClick={handleSubmit}
           disabled={!canSubmit}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.97 }}
+          transition={{ duration: 0.15 }}
           className={[
             'w-full h-12 font-sans font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 disabled:opacity-50',
             side === 'buy'
@@ -463,7 +594,7 @@ function OrderEntryForm({
           ) : (
             `${side === 'buy' ? 'Buy' : 'Sell'} ${base}`
           )}
-        </button>
+        </motion.button>
       ) : (
         <Button variant="secondary" size="lg" className="w-full tracking-wide" disabled>
           Connect Wallet to Trade
@@ -593,38 +724,44 @@ export default function MarketPage({ params }: PageProps) {
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4">
       <div className="flex flex-wrap items-start gap-x-8 gap-y-4 mb-6 pb-5 border-b border-border">
         <div className="flex items-start gap-4">
-          <div className="w-10 h-10 bg-ochre/10 flex items-center justify-center text-xs font-bold text-ochre font-mono shrink-0">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, ease: EASE }}
+            className="w-10 h-10 bg-ochre/10 flex items-center justify-center text-xs font-bold text-ochre font-mono shrink-0"
+          >
             {marketId.split('-')[0]?.slice(0, 2)}
-          </div>
+          </motion.div>
           <div>
             <div className="flex items-center gap-3 mb-3">
-              <h1 className="text-[1.5rem] font-bold text-ink tracking-wide uppercase">
+              <motion.h1
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: EASE }}
+                className="text-[1.5rem] font-bold text-ink tracking-wide uppercase"
+              >
                 {marketId}
-              </h1>
+              </motion.h1>
               <WsStatusBadge status={wsStatus} />
             </div>
             <div className="flex items-end gap-5">
-              <div>
-                <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">Best Bid</span>
-                <span className="text-[2rem] font-mono font-semibold text-ochre tabular-nums leading-none">
-                  {bestBid ? fmt(bestBid, 4) : '—'}
-                </span>
-              </div>
+              <BestPriceDisplay value={bestBid} label="Best Bid" color="#C4943A" />
               <div className="pb-0.5 text-center">
                 <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">Spread</span>
-                <span className="text-[1.1rem] font-mono font-medium text-fresco tabular-nums leading-none">
+                <motion.span
+                  key={spread?.abs ?? 'empty'}
+                  initial={{ scale: 1.06, opacity: 0.5 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.2 }}
+                  className="text-[1.1rem] font-mono font-medium text-fresco tabular-nums leading-none block"
+                >
                   {spread?.abs ?? '—'}
                   {spread && (
                     <span className="text-xs font-normal text-brown ml-1">{spread.bps} bps</span>
                   )}
-                </span>
+                </motion.span>
               </div>
-              <div>
-                <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">Best Ask</span>
-                <span className="text-[2rem] font-mono font-semibold text-terra tabular-nums leading-none">
-                  {bestAsk ? fmt(bestAsk, 4) : '—'}
-                </span>
-              </div>
+              <BestPriceDisplay value={bestAsk} label="Best Ask" color="#A0402A" />
             </div>
           </div>
         </div>
@@ -639,15 +776,32 @@ export default function MarketPage({ params }: PageProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,280px)_1fr_minmax(280px,320px)] gap-4 items-start">
-        <Card padding="none" className="overflow-hidden">
-          <OrderBook bids={bids} asks={asks} loading={bookLoading} />
-        </Card>
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: EASE, delay: 0.1 }}
+        >
+          <Card padding="none" className="overflow-hidden">
+            <OrderBook bids={bids} asks={asks} loading={bookLoading} />
+          </Card>
+        </motion.div>
 
-        <Card padding="none" className="overflow-hidden">
-          <TradesFeed trades={trades} />
-        </Card>
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: EASE, delay: 0.2 }}
+        >
+          <Card padding="none" className="overflow-hidden">
+            <TradesFeed trades={trades} />
+          </Card>
+        </motion.div>
 
-        <div className="bg-canvas border border-border shadow-card p-6">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: EASE, delay: 0.3 }}
+          className="bg-canvas border border-border shadow-card p-6"
+        >
           <OrderEntryForm
             marketId={marketId}
             address={address}
@@ -655,7 +809,7 @@ export default function MarketPage({ params }: PageProps) {
             bestBid={bestBid}
             bestAsk={bestAsk}
           />
-        </div>
+        </motion.div>
       </div>
     </div>
   )
