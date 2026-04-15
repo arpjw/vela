@@ -1,0 +1,22 @@
+# flyctl launch added from .gitignore
+target
+**/Cargo.lock
+**/*.log
+**/*.prof
+**/flamegraph.svg
+**/perf.data
+**/perf.data.old
+**/.DS_Store
+**/.env
+data
+snapshots
+
+# flyctl launch added from frontend/.gitignore
+frontend/**/node_modules
+frontend/**/.next
+frontend/**/*.trace
+frontend/**/*.gz
+frontend/**/cargo-flamegraph.trace
+frontend/**/Launch_*.trace
+frontend/**/.env*.local
+fly.toml
