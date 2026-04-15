@@ -7,6 +7,7 @@ import {
   getBook,
   listMarkets,
   postOrder,
+  fromFixed,
   type MarketResponse,
   type PostOrderBody,
 } from '@/lib/api'
@@ -664,8 +665,8 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
     getBook(marketId)
       .then((res) => {
         if (res.ok && res.data) {
-          setBids(res.data.bids.map((l) => [l.price, l.quantity] as RawLevel))
-          setAsks(res.data.asks.map((l) => [l.price, l.quantity] as RawLevel))
+          setBids(res.data.bids.map((l) => [fromFixed(l.price).toString(), fromFixed(l.quantity).toString()] as RawLevel))
+          setAsks(res.data.asks.map((l) => [fromFixed(l.price).toString(), fromFixed(l.quantity).toString()] as RawLevel))
         }
       })
       .finally(() => setBookLoading(false))
@@ -690,15 +691,15 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
 
     const unsubMsg = ws.onMessage((msg) => {
       if (msg.type === 'book_snapshot' && msg.market === marketId) {
-        setBids(msg.bids as RawLevel[])
-        setAsks(msg.asks as RawLevel[])
+        setBids((msg.bids as RawLevel[]).map(([p, s]) => [fromFixed(p).toString(), fromFixed(s).toString()] as RawLevel))
+        setAsks((msg.asks as RawLevel[]).map(([p, s]) => [fromFixed(p).toString(), fromFixed(s).toString()] as RawLevel))
         setBookLoading(false)
       }
       if (msg.type === 'trade' && msg.market === marketId) {
         const entry: TradeEntry = {
           key: `${msg.timestamp}-${msg.price}-${crypto.getRandomValues(new Uint32Array(1))[0]}`,
-          price: msg.price,
-          size: msg.quantity,
+          price: fromFixed(msg.price).toString(),
+          size: fromFixed(msg.quantity).toString(),
           side: msg.side as OrderSide,
           ts: msg.timestamp,
         }

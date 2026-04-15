@@ -183,3 +183,7 @@ export function initiateWithdrawal(
     body: JSON.stringify(body),
   })
 }
+
+export function fromFixed(raw: number | string): number {
+  return Number(raw) / 1_000_000
+}

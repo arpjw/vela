@@ -4,7 +4,6 @@ import { Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth'
 import Nav from '@/components/Nav'
-import FrescoCanvas from '@/components/FrescoCanvas'
 import { AnimatePresence, motion } from 'framer-motion'
 import { usePathname } from 'next/navigation'
 
@@ -37,7 +36,6 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body className="min-h-screen bg-parchment text-ink font-sans">
-        <FrescoCanvas />
         <AuthProvider>
           <div className="relative z-10">
             <Nav />
