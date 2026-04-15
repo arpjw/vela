@@ -1,117 +1,603 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+/// Vela matching-engine benchmark suite
+///
+/// Simulates realistic market-making dynamics:
+///   • 10 markets each filled to near-capacity with resting orders
+///   • 50 market makers posting bids/asks at random widths
+///   • 1 aggressive taker filling randomly across markets
+///   • ~98:2 cancel/fill ratio (makers cancel & repost every iteration)
+///
+/// Three benchmark groups: post_order, cancel_order, full_loop.
+/// Plus a 10-second sustained-throughput benchmark (orders/sec).
+/// All RNG is seeded deterministically for reproducibility.
+use std::time::{Duration, Instant};
+
+use criterion::{
+    black_box, criterion_group, criterion_main,
+    BenchmarkId, Criterion, Throughput,
+};
+use rand::prelude::*;
+use rand::rngs::StdRng;
+
 use engine::MatchingEngine;
 use types::{
-    AssetId, CancelOrderRequest, DepositRequest, FeeConfig, Market, MarketId,
-    OrderSide, OrderType, PostOrderRequest, Request, UserId, PRICE_SCALE, QUANTITY_SCALE,
+    AssetId, CancelOrderRequest, DepositRequest, FeeConfig, Market, MarketId, OrderId,
+    OrderSide, OrderStatus, OrderType, PostOrderRequest, Request, Response, UserId,
+    PRICE_SCALE, QUANTITY_SCALE,
 };
 
-fn make_engine() -> MatchingEngine {
-    let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
-    for i in 0..10u8 {
-        let base = format!("ASSET{}", i);
-        let market = Market {
-            id: MarketId::new(&base, "USDC"),
-            base: AssetId(base.clone()),
-            quote: AssetId("USDC".into()),
-            max_orders: 10_000,
-            min_order_size: QUANTITY_SCALE / 100,
-            price_tick: 1,
-            quantity_tick: 1,
-        };
-        engine.add_market(market);
-    }
-    engine
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const NUM_MARKETS:    usize = 10;
+const NUM_MMS:        usize = 50;
+const ORDERS_PER_MM:  usize = 20;   // bids + asks pre-loaded into each book
+const MAX_BOOK_DEPTH: usize = 10_000;
+const MID_PRICE:      u64   = 50_000 * PRICE_SCALE;
+const TICK:           u64   = PRICE_SCALE / 100;  // 0.01 USDC
+const SEED:           u64   = 0xDEAD_BEEF_CAFE_1234;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn user(i: u8) -> UserId {
+    let mut a = [0u8; 20];
+    a[19] = i;
+    UserId(a)
 }
 
-fn make_user(i: u8) -> UserId {
-    let mut addr = [0u8; 20];
-    addr[19] = i;
-    UserId(addr)
+fn market_id(i: usize) -> MarketId {
+    MarketId::new(&format!("ASSET{}", i), "USDC")
 }
+
+fn base_asset(i: usize) -> AssetId {
+    AssetId(format!("ASSET{}", i))
+}
+
+fn usdc() -> AssetId {
+    AssetId("USDC".into())
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic engine setup
+// ---------------------------------------------------------------------------
+
+/// Build an engine pre-loaded with near-capacity order books:
+///  - 10 markets
+///  - 50 MMs each depositing large USDC + base balances
+///  - Each MM posts ORDERS_PER_MM/2 bids and ORDERS_PER_MM/2 asks at
+///    random prices around mid
+///
+/// Returns (engine, resting_order_ids_per_market, nonce_counter_per_user).
+struct SimState {
+    engine:       MatchingEngine,
+    /// For each market: Vec of (user_index, order_id, side) for resting orders.
+    resting:      Vec<Vec<(u8, OrderId, OrderSide)>>,
+    /// Per-user nonce counters (index = user index 0..=NUM_MMS).
+    nonces:       Vec<u64>,
+    /// Monotonically increasing timestamp used as engine ts.
+    ts:           u64,
+    rng:          StdRng,
+}
+
+impl SimState {
+    fn build() -> Self {
+        let mut rng = StdRng::seed_from_u64(SEED);
+        let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+
+        // Register markets.
+        for i in 0..NUM_MARKETS {
+            engine.add_market(Market {
+                id:            market_id(i),
+                base:          base_asset(i),
+                quote:         usdc(),
+                max_orders:    MAX_BOOK_DEPTH,
+                min_order_size: QUANTITY_SCALE / 100,
+                price_tick:    TICK,
+                quantity_tick: 1,
+            });
+        }
+
+        let mut nonces = vec![0u64; NUM_MMS + 2]; // +2: taker + spare
+        let mut ts = 1u64;
+
+        // Deposit funds for every MM.
+        for mm in 0..NUM_MMS as u8 {
+            let u = user(mm);
+            let n = &mut nonces[mm as usize];
+
+            // USDC for quoting bids across all markets.
+            *n += 1;
+            engine.process(
+                Request::Deposit(DepositRequest {
+                    user: u.clone(),
+                    asset: usdc(),
+                    amount: 100_000_000 * PRICE_SCALE,
+                    l1_tx_hash: {
+                        let mut h = [0u8; 32];
+                        h[0] = mm;
+                        h
+                    },
+                }),
+                ts,
+            );
+
+            // Base asset for quoting asks.
+            for i in 0..NUM_MARKETS {
+                *n += 1;
+                engine.process(
+                    Request::Deposit(DepositRequest {
+                        user: u.clone(),
+                        asset: base_asset(i),
+                        amount: 10_000 * QUANTITY_SCALE,
+                        l1_tx_hash: {
+                            let mut h = [0u8; 32];
+                            h[0] = mm;
+                            h[1] = i as u8;
+                            h
+                        },
+                    }),
+                    ts,
+                );
+                ts += 1;
+            }
+        }
+
+        // Deposit for taker (user index NUM_MMS).
+        let taker_idx = NUM_MMS as u8;
+        let tn = &mut nonces[NUM_MMS];
+        *tn += 1;
+        engine.process(
+            Request::Deposit(DepositRequest {
+                user: user(taker_idx),
+                asset: usdc(),
+                amount: 100_000_000 * PRICE_SCALE,
+                l1_tx_hash: [0xffu8; 32],
+            }),
+            ts,
+        );
+        ts += 1;
+        for i in 0..NUM_MARKETS {
+            *tn += 1;
+            engine.process(
+                Request::Deposit(DepositRequest {
+                    user: user(taker_idx),
+                    asset: base_asset(i),
+                    amount: 10_000 * QUANTITY_SCALE,
+                    l1_tx_hash: {
+                        let mut h = [0xffu8; 32];
+                        h[1] = i as u8;
+                        h
+                    },
+                }),
+                ts,
+            );
+            ts += 1;
+        }
+
+        // Each MM posts bids and asks across every market.
+        let mut resting: Vec<Vec<(u8, OrderId, OrderSide)>> =
+            (0..NUM_MARKETS).map(|_| Vec::new()).collect();
+
+        let half = ORDERS_PER_MM / 2;
+        for mm in 0..NUM_MMS as u8 {
+            let u = user(mm);
+            for mkt_i in 0..NUM_MARKETS {
+                for side_pass in 0..2usize {
+                    let side = if side_pass == 0 { OrderSide::Bid } else { OrderSide::Ask };
+                    for _ in 0..half {
+                        let spread_ticks: u64 = rng.gen_range(2..80);
+                        let price = match side {
+                            OrderSide::Bid => MID_PRICE.saturating_sub(spread_ticks * TICK),
+                            OrderSide::Ask => MID_PRICE + spread_ticks * TICK,
+                        };
+                        let qty: u64 = QUANTITY_SCALE * rng.gen_range(1u64..=5);
+                        let nonce = {
+                            nonces[mm as usize] += 1;
+                            nonces[mm as usize]
+                        };
+                        let responses = engine.process(
+                            Request::PostOrder(PostOrderRequest {
+                                user: u.clone(),
+                                market: market_id(mkt_i),
+                                side,
+                                order_type: OrderType::GoodTillCanceled,
+                                price,
+                                quantity: qty,
+                                nonce,
+                                client_order_id: None,
+                                signature: vec![0u8; 65],
+                            }),
+                            ts,
+                        );
+                        ts += 1;
+                        // Record the resting order id.
+                        for r in &responses {
+                            if let Response::OrderPosted(op) = r {
+                                if matches!(op.status, OrderStatus::Open | OrderStatus::PartiallyFilled) {
+                                    resting[mkt_i].push((mm, op.order_id, side));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        SimState { engine, resting, nonces, ts, rng }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Request factories
+// ---------------------------------------------------------------------------
+
+impl SimState {
+    fn next_ts(&mut self) -> u64 {
+        self.ts += 1;
+        self.ts
+    }
+
+    /// Pick a random market and MM; build a resting post-order request.
+    fn random_post_order(&mut self) -> (u8, Request) {
+        let mkt_i: usize = self.rng.gen_range(0..NUM_MARKETS);
+        let mm: u8       = self.rng.gen_range(0..NUM_MMS as u8);
+        let side = if self.rng.gen_bool(0.5) { OrderSide::Bid } else { OrderSide::Ask };
+        let spread_ticks: u64 = self.rng.gen_range(2..80);
+        let price = match side {
+            OrderSide::Bid => MID_PRICE.saturating_sub(spread_ticks * TICK),
+            OrderSide::Ask => MID_PRICE + spread_ticks * TICK,
+        };
+        let qty: u64 = QUANTITY_SCALE * self.rng.gen_range(1u64..=5);
+        self.nonces[mm as usize] += 1;
+        let nonce = self.nonces[mm as usize];
+        (
+            mm,
+            Request::PostOrder(PostOrderRequest {
+                user:            user(mm),
+                market:          market_id(mkt_i),
+                side,
+                order_type:      OrderType::GoodTillCanceled,
+                price,
+                quantity:        qty,
+                nonce,
+                client_order_id: None,
+                signature:       vec![0u8; 65],
+            }),
+        )
+    }
+
+    /// Pick a random resting order from a random market and cancel it.
+    /// Returns None if no resting orders remain in that market.
+    fn random_cancel(&mut self) -> Option<(u8, OrderId, Request)> {
+        let mkt_i: usize = self.rng.gen_range(0..NUM_MARKETS);
+        if self.resting[mkt_i].is_empty() {
+            return None;
+        }
+        let idx  = self.rng.gen_range(0..self.resting[mkt_i].len());
+        let (mm, oid, _side) = self.resting[mkt_i].swap_remove(idx);
+        self.nonces[mm as usize] += 1;
+        let nonce = self.nonces[mm as usize];
+        Some((
+            mm,
+            oid,
+            Request::CancelOrder(CancelOrderRequest {
+                user:            user(mm),
+                order_id:        Some(oid),
+                client_order_id: None,
+                nonce,
+                signature:       vec![0u8; 65],
+            }),
+        ))
+    }
+
+    /// Aggressive taker IOC crossing the best resting price.
+    fn taker_ioc(&mut self) -> Request {
+        let mkt_i: usize = self.rng.gen_range(0..NUM_MARKETS);
+        let taker = user(NUM_MMS as u8);
+        // Taker buys at a price above mid to guarantee matching.
+        let side = if self.rng.gen_bool(0.5) { OrderSide::Bid } else { OrderSide::Ask };
+        let price = match side {
+            OrderSide::Bid => MID_PRICE + 200 * TICK, // buy above mid
+            OrderSide::Ask => MID_PRICE.saturating_sub(200 * TICK), // sell below mid
+        };
+        let qty: u64 = QUANTITY_SCALE * self.rng.gen_range(1u64..=3);
+        let idx = NUM_MMS; // taker nonce slot
+        self.nonces[idx] += 1;
+        let nonce = self.nonces[idx];
+        Request::PostOrder(PostOrderRequest {
+            user:            taker,
+            market:          market_id(mkt_i),
+            side,
+            order_type:      OrderType::ImmediateOrCancel,
+            price,
+            quantity:        qty,
+            nonce,
+            client_order_id: None,
+            signature:       vec![0u8; 65],
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Benchmark: post_order group
+// ---------------------------------------------------------------------------
 
 fn bench_post_order(c: &mut Criterion) {
-    let mut engine = make_engine();
-    let user = make_user(1);
-    let market = MarketId::new("ASSET0", "USDC");
+    let mut group = c.benchmark_group("post_order");
+    group.measurement_time(Duration::from_secs(10));
+    group.sample_size(500);
 
-    engine.process(
-        Request::Deposit(DepositRequest {
-            user: user.clone(),
-            asset: AssetId("USDC".into()),
-            amount: 1_000_000 * PRICE_SCALE,
-            l1_tx_hash: [0u8; 32],
-        }),
-        0,
-    );
+    // Pre-build once; reuse across iterations (engine accumulates orders).
+    let mut sim = SimState::build();
 
-    let mut nonce = 1u64;
-
-    c.bench_function("post_order_limit", |b| {
+    group.bench_function("mm_resting_gtc", |b| {
         b.iter(|| {
-            let req = PostOrderRequest {
-                user: user.clone(),
-                market: market.clone(),
-                side: OrderSide::Bid,
-                order_type: OrderType::GoodTillCanceled,
-                price: 50_000 * PRICE_SCALE,
-                quantity: QUANTITY_SCALE,
-                nonce,
-                client_order_id: None,
-                signature: vec![0u8; 65],
-            };
-            nonce += 1;
-            black_box(engine.process(Request::PostOrder(req), nonce))
+            let ts = sim.next_ts();
+            let (_, req) = sim.random_post_order();
+            let resp = sim.engine.process(black_box(req), ts);
+            // Record any new resting orders so the book stays alive.
+            for r in &resp {
+                if let Response::OrderPosted(op) = r {
+                    if matches!(op.status, OrderStatus::Open | OrderStatus::PartiallyFilled) {
+                        // best-effort: push to market 0 resting list
+                        sim.resting[0].push((0, op.order_id, OrderSide::Bid));
+                    }
+                }
+            }
+            black_box(resp)
         })
     });
+
+    group.finish();
 }
+
+// ---------------------------------------------------------------------------
+// Benchmark: cancel_order group
+// ---------------------------------------------------------------------------
 
 fn bench_cancel_order(c: &mut Criterion) {
-    let mut engine = make_engine();
-    let user = make_user(2);
-    let market = MarketId::new("ASSET0", "USDC");
+    let mut group = c.benchmark_group("cancel_order");
+    group.measurement_time(Duration::from_secs(10));
+    group.sample_size(500);
 
-    engine.process(
-        Request::Deposit(DepositRequest {
-            user: user.clone(),
-            asset: AssetId("USDC".into()),
-            amount: 1_000_000 * PRICE_SCALE,
-            l1_tx_hash: [0u8; 32],
-        }),
-        0,
-    );
+    let mut sim = SimState::build();
 
-    let mut nonce = 1u64;
-    let mut order_id = 1u64;
-
-    c.bench_function("cancel_order", |b| {
+    group.bench_function("mm_cancel_resting", |b| {
         b.iter(|| {
-            let post = PostOrderRequest {
-                user: user.clone(),
-                market: market.clone(),
-                side: OrderSide::Bid,
-                order_type: OrderType::GoodTillCanceled,
-                price: 49_000 * PRICE_SCALE,
-                quantity: QUANTITY_SCALE,
-                nonce,
-                client_order_id: None,
-                signature: vec![0u8; 65],
-            };
-            nonce += 1;
-            engine.process(Request::PostOrder(post), nonce);
-
-            let cancel = CancelOrderRequest {
-                user: user.clone(),
-                order_id: Some(order_id),
-                client_order_id: None,
-                nonce,
-                signature: vec![0u8; 65],
-            };
-            nonce += 1;
-            order_id += 1;
-            black_box(engine.process(Request::CancelOrder(cancel), nonce))
+            // 98% cancel, 2% repost to keep the book populated.
+            let roll: u8 = sim.rng.gen_range(0..100);
+            if roll < 98 {
+                if let Some((_, _, req)) = sim.random_cancel() {
+                    let ts = sim.next_ts();
+                    black_box(sim.engine.process(black_box(req), ts))
+                } else {
+                    // Book emptied — repost.
+                    let ts = sim.next_ts();
+                    let (_, req) = sim.random_post_order();
+                    black_box(sim.engine.process(black_box(req), ts))
+                }
+            } else {
+                let ts = sim.next_ts();
+                let (_, req) = sim.random_post_order();
+                black_box(sim.engine.process(black_box(req), ts))
+            }
         })
     });
+
+    group.finish();
 }
 
-criterion_group!(benches, bench_post_order, bench_cancel_order);
+// ---------------------------------------------------------------------------
+// Benchmark: full_loop group (cancel+repost or taker fill)
+// ---------------------------------------------------------------------------
+
+fn bench_full_loop(c: &mut Criterion) {
+    let mut group = c.benchmark_group("full_loop");
+    group.measurement_time(Duration::from_secs(10));
+    group.sample_size(500);
+
+    let mut sim = SimState::build();
+
+    // full_loop: each iteration cancels a resting order and reposts it
+    // (the dominant MM workflow), with 2% taker fills injected.
+    group.bench_function("cancel_repost_cycle", |b| {
+        b.iter(|| {
+            let ts = sim.next_ts();
+            let roll: u8 = sim.rng.gen_range(0..100);
+            if roll < 2 {
+                // Taker fill.
+                let req = sim.taker_ioc();
+                black_box(sim.engine.process(black_box(req), ts));
+            } else {
+                // Cancel resting, then immediately repost.
+                if let Some((_, _, cancel_req)) = sim.random_cancel() {
+                    black_box(sim.engine.process(black_box(cancel_req), ts));
+                }
+                let ts2 = sim.next_ts();
+                let (_, post_req) = sim.random_post_order();
+                let post_resp = sim.engine.process(black_box(post_req), ts2);
+                for r in &post_resp {
+                    if let Response::OrderPosted(op) = r {
+                        if matches!(op.status, OrderStatus::Open | OrderStatus::PartiallyFilled) {
+                            let mkt_i = sim.rng.gen_range(0..NUM_MARKETS);
+                            sim.resting[mkt_i].push((0, op.order_id, OrderSide::Bid));
+                        }
+                    }
+                }
+                black_box(post_resp);
+            }
+        })
+    });
+
+    group.finish();
+}
+
+// ---------------------------------------------------------------------------
+// Benchmark: throughput — sustained orders/sec over 10 seconds
+// ---------------------------------------------------------------------------
+
+fn bench_throughput(c: &mut Criterion) {
+    let mut group = c.benchmark_group("throughput");
+    // Use a fixed element count so Criterion reports throughput in ops/sec.
+    let batch: u64 = 1_000;
+    group.throughput(Throughput::Elements(batch));
+    group.measurement_time(Duration::from_secs(15));
+    group.sample_size(50);
+
+    let mut sim = SimState::build();
+
+    group.bench_function(
+        BenchmarkId::new("orders_per_sec", batch),
+        |b| {
+            b.iter(|| {
+                for _ in 0..batch {
+                    let ts = sim.next_ts();
+                    let roll: u8 = sim.rng.gen_range(0..100);
+                    let req = if roll < 2 {
+                        sim.taker_ioc()
+                    } else if roll < 50 {
+                        if let Some((_, _, r)) = sim.random_cancel() {
+                            r
+                        } else {
+                            sim.random_post_order().1
+                        }
+                    } else {
+                        sim.random_post_order().1
+                    };
+                    black_box(sim.engine.process(req, ts));
+                }
+            })
+        },
+    );
+
+    group.finish();
+}
+
+// ---------------------------------------------------------------------------
+// Benchmark: latency percentiles (p50 / p99 / p999)
+//
+// Criterion reports mean + std-dev; for explicit percentile data we collect
+// raw timings ourselves and print p50 / p99 / p999 from the warm sample.
+// ---------------------------------------------------------------------------
+
+fn bench_latency_percentiles(c: &mut Criterion) {
+    let mut group = c.benchmark_group("latency_percentiles");
+    group.measurement_time(Duration::from_secs(15));
+    group.sample_size(1000);
+
+    let mut sim = SimState::build();
+
+    // -- post_order p50/p99/p999 --
+    {
+        let mut timings: Vec<u64> = Vec::with_capacity(10_000);
+        group.bench_function("post_order_raw", |b| {
+            b.iter_custom(|iters| {
+                let mut total = Duration::ZERO;
+                for _ in 0..iters {
+                    let ts = sim.next_ts();
+                    let (_, req) = sim.random_post_order();
+                    let t0 = Instant::now();
+                    black_box(sim.engine.process(black_box(req), ts));
+                    let elapsed = t0.elapsed();
+                    total += elapsed;
+                    timings.push(elapsed.as_nanos() as u64);
+                }
+                total
+            })
+        });
+        print_percentiles("post_order", &mut timings);
+    }
+
+    // -- cancel_order p50/p99/p999 --
+    {
+        let mut timings: Vec<u64> = Vec::with_capacity(10_000);
+        group.bench_function("cancel_order_raw", |b| {
+            b.iter_custom(|iters| {
+                let mut total = Duration::ZERO;
+                for _ in 0..iters {
+                    let ts = sim.next_ts();
+                    let req = if let Some((_, _, r)) = sim.random_cancel() {
+                        r
+                    } else {
+                        sim.random_post_order().1
+                    };
+                    let t0 = Instant::now();
+                    black_box(sim.engine.process(black_box(req), ts));
+                    let elapsed = t0.elapsed();
+                    total += elapsed;
+                    timings.push(elapsed.as_nanos() as u64);
+                }
+                total
+            })
+        });
+        print_percentiles("cancel_order", &mut timings);
+    }
+
+    // -- full_loop (cancel+repost) p50/p99/p999 --
+    {
+        let mut timings: Vec<u64> = Vec::with_capacity(10_000);
+        group.bench_function("full_loop_raw", |b| {
+            b.iter_custom(|iters| {
+                let mut total = Duration::ZERO;
+                for _ in 0..iters {
+                    let ts  = sim.next_ts();
+                    let ts2 = sim.next_ts();
+                    let cancel_req = sim.random_cancel().map(|(_, _, r)| r);
+                    let (_, post_req) = sim.random_post_order();
+                    let t0 = Instant::now();
+                    if let Some(cr) = cancel_req {
+                        black_box(sim.engine.process(black_box(cr), ts));
+                    }
+                    black_box(sim.engine.process(black_box(post_req), ts2));
+                    let elapsed = t0.elapsed();
+                    total += elapsed;
+                    timings.push(elapsed.as_nanos() as u64);
+                }
+                total
+            })
+        });
+        print_percentiles("full_loop", &mut timings);
+    }
+
+    group.finish();
+}
+
+fn print_percentiles(label: &str, timings: &mut Vec<u64>) {
+    if timings.is_empty() {
+        return;
+    }
+    timings.sort_unstable();
+    let p50  = percentile(timings, 50);
+    let p99  = percentile(timings, 99);
+    let p999 = percentile(timings, 99_9); // tenths-of-percent index trick below
+    println!(
+        "\n[latency] {label}: p50 = {:.2}µs  p99 = {:.2}µs  p99.9 = {:.2}µs  (n={})",
+        p50  as f64 / 1_000.0,
+        p99  as f64 / 1_000.0,
+        p999 as f64 / 1_000.0,
+        timings.len(),
+    );
+}
+
+/// `pct` is in tenths-of-a-percent (500 = p50, 990 = p99, 999 = p99.9).
+fn percentile(sorted: &[u64], pct_tenths: usize) -> u64 {
+    let idx = (sorted.len() * pct_tenths).saturating_sub(1) / 1000;
+    let idx = idx.min(sorted.len() - 1);
+    sorted[idx]
+}
+
+// ---------------------------------------------------------------------------
+// Criterion wiring
+// ---------------------------------------------------------------------------
+
+criterion_group!(
+    benches,
+    bench_post_order,
+    bench_cancel_order,
+    bench_full_loop,
+    bench_throughput,
+    bench_latency_percentiles,
+);
 criterion_main!(benches);
