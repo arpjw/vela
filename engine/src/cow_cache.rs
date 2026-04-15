@@ -4,11 +4,9 @@ use crate::order_book::OrderBook;
 
 #[derive(Debug, Clone)]
 pub enum Delta {
-    BalanceSet { user: UserId, asset: AssetId, balance: Balance },
     OrderBookInsert { market: types::MarketId, order: types::Order },
     OrderBookRemove { market: types::MarketId, order_id: OrderId },
     OrderBookPartialFill { market: types::MarketId, order_id: OrderId, additional_filled: Quantity },
-    MetadataSet { user: UserId, metadata: UserMetadata },
 }
 
 #[derive(Debug, Default)]
@@ -36,11 +34,6 @@ impl CowCache {
 
     pub fn set_balance(&mut self, balance: Balance) {
         let key = (balance.user.clone(), balance.asset.clone());
-        self.deltas.push(Delta::BalanceSet {
-            user: balance.user.clone(),
-            asset: balance.asset.clone(),
-            balance: balance.clone(),
-        });
         self.balance_overlay.insert(key, balance);
     }
 
@@ -92,7 +85,6 @@ impl CowCache {
     }
 
     pub fn set_metadata(&mut self, metadata: UserMetadata) {
-        self.deltas.push(Delta::MetadataSet { user: metadata.user.clone(), metadata: metadata.clone() });
         self.metadata_overlay.insert(metadata.user.clone(), metadata);
     }
 
@@ -114,10 +106,13 @@ impl CowCache {
         metadata: &mut HashMap<UserId, UserMetadata>,
         order_books: &mut HashMap<types::MarketId, OrderBook>,
     ) {
+        // Drain overlays directly — no redundant delta replay needed for balance/metadata.
+        balances.extend(self.balance_overlay);
+        metadata.extend(self.metadata_overlay);
+
+        // Only order-book deltas remain (insert/remove/partial-fill).
         for delta in self.deltas {
             match delta {
-                Delta::BalanceSet { user, asset, balance } => { balances.insert((user, asset), balance); }
-                Delta::MetadataSet { user, metadata: m } => { metadata.insert(user, m); }
                 Delta::OrderBookInsert { market, order } => {
                     if let Some(book) = order_books.get_mut(&market) { let _ = book.insert_resting(order); }
                 }
