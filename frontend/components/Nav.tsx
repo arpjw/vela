@@ -12,7 +12,6 @@ const LINKS = [
   { href: '/dashboard',  label: 'Dashboard' },
   { href: '/analytics',  label: 'Analytics' },
   { href: '/history',    label: 'History'   },
-  { href: '/docs',       label: 'Docs'      },
 ]
 
 export default function Nav() {
@@ -75,6 +74,20 @@ export default function Nav() {
               </motion.div>
             )
           })}
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 + LINKS.length * 0.08, duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
+          >
+            <a
+              href="https://docs.vela.monolithsystematic.com"
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-[18px] text-[0.8rem] font-medium transition-colors duration-150 uppercase tracking-[0.1em] block text-brown hover:text-ink"
+            >
+              DOCS
+            </a>
+          </motion.div>
         </nav>
 
         <div className="flex items-center gap-3">
