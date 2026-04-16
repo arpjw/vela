@@ -184,6 +184,29 @@ export function initiateWithdrawal(
   })
 }
 
+/** POST /withdrawals */
+export async function withdraw(
+  user: string,
+  asset: string,
+  amount: string,
+  signature: string,
+  nonce: number,
+): Promise<ApiResponse<{ asset: string; amount: string }>> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
+  const rawAmount = Math.round(parseFloat(amount) * 1_000_000)
+  try {
+    const res = await fetch(`${apiUrl}/withdrawals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: user, asset, amount: rawAmount, signature, nonce }),
+      cache: 'no-store',
+    })
+    return res.json()
+  } catch {
+    return { ok: false, error: 'Network error' }
+  }
+}
+
 /** POST /deposit */
 export async function deposit(
   user: string,

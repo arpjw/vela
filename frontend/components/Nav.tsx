@@ -97,10 +97,33 @@ export default function Nav() {
               </Link>
             </motion.div>
           )}
+          {isConnected && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 + (LINKS.length + 1) * 0.08, duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
+            >
+              <Link
+                href="/withdraw"
+                className={[
+                  'relative px-4 py-[18px] text-[0.8rem] font-medium transition-colors duration-150 uppercase tracking-[0.1em] block',
+                  pathname.startsWith('/withdraw')
+                    ? 'text-crimson'
+                    : 'text-crimson hover:text-crimson/70',
+                ].join(' ')}
+                style={{ color: '#C41E3A' }}
+              >
+                WITHDRAW
+                {pathname.startsWith('/withdraw') && (
+                  <span className="absolute bottom-0 left-4 right-4 h-[2px]" style={{ background: '#C41E3A' }} />
+                )}
+              </Link>
+            </motion.div>
+          )}
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 + (LINKS.length + 1) * 0.08, duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
+            transition={{ delay: 0.2 + (LINKS.length + 2) * 0.08, duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
           >
             <a
               href="https://monolithsystematicllc.mintlify.app"
