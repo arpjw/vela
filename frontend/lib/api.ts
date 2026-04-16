@@ -183,3 +183,23 @@ export function initiateWithdrawal(
     body: JSON.stringify(body),
   })
 }
+
+/** POST /deposit */
+export async function deposit(
+  user: string,
+  asset: string,
+  amount: string,
+): Promise<ApiResponse<BalanceResponse[]>> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
+  try {
+    const res = await fetch(`${apiUrl}/deposit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user, asset, amount }),
+      cache: 'no-store',
+    })
+    return res.json()
+  } catch {
+    return { ok: false, error: 'Network error' }
+  }
+}

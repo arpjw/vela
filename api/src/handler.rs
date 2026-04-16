@@ -6,6 +6,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use sha3::{Digest, Keccak256};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use types::{
     AssetId, CancelOrderRequest, DepositRequest, MarketId, PostOrderRequest,
@@ -16,7 +17,7 @@ use crate::{
     auth::{cancel_signing_message, order_signing_message, verify_matches_async, withdrawal_signing_message},
     types::{
         ApiResponse, BalanceResponse, BookLevel, BookResponse, CancelOrderBody,
-        MarketResponse, PostOrderBody, WithdrawBody, format_amount,
+        DepositBody, MarketResponse, PostOrderBody, WithdrawBody, format_amount,
     },
     ws::handle_ws,
 };
@@ -40,6 +41,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/orders", post(post_order))
         .route("/orders/cancel", post(cancel_order))
         .route("/withdrawals", post(initiate_withdrawal))
+        .route("/deposit", post(deposit_handler))
         .route("/ws", get(ws_handler))
         .with_state(state)
         .layer(cors)
@@ -266,4 +268,74 @@ async fn initiate_withdrawal(
     state.feeds.lock().await.dispatch_response_batch(&user, &responses);
 
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
+}
+
+async fn deposit_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<DepositBody>,
+) -> impl IntoResponse {
+    let user = match UserId::from_hex(&body.user) {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid address"))).into_response(),
+    };
+
+    let amount = match parse_decimal_amount(&body.amount) {
+        Some(a) => a,
+        None => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid amount"))).into_response(),
+    };
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_micros() as u64;
+
+    let mut hasher = Keccak256::new();
+    hasher.update(ts.to_le_bytes());
+    hasher.update(body.user.as_bytes());
+    hasher.update(body.asset.as_bytes());
+    let hash_result = hasher.finalize();
+    let mut l1_tx_hash = [0u8; 32];
+    l1_tx_hash.copy_from_slice(&hash_result);
+
+    let req = DepositRequest {
+        user: user.clone(),
+        asset: AssetId(body.asset),
+        amount,
+        l1_tx_hash,
+    };
+
+    let responses = {
+        let mut engine = state.engine.lock().await;
+        engine.process(Request::Deposit(req), ts)
+    };
+
+    state.feeds.lock().await.dispatch_response_batch(&user, &responses);
+
+    let engine = state.engine.lock().await;
+    let balances: Vec<BalanceResponse> = engine.balances.iter()
+        .filter(|((u, _), _)| u == &user)
+        .map(|((_, asset), bal)| BalanceResponse {
+            asset: asset.0.clone(),
+            available: format_amount(bal.available, 8),
+            locked: format_amount(bal.locked, 8),
+            total: format_amount(bal.total(), 8),
+        })
+        .collect();
+
+    (StatusCode::OK, Json(ApiResponse::ok(balances))).into_response()
+}
+
+fn parse_decimal_amount(s: &str) -> Option<u64> {
+    let s = s.trim();
+    let (integer_part, frac_part) = match s.find('.') {
+        Some(pos) => (&s[..pos], &s[pos + 1..]),
+        None => (s, ""),
+    };
+    let integer_val: u64 = integer_part.parse().ok()?;
+    let mut frac_str = frac_part.to_string();
+    while frac_str.len() < 6 {
+        frac_str.push('0');
+    }
+    let frac_val: u64 = frac_str[..6].parse().ok()?;
+    integer_val.checked_mul(1_000_000)?.checked_add(frac_val)
 }

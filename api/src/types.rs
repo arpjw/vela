@@ -58,6 +58,13 @@ pub struct WithdrawBody {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepositBody {
+    pub user: String,
+    pub asset: String,
+    pub amount: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BookLevel {
     pub price: String,
     pub quantity: String,
