@@ -1,0 +1,7 @@
+{
+  "sepolia": {
+    "VelaSettlement": "0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686",
+    "operator": "0x63c1C08931a7406d12b876C05f09f0d3e9B64EC0",
+    "deployedAt": "2026-04-16"
+  }
+}
