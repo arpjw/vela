@@ -1,0 +1,275 @@
+---
+title: "WebSocket Protocol"
+description: "Real-time data via WebSocket on Vela."
+---
+
+**Connection URL:** `wss://vela-engine.fly.dev/ws`
+
+The WebSocket API provides real-time market data and private account events. All messages are JSON-encoded. The connection supports both public channels (no auth required) and private channels (auth required).
+
+## Connection and Keepalive
+
+Connect with a standard WebSocket client:
+
+```javascript
+const ws = new WebSocket('wss://vela-engine.fly.dev/ws');
+
+ws.on('open', () => {
+  console.log('Connected to Vela WebSocket');
+  // Start with a ping to confirm
+  ws.send(JSON.stringify({ type: 'ping' }));
+});
+
+ws.on('message', (data) => {
+  const msg = JSON.parse(data);
+  handleMessage(msg);
+});
+```
+
+Send a `ping` every 30 seconds to keep the connection alive. The server closes idle connections after 60 seconds.
+
+## Client → Server Messages
+
+### `subscribe` — Subscribe to channels
+
+```json
+{
+  "type": "subscribe",
+  "channels": [
+    "book:ETH-USDC",
+    "trades:ETH-USDC",
+    "fills:0xYourAddress"
+  ]
+}
+```
+
+Private channels (`fills:`, `orders:`, `balances:`) require authentication first. See [Authentication Flow](#authentication-flow) below.
+
+### `unsubscribe` — Unsubscribe from channels
+
+```json
+{
+  "type": "unsubscribe",
+  "channels": ["book:ETH-USDC"]
+}
+```
+
+### `request_challenge` — Begin WS auth
+
+```json
+{
+  "type": "request_challenge",
+  "address": "0xYourEthereumAddress"
+}
+```
+
+### `auth` — Complete WS auth
+
+```json
+{
+  "type": "auth",
+  "address": "0xYourEthereumAddress",
+  "signature": "0x..."
+}
+```
+
+### `ping` — Keepalive ping
+
+```json
+{
+  "type": "ping"
+}
+```
+
+## Server → Client Messages
+
+### `book_snapshot` — Full order book
+
+Sent immediately on subscription to `book:<market>`, and whenever the book changes.
+
+```json
+{
+  "type": "book_snapshot",
+  "market_id": "ETH-USDC",
+  "sequence": 12345,
+  "bids": [
+    ["3200000000", "1500000"],
+    ["3198000000", "2700000"],
+    ["3195000000", "900000"]
+  ],
+  "asks": [
+    ["3202000000", "3200000"],
+    ["3205500000", "800000"],
+    ["3208000000", "2400000"]
+  ],
+  "timestamp": "2026-04-15T12:00:00.000Z"
+}
+```
+
+Price levels with `"0"` quantity have been removed from the book. Re-apply the full snapshot on each message — do not attempt incremental updates from snapshots (use `book_delta` for incremental, if supported).
+
+### `trade` — Public trade ticker
+
+Sent when a trade executes on a market you're subscribed to.
+
+```json
+{
+  "type": "trade",
+  "market_id": "ETH-USDC",
+  "trade_id": "trd_4a2b1c",
+  "price": "3201000000",
+  "quantity": "500000",
+  "side": "bid",
+  "timestamp": "2026-04-15T12:00:01.234Z"
+}
+```
+
+`side` is the side of the aggressor (the taker order).
+
+### `challenge` — Auth challenge
+
+Sent in response to `request_challenge`.
+
+```json
+{
+  "type": "challenge",
+  "nonce": "7f3a91c2e8d40b56",
+  "expires_at": "2026-04-15T12:05:00Z"
+}
+```
+
+### `auth_success` — Auth confirmation
+
+```json
+{
+  "type": "auth_success",
+  "address": "0xYourAddress"
+}
+```
+
+### `fill` — Private fill notification
+
+Sent to authenticated subscribers of `fills:<address>` when one of your orders is matched.
+
+```json
+{
+  "type": "fill",
+  "fill_id": "fill_8a2c3d",
+  "order_id": "ord_7f3a91",
+  "market_id": "ETH-USDC",
+  "side": "bid",
+  "price": "3201000000",
+  "quantity": "500000",
+  "filled_quantity_cumulative": "500000",
+  "is_maker": false,
+  "fee": "800",
+  "rebate": "0",
+  "timestamp": "2026-04-15T12:00:01.234Z"
+}
+```
+
+### `order_update` — Private order status change
+
+Sent to authenticated subscribers of `orders:<address>` when an order's status changes.
+
+```json
+{
+  "type": "order_update",
+  "order_id": "ord_7f3a91",
+  "market_id": "ETH-USDC",
+  "status": "partially_filled",
+  "filled_quantity": "500000",
+  "remaining_quantity": "500000",
+  "last_fill_price": "3201000000",
+  "timestamp": "2026-04-15T12:00:01.234Z"
+}
+```
+
+Possible `status` values: `open`, `partially_filled`, `filled`, `cancelled`, `rejected`.
+
+### `balance_update` — Private balance change
+
+Sent to authenticated subscribers of `balances:<address>` when a balance changes.
+
+```json
+{
+  "type": "balance_update",
+  "asset": "USDC",
+  "total": "9840000000",
+  "available": "9840000000",
+  "reserved": "0",
+  "reason": "fill",
+  "timestamp": "2026-04-15T12:00:01.234Z"
+}
+```
+
+`reason` values: `fill`, `order_placed`, `order_cancelled`, `deposit`, `withdrawal`.
+
+### `error` — Error from server
+
+```json
+{
+  "type": "error",
+  "code": "INVALID_SIGNATURE",
+  "message": "Signature recovery failed",
+  "request_id": "req_abc123"
+}
+```
+
+### `pong` — Keepalive response
+
+```json
+{
+  "type": "pong",
+  "timestamp": "2026-04-15T12:00:00.000Z"
+}
+```
+
+## Available Channels
+
+| Channel | Auth Required | Description |
+|---|---|---|
+| `book:<market>` | No | Order book snapshots for a market |
+| `trades:<market>` | No | Public trade feed for a market |
+| `fills:<address>` | Yes | Your fill notifications |
+| `orders:<address>` | Yes | Your order status updates |
+| `balances:<address>` | Yes | Your balance changes |
+
+## Authentication Flow
+
+```javascript
+const signer = /* ethers signer */;
+const address = await signer.getAddress();
+
+// 1. Request challenge
+ws.send(JSON.stringify({ type: 'request_challenge', address }));
+
+// 2. Handle challenge
+ws.on('message', async (data) => {
+  const msg = JSON.parse(data);
+
+  if (msg.type === 'challenge') {
+    const message = `Vela Exchange\nNonce: ${msg.nonce}`;
+    const signature = await signer.signMessage(message);
+    ws.send(JSON.stringify({ type: 'auth', address, signature }));
+  }
+
+  if (msg.type === 'auth_success') {
+    // Subscribe to private channels
+    ws.send(JSON.stringify({
+      type: 'subscribe',
+      channels: [
+        `fills:${address}`,
+        `orders:${address}`,
+        `balances:${address}`
+      ]
+    }));
+  }
+});
+```
+
+## Sequence Numbers and Consistency
+
+Book snapshots include a `sequence` number that monotonically increases with every change to the book. If you receive two snapshots out of order (e.g., due to network jitter), discard the one with the lower sequence number.
+
+If you detect a gap in sequence numbers, re-fetch the book via `GET /markets/:market/book` to get a fresh snapshot, then resume applying WebSocket updates from that point.

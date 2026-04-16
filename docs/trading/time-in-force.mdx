@@ -1,0 +1,117 @@
+---
+title: "Time in Force"
+description: "GTC, IOC, FOK, and Post-Only explained."
+---
+
+Time in Force (TIF) controls how long an order remains active and what happens to any unfilled quantity. Vela supports four TIF options, each suited to different trading strategies.
+
+<AccordionGroup>
+  <Accordion title="GTC — Good Till Cancelled" icon="clock">
+    **The default.** A GTC order rests in the order book until it is fully filled or you explicitly cancel it.
+
+    **Behavior:**
+    - If the order can match immediately, it fills (partially or fully)
+    - Any unfilled remainder stays in the book indefinitely
+    - The order persists across trading sessions and server restarts
+    - You must actively cancel the order to remove it
+
+    **When to use GTC:**
+    - Standard limit orders where you're willing to wait
+    - Setting target entry or exit prices
+    - Market making (quoting two-sided with resting limit orders)
+
+    **Example:** You place a GTC limit buy for 1 ETH at 3000 USDC when the market is trading at 3200. The order rests at the bottom of the book. Days later, if ETH drops to 3000, the order fills.
+
+    <Note>
+    GTC orders count against your credit utilization if you are a market maker. Resting orders reserve both balance and credit quota. See [MM Credit System](/market-making/credit-system).
+    </Note>
+  </Accordion>
+
+  <Accordion title="IOC — Immediate or Cancel" icon="forward">
+    An IOC order executes as much as possible immediately, then cancels any unfilled remainder. It never rests in the book.
+
+    **Behavior:**
+    - Matches against available orders at the specified price or better
+    - Any quantity that cannot fill immediately is cancelled
+    - Executes in a single engine pass — no waiting
+    - May result in zero fills if no matching orders exist
+
+    **When to use IOC:**
+    - When you want to take available liquidity at a price without leaving a resting order
+    - Algorithmic strategies that want precise control over order lifetime
+    - Avoiding the risk of a limit order filling later at an unfavorable time
+
+    **Example:** ETH is trading at 3200, with 0.5 ETH available at that price. You place an IOC limit buy for 1.0 ETH at 3200. The 0.5 ETH available fills; the remaining 0.5 ETH is immediately cancelled. You end up with 0.5 ETH rather than a resting order.
+  </Accordion>
+
+  <Accordion title="FOK — Fill or Kill" icon="ban">
+    An FOK order must fill completely and immediately, or it is cancelled entirely. There are no partial fills.
+
+    **Behavior:**
+    - The engine checks if the full quantity can fill immediately
+    - If yes: the order executes fully in one atomic operation
+    - If no: the entire order is cancelled, zero fills occur
+
+    **When to use FOK:**
+    - When you need a specific quantity and partial fills are not acceptable
+    - Strategies that require an all-or-nothing guarantee
+    - Avoiding partial position building that complicates risk management
+
+    **Example:** You need exactly 2.0 ETH and place a FOK buy at market. The book has 1.5 ETH available at the current price. Since the full 2.0 ETH cannot fill immediately, the order is killed with zero fills.
+
+    <Warning>
+    FOK orders can fail silently if the book doesn't have sufficient depth. Make sure to check the order book before relying on FOK for large orders.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Post-Only" icon="arrow-down-to-line">
+    A Post-Only order is guaranteed to be a maker order. If the order would match immediately as a taker, it is rejected. Only orders that will rest in the book are accepted.
+
+    **Behavior:**
+    - Accepted only if it would not immediately match any existing order
+    - If the order would be a taker (aggressive), it is rejected with no fills
+    - If accepted, rests in the book as a GTC order
+
+    **When to use Post-Only:**
+    - Market making — you always want maker status (and maker fees/rebates)
+    - Strategies that are extremely fee-sensitive
+    - Ensuring your limit order improves the market (tightens the spread)
+
+    **Example:** The best ask is 3200 USDC. You place a Post-Only buy at 3200. Since this would immediately match the resting ask, the order is rejected. You adjust to 3199, which doesn't match — the order is accepted and rests in the book.
+
+    <Tip>
+    Post-Only combined with the [MM credit system](/market-making/credit-system) is the standard configuration for market makers on Vela. Post-Only ensures maker status; the credit system enables capital-efficient multi-market quoting.
+    </Tip>
+  </Accordion>
+</AccordionGroup>
+
+## Comparison Table
+
+| TIF | Rests in book | Partial fill | Immediate execution | Always maker |
+|---|---|---|---|---|
+| **GTC** | Yes | Yes | If price matches | No |
+| **IOC** | No | Yes | Yes (or cancel) | No |
+| **FOK** | No | No | Yes (or full cancel) | No |
+| **Post-Only** | Yes (or reject) | Yes (once resting) | No | Yes |
+
+## TIF and Order Types
+
+Not all TIF options are valid with all order types:
+
+| Order Type | Valid TIF options |
+|---|---|
+| Limit | GTC, IOC, FOK, Post-Only |
+| Market | IOC (implicitly — market orders are always immediate) |
+
+Submitting a market order with any TIF other than IOC is treated as IOC.
+
+## API Encoding
+
+TIF values in the API are lowercase strings:
+
+| TIF | API value |
+|---|---|
+| Good Till Cancelled | `"gtc"` |
+| Immediate or Cancel | `"ioc"` |
+| Fill or Kill | `"fok"` |
+| Post-Only | `"post_only"` |

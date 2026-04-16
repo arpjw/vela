@@ -1,0 +1,90 @@
+---
+title: "Order Types"
+description: "Limit and market orders on Vela Exchange."
+---
+
+Vela supports two order types: **Limit** and **Market**. Both types can be combined with any [Time in Force](/trading/time-in-force) setting to control execution behavior.
+
+<Tabs>
+  <Tab title="Limit Orders">
+    A limit order specifies both the quantity and the **maximum price** you are willing to pay (buy) or the **minimum price** you are willing to accept (sell).
+
+    **Key properties:**
+    - Will only execute at your specified price or better
+    - Rests in the order book if it cannot fill immediately (with GTC)
+    - Provides price certainty — you know the worst-case execution price
+    - May not fill immediately, or at all, if the market doesn't reach your price
+
+    **When to use limit orders:**
+    - When the exact execution price matters to you
+    - When you want to enter or exit a position at a specific level
+    - When you are a market maker providing liquidity (combine with Post-Only TIF)
+    - When market impact is a concern and you want to avoid paying the spread
+
+    **Example — Limit Buy:**
+    You want to buy 1 ETH but only at 3,200 USDC or lower. You place a limit buy at 3200 for 1 ETH. If the best ask is currently 3250, your order rests in the book. When a seller is willing to sell at 3200 or below, your order fills.
+
+    **Example — Limit Sell:**
+    You hold 2 ETH and want to sell if the price rises to 3,500 USDC. You place a limit sell at 3500 for 2 ETH. The order rests until a buyer arrives at that price or better.
+  </Tab>
+  <Tab title="Market Orders">
+    A market order executes immediately at the best available prices in the order book. You specify only the quantity — the price is determined by whatever liquidity is available.
+
+    **Key properties:**
+    - Executes immediately (or is cancelled if no liquidity)
+    - No price guarantee — you receive the best available price, which may include slippage
+    - Useful when speed of execution matters more than price
+    - Can result in multiple fills at different prices if walking the book
+
+    **When to use market orders:**
+    - When you need to enter or exit immediately regardless of price
+    - When the spread is tight and slippage is minimal
+    - When the order size is small relative to available depth
+
+    **Slippage warning:**
+    A market order walks the book from the best price outward until the quantity is filled. On a thin book, this can result in fills at significantly worse prices than the best bid/ask. Always check the depth chart before placing a large market order.
+
+    **Example — Market Buy:**
+    You place a market buy for 5 ETH. The order book has:
+    - 2 ETH available at 3200 USDC
+    - 2 ETH available at 3205 USDC
+    - 3 ETH available at 3210 USDC
+
+    Your order fills: 2 ETH at 3200, 2 ETH at 3205, 1 ETH at 3210. Average fill price: 3204 USDC.
+
+    <Warning>
+    Market orders on thin markets can have significant slippage. Check the depth chart before placing large market orders.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Comparison
+
+| Feature | Limit | Market |
+|---|---|---|
+| Price control | Yes — specify max/min price | No — takes best available |
+| Guaranteed execution | No — may not fill | Yes — fills or cancels |
+| Rests in book | Yes (with GTC) | No — immediate only |
+| Slippage risk | None (or bounded) | Present on thin markets |
+| Compatible TIF | GTC, IOC, FOK, Post-Only | IOC only (implicit) |
+| Maker eligible | Yes | No — always taker |
+
+## Order Type and Fees
+
+Market makers (limit orders that rest in the book) receive a different fee treatment than market takers (market orders and aggressive limit orders that immediately match). See [Fees and Rebates](/trading/fees) for the full fee schedule.
+
+<Tip>
+Using **Post-Only** Time in Force with a limit order guarantees you will always be a maker. The order is rejected if it would match immediately, protecting you from accidentally paying taker fees.
+</Tip>
+
+## Fixed-Point Price and Quantity
+
+Prices and quantities submitted via the API are integers in fixed-point format scaled by **1,000,000**:
+
+| Human-readable | API value |
+|---|---|
+| 3200.00 USDC | `3200000000` |
+| 0.5 ETH | `500000` |
+| 0.001 BTC | `1000` |
+
+The UI handles this conversion automatically. If you're using the API directly, see [API Reference](/api-reference/http) for encoding details.

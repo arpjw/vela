@@ -1,0 +1,123 @@
+---
+title: "MM Credit System"
+description: "Capital-efficient cross-market quoting on Vela."
+---
+
+The Vela credit system allows market makers to quote across multiple markets simultaneously using a single collateral deposit. Instead of requiring capital equal to the total value of all open orders, the credit system extends a configurable multiple of deposited collateral as quoting capacity.
+
+## The Problem It Solves
+
+A market maker quoting 11 markets needs to reserve capital for each order on each market. Without a credit system, quoting 5,000 USDC on each side of 11 markets requires 110,000 USDC in reserved capital. This is capital-inefficient — in practice, all orders never fill simultaneously.
+
+The credit system solves this by treating deposited collateral as margin for a larger quoting envelope. A market maker depositing 10,000 USDC with a 5× credit ratio can quote up to 50,000 USDC of total order value across all markets.
+
+## How It Works
+
+### Credit Ratio
+
+Each market maker account has a configured **credit ratio** (also called the leverage multiplier). This determines how much total quoted value you can maintain relative to your deposit:
+
+```
+max_quoted_value = deposited_collateral × credit_ratio
+```
+
+**Example:** 10,000 USDC deposited, credit ratio = 5×
+- Max quoted value = 10,000 × 5 = 50,000 USDC
+- You can maintain up to 50,000 USDC of open order value across all markets
+
+### Credit Utilization
+
+At any point in time, your **credit utilization** is:
+
+```
+total_quoted_value = Σ(price_i × size_i) for all open orders
+credit_utilization = total_quoted_value / max_quoted_value
+```
+
+**Example:** You have open orders with a total value of 32,000 USDC. Your max quoted value is 50,000 USDC.
+- Credit utilization = 32,000 / 50,000 = 64%
+
+### Warning States
+
+| Utilization | State | UI Indicator |
+|---|---|---|
+| 0–79% | Normal | Green |
+| 80–94% | Amber warning | Yellow — reduce orders |
+| 95–99% | Critical | Red — auto-cancel imminent |
+| 100% | Auto-cancel threshold | Order cancelled atomically |
+
+The MM dashboard shows a credit gauge (SVG arc) that updates in real time as orders are placed, filled, and cancelled.
+
+## Auto-Cancel Mechanism
+
+The auto-cancel is the core safety mechanism of the credit system. It is **atomic** — it fires at the exact moment a fill would push utilization to or past 1.0.
+
+### How auto-cancel works:
+
+1. An incoming order matches against one of your resting orders
+2. Before committing the fill, the engine checks your projected utilization after the fill
+3. If the fill would push utilization ≥ 1.0, the engine identifies your order with the lowest priority (worst price, oldest time) that can be cancelled to bring utilization back within bounds
+4. The cancellation and fill happen in the same atomic operation
+5. Your cancelled order's reserved funds are released; the fill proceeds
+
+This ensures that a market maker's credit utilization invariant is never violated, even under rapid, concurrent matching.
+
+<Warning>
+If you receive an unexpected `CREDIT_BREACH` error when placing a new order, your current open orders are consuming enough of your credit quota that there is no room for the new order. Cancel some resting orders or increase your deposit.
+</Warning>
+
+## Mathematical Invariant
+
+The credit system maintains the following invariant at all times:
+
+```
+total_quoted_value ≤ deposited_collateral × credit_ratio
+```
+
+This is enforced:
+1. **On order placement:** New orders are rejected if they would push `total_quoted_value` past the cap
+2. **On fill:** Auto-cancel fires atomically if a fill would cause a breach
+
+### Proof of Atomic Consistency
+
+Because the matching engine is single-threaded, there is no race condition between the fill and the auto-cancel. Both operations happen in the same engine tick, in sequence, before any state is committed. This is a key design advantage of the single-threaded architecture.
+
+## Credit Parameters
+
+| Parameter | Description | Set By |
+|---|---|---|
+| `credit_ratio` | Multiplier on deposited collateral | Operator (per account) |
+| `max_quoted_value` | Absolute cap on total quoted value | Derived: `deposit × ratio` |
+| `amber_threshold` | Utilization level for amber warning | Default: 0.80 |
+| `critical_threshold` | Utilization level for critical warning | Default: 0.95 |
+
+Credit parameters are configured by the operator at account creation. A future release will allow market makers to request ratio adjustments through the dashboard.
+
+## Example: Multi-Market Quoting
+
+A market maker deposits 20,000 USDC with a 10× credit ratio. Max quoted value = 200,000 USDC.
+
+They quote two-sided on 5 markets:
+
+| Market | Bid (Price × Size) | Ask (Price × Size) |
+|---|---|---|
+| BTC-USDC | 60,000 × 0.1 = 6,000 | 60,100 × 0.1 = 6,010 |
+| ETH-USDC | 3,200 × 2.0 = 6,400 | 3,205 × 2.0 = 6,410 |
+| SOL-USDC | 180 × 20 = 3,600 | 181 × 20 = 3,620 |
+| AVAX-USDC | 40 × 50 = 2,000 | 40.5 × 50 = 2,025 |
+| LINK-USDC | 20 × 100 = 2,000 | 20.2 × 100 = 2,020 |
+
+Total quoted value = 6,000 + 6,010 + 6,400 + 6,410 + 3,600 + 3,620 + 2,000 + 2,025 + 2,000 + 2,020 = **40,085 USDC**
+
+Credit utilization = 40,085 / 200,000 = **20%** — well within bounds with substantial room to add more quotes.
+
+## Dashboard Integration
+
+The [MM Dashboard](/market-making/dashboard) shows:
+
+- **Credit gauge** — real-time arc visualization of current utilization
+- **Max quoted value** — your configured cap
+- **Current quoted value** — sum across all open orders
+- **Per-market breakdown** — quoted value contribution per market
+
+See [MM Dashboard](/market-making/dashboard) for full detail.

@@ -1,0 +1,109 @@
+---
+title: "Fraud Proofs"
+description: "How Vela's fraud proof system works."
+---
+
+A fraud proof is a cryptographic demonstration that the exchange operator produced an incorrect state transition. Anyone with access to the DA layer can generate a fraud proof for any batch where the engine deviated from the deterministic matching rules.
+
+## When Fraud Proofs Matter
+
+The matching engine is deterministic — given the same inputs (pre-state and requests), it always produces the same outputs (fills and post-state). If the operator publishes a batch claiming a certain `post_root`, but an independent prover computing the same batch gets a different `post_root`, the operator has either:
+
+1. Applied the wrong matching logic
+2. Applied requests in a different order than claimed
+3. Fabricated fill data
+4. Made an accounting error in balance updates
+
+Any of these constitutes fraud, and a fraud proof provides cryptographic evidence.
+
+## Fraud Proof Lifecycle
+
+<Steps>
+  <Step title="Batch published">
+    The engine commits a batch and publishes `ZkvmInput { pre_root, requests, expected_post_root }` to the DA layer. Any observer can download this.
+  </Step>
+  <Step title="Prover re-executes">
+    An independent prover (anyone running the zkvm crate) fetches the batch from the DA layer and calls `verify_execution()`:
+
+    ```rust
+    let input = da_client.fetch(sequence).await?;
+    let result = verify_execution(&input, &state_snapshot);
+    ```
+  </Step>
+  <Step title="Divergence detected">
+    If the prover's computed `post_root` differs from the `expected_post_root` published by the engine, the prover has found fraud. The divergence is pinpointed to the specific request where the results first differ.
+  </Step>
+  <Step title="Fraud proof generated">
+    The prover generates a `FraudProof` struct identifying:
+    - Which batch (sequence number)
+    - Which request in the batch (index)
+    - What diverged (fill amount, balance delta, state root)
+    - The state snapshot before the divergent request (to allow on-chain re-execution)
+  </Step>
+  <Step title="On-chain submission (roadmap)">
+    The fraud proof is submitted to the on-chain verifier contract. The contract:
+    1. Fetches the batch data from the DA layer commitment
+    2. Re-executes the specific divergent request from the provided state snapshot
+    3. Compares the result to the operator's claimed result
+    4. If fraud is confirmed: slashes the operator's bond and halts new batch acceptance
+  </Step>
+</Steps>
+
+## What Can Be Proved Fraudulent
+
+| Fraud Type | Detectable |
+|---|---|
+| Incorrect fill price | Yes — price-time priority is deterministic |
+| Incorrect fill quantity | Yes |
+| Missing fill (order that should have matched didn't) | Yes |
+| Phantom fill (fill reported for non-existent counter-order) | Yes |
+| Incorrect balance update | Yes |
+| State root forgery | Yes |
+| Batch ordering manipulation | Partially (requests within batch are ordered; batch ordering between batches requires additional work) |
+| Signature acceptance forgery | Yes — prover verifies all signatures |
+
+## What Is Not Yet Trustless (Beta)
+
+In the current beta, the on-chain verifier contract has not been deployed. This means:
+
+- Fraud proofs are **generated** by the zkvm crate
+- Fraud proofs are **logged** locally
+- Fraud proofs are **not submitted** on-chain
+- The operator is **not penalized** on-chain for fraud
+
+This is honestly disclosed in the [Trust Model](/security/trust-model). The fraud proof system is fully functional end-to-end except for the final on-chain submission step.
+
+<Warning>
+In beta, the fraud proof system provides auditability but not enforcement. Enforcement requires the M7 on-chain verifier contract.
+</Warning>
+
+## Running the Prover Yourself
+
+The zkvm crate is included in the open-source repository. To run the prover against the current beta's published batches:
+
+```bash
+# Clone the repository
+git clone https://github.com/arpjw/vela
+
+# Build the prover
+cargo build --release -p zkvm
+
+# Run against a specific batch sequence
+./target/release/vela-prover \
+  --da-path /path/to/da_batches/ \
+  --sequence 42
+```
+
+The prover outputs either `VALID` (batch is correct) or a detailed `FraudProof` struct identifying the specific divergence.
+
+## Fraud Proof Size
+
+The proof size depends on the complexity of the divergence:
+
+| Proof type | Approximate size |
+|---|---|
+| State root mismatch (entire batch) | ~50 KB + state snapshot |
+| Single request divergence | ~5 KB + local state snapshot |
+| With ZK succinctness (roadmap) | ~2 KB (constant size) |
+
+ZK succinctness for fraud proofs (making the proof size constant regardless of batch size) is on the M7 research roadmap.

@@ -1,0 +1,154 @@
+---
+title: "Error Codes"
+description: "Error responses from the Vela API."
+---
+
+When a request cannot be processed, Vela returns a JSON error response with a machine-readable `code` and a human-readable `message`. HTTP status codes follow standard conventions: `400` for client errors, `401` for authentication failures, `404` for not-found resources, and `500` for server errors.
+
+## Error Response Format
+
+```json
+{
+  "error": {
+    "code": "INVALID_SIGNATURE",
+    "message": "Signature recovery failed: recovered address 0x123... does not match provided address 0xabc...",
+    "request_id": "req_7f3a91c2"
+  }
+}
+```
+
+The `request_id` field is useful for support — include it when reporting issues.
+
+## Error Code Reference
+
+<AccordionGroup>
+  <Accordion title="INVALID_SIGNATURE" icon="key">
+    **HTTP Status:** 401
+
+    **Cause:** ECDSA signature verification failed. The address recovered from the signature does not match the `address` field in the request.
+
+    **Common causes:**
+    - Wrong canonical JSON field order when signing
+    - Using `eth_sign` instead of `personal_sign` (EIP-191)
+    - Signing the wrong message (e.g., missing a field, wrong nonce)
+    - Submitting the order from a different account than the signer
+
+    **Fix:** Ensure you are signing the exact canonical JSON representation of the order with all fields in the correct order: `market_id`, `side`, `price`, `quantity`, `order_type`, `time_in_force`, `nonce`. Use `JSON.stringify()` with no indentation.
+  </Accordion>
+
+  <Accordion title="INSUFFICIENT_BALANCE" icon="wallet">
+    **HTTP Status:** 400
+
+    **Cause:** Your available balance is too low to place the requested order.
+
+    For a **buy limit order**: `available_USDC < price × quantity`
+    For a **sell limit order**: `available_BASE < quantity`
+
+    **Common causes:**
+    - Funds are locked in other open orders (reserved balance)
+    - You have not deposited enough
+
+    **Fix:** Cancel some open orders to free reserved balance, or deposit more funds. Check `GET /account/:address/balances` for your current available balance.
+  </Accordion>
+
+  <Accordion title="DUPLICATE_NONCE" icon="copy">
+    **HTTP Status:** 400
+
+    **Cause:** An order with the same `nonce` has already been accepted for this account. Nonces must be strictly increasing — reusing or skipping back is rejected.
+
+    **Common causes:**
+    - Your local nonce counter fell behind the server's high-water mark (e.g., after a reconnection)
+    - Two requests submitted simultaneously with the same nonce
+
+    **Fix:** Fetch the current `nonce_high_water` from `GET /account/:address/balances` and reset your counter to `nonce_high_water + 1`.
+  </Accordion>
+
+  <Accordion title="MARKET_NOT_FOUND" icon="magnifying-glass">
+    **HTTP Status:** 404
+
+    **Cause:** The `market_id` in your request does not correspond to any active market.
+
+    **Common causes:**
+    - Typo in the market ID (e.g., `"ETH-USD"` instead of `"ETH-USDC"`)
+    - The market has been paused or delisted
+
+    **Fix:** Call `GET /markets` to get the current list of active markets and their IDs.
+  </Accordion>
+
+  <Accordion title="INVALID_ORDER" icon="triangle-exclamation">
+    **HTTP Status:** 400
+
+    **Cause:** One or more order parameters are malformed or out of range.
+
+    **Specific cases:**
+    - `price ≤ 0` — price must be a positive fixed-point integer
+    - `quantity ≤ 0` — quantity must be positive
+    - `price` not a multiple of tick size — price granularity violation
+    - `quantity` not a multiple of lot size — quantity granularity violation
+    - `order_type: "market"` with `time_in_force: "gtc"` — market orders cannot be GTC
+    - `order_type: "market"` with a `price` field — market orders ignore price, but including it is flagged
+    - Missing required fields
+
+    **Fix:** Check the error `message` for the specific validation failure. Review [Order Types](/trading/order-types) for valid parameter combinations.
+  </Accordion>
+
+  <Accordion title="CREDIT_BREACH" icon="gauge-high">
+    **HTTP Status:** 400
+
+    **Cause:** Placing this order would push your credit utilization to or past 1.0 (100%). The order is rejected before entering the book.
+
+    This differs from the auto-cancel mechanism (which fires on a fill that would cause a breach) — `CREDIT_BREACH` fires on order placement.
+
+    **Common causes:**
+    - You already have many resting orders with high total quoted value
+    - You're trying to place a large order that exceeds remaining credit capacity
+
+    **Fix:** Cancel some resting orders to reduce your current quoted value, or check your credit utilization via `GET /account/:address/balances` (`credit.utilization`). See [MM Credit System](/market-making/credit-system).
+  </Accordion>
+
+  <Accordion title="MARKET_PAUSED" icon="circle-pause">
+    **HTTP Status:** 400
+
+    **Cause:** The market is currently paused by the operator. No new orders can be placed. Existing orders have been cancelled.
+
+    **Fix:** Monitor `GET /markets` for the market's `status` field to return `"active"`.
+  </Accordion>
+
+  <Accordion title="RATE_LIMITED" icon="gauge">
+    **HTTP Status:** 429
+
+    **Cause:** Too many requests from your IP or account in a short window.
+
+    **Fix:** Implement exponential backoff. The response includes a `Retry-After` header with the number of seconds to wait.
+  </Accordion>
+
+  <Accordion title="INTERNAL_ERROR" icon="server">
+    **HTTP Status:** 500
+
+    **Cause:** An unexpected error occurred in the engine. This should be rare.
+
+    **Fix:** Retry the request. If the error persists, include the `request_id` when reporting the issue on GitHub.
+  </Accordion>
+</AccordionGroup>
+
+## WebSocket Error Messages
+
+Errors on WebSocket connections use the same codes:
+
+```json
+{
+  "type": "error",
+  "code": "INVALID_SIGNATURE",
+  "message": "Auth signature verification failed",
+  "request_id": "req_ws_3a9b"
+}
+```
+
+An `error` message on the WebSocket does not close the connection unless the error is fatal (e.g., auth failure after the grace period). Non-fatal errors allow the connection to continue.
+
+## Reporting Issues
+
+If you encounter unexpected errors or inconsistencies:
+
+1. Note the `request_id` from the error response
+2. Open an issue at [github.com/arpjw/vela](https://github.com/arpjw/vela) with the request ID, error code, and a description of the request

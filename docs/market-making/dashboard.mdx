@@ -1,0 +1,141 @@
+---
+title: "MM Dashboard"
+description: "The market maker dashboard on Vela Exchange."
+---
+
+The market maker dashboard is a dedicated view in the Vela UI designed for active liquidity providers. It surfaces the key information a market maker needs in one place: credit utilization, open order management, P&L, and market summary.
+
+Access the dashboard from the navigation sidebar under **Market Making**, or navigate directly to `/mm`.
+
+<Info>
+The MM dashboard is available to all connected accounts. Credit system features (gauge, auto-cancel settings) are most relevant to accounts with a configured credit ratio. All accounts can use the open orders table and P&L tracker.
+</Info>
+
+## Dashboard Sections
+
+### Credit Gauge
+
+The credit gauge is a prominent SVG arc at the top of the dashboard. It displays your current credit utilization as a percentage, with color-coded warning states:
+
+```
+         100%
+          ●
+     ●         ●
+  ●               ●
+●                   ●
+0%                 100%
+   GREEN → AMBER → RED
+```
+
+| Arc Color | Utilization Range | Meaning |
+|---|---|---|
+| Green | 0–79% | Normal — comfortable headroom |
+| Amber | 80–94% | Warning — consider reducing orders |
+| Red | 95–99% | Critical — auto-cancel imminent |
+| Flashing red | 100% | Auto-cancel just fired |
+
+The gauge updates in real time as orders are placed, cancelled, and filled. It reads from the private `balances` WebSocket feed and recalculates on each balance update.
+
+Displayed alongside the arc:
+- **Current utilization** (percentage, large text)
+- **Quoted value** (`$XX,XXX`) — total current open order value
+- **Max quoted value** (`$XX,XXX`) — your configured cap
+- **Deposit** — your current collateral balance
+
+### Open Orders Table
+
+The open orders table shows all your currently resting orders across all markets. It provides an **optimistic cancel** button for each order — clicking cancel immediately removes the order from the UI while the cancel request is sent to the server, providing a responsive feel even at high latency.
+
+| Column | Description |
+|---|---|
+| Market | Market ID (e.g., ETH-USDC) |
+| Side | Bid (Buy) or Ask (Sell) |
+| Price | Order price in USDC |
+| Quantity | Order size in base asset |
+| Filled | Quantity filled so far |
+| Value | Price × remaining quantity |
+| TIF | Time in Force |
+| Age | Time since order was placed |
+| Action | Cancel button |
+
+**Bulk actions:**
+- **Cancel All** — sends cancel requests for all open orders simultaneously
+- **Cancel Market** — cancels all orders in a specific market
+- **Cancel Side** — cancels all bids or all asks across all markets
+
+### P&L Tracker
+
+The P&L tracker shows realized and unrealized profit and loss for the current session.
+
+**Realized P&L** is computed from fills:
+
+```
+Realized P&L = Σ fills (sell_value - buy_value)
+             adjusted for fees and rebates
+```
+
+**Per-market breakdown:**
+
+| Market | Realized P&L | Open Value | Inventory |
+|---|---|---|---|
+| ETH-USDC | +$42.18 | $12,800 | 0.25 ETH long |
+| BTC-USDC | −$8.32 | $24,100 | 0.02 BTC short |
+| SOL-USDC | +$3.47 | $3,600 | 0 (flat) |
+
+**Session P&L** resets at each session start (wallet reconnect). Historical P&L data is available via the Trade History export (CSV).
+
+**Inventory risk** — the P&L tracker shows your current base asset inventory per market (net buys minus net sells). A large inventory position represents exposure to price moves. Vela does not currently offer hedging tools; inventory management is the market maker's responsibility.
+
+### Market Summary Table
+
+The market summary table provides a snapshot of all 11 markets at a glance:
+
+| Market | Best Bid | Best Ask | Spread | Spread (bps) | Your Orders |
+|---|---|---|---|---|---|
+| BTC-USDC | 60,020 | 60,080 | 60 | 10.0 | 2 |
+| ETH-USDC | 3,199 | 3,202 | 3 | 9.4 | 4 |
+| SOL-USDC | 179.5 | 180.5 | 1.0 | 55.6 | 2 |
+| … | … | … | … | … | … |
+
+The **Your Orders** column shows how many of your orders are resting in each market. Click a row to jump to that market's trading view.
+
+Markets are sorted by your current quoted value contribution (highest first) by default. Re-sort by spread, volume, or market name using the column headers.
+
+## Dashboard Keyboard Shortcuts
+
+| Key | Action |
+|---|---|
+| `C` | Cancel all orders |
+| `R` | Refresh P&L summary |
+| `M` + market shortcut | Jump to market (e.g. `M` then `E` for ETH-USDC) |
+| `Esc` | Return to trading view |
+
+## API Access for Dashboard Data
+
+All dashboard data is available via the REST and WebSocket APIs for programmatic market makers:
+
+```bash
+# Open orders
+GET /account/{address}/orders?status=open
+
+# Balance (includes credit utilization)
+GET /account/{address}/balances
+
+# Trade history for P&L calculation
+GET /account/{address}/trades?since=2026-04-15T00:00:00Z
+```
+
+The credit utilization field in the balances response:
+
+```json
+{
+  "address": "0x...",
+  "balances": { "USDC": "10000000000", ... },
+  "credit": {
+    "ratio": 10,
+    "max_quoted_value": "100000000000",
+    "current_quoted_value": "40085000000",
+    "utilization": 0.40085
+  }
+}
+```

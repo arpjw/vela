@@ -1,0 +1,147 @@
+---
+title: "Data Availability Layer"
+description: "How Vela publishes state for public verification."
+---
+
+The data availability (DA) layer is the durability and verifiability backbone of Vela. Every batch of state transitions is serialized and published to the DA layer, making it possible for any third party to independently verify the exchange's operation.
+
+## Role of the DA Layer
+
+The DA layer serves two purposes:
+
+1. **Durability:** Batch data is preserved outside the engine process. If the engine restarts, it can reconstruct state from the DA layer.
+
+2. **Verifiability:** Any observer can download batches from the DA layer and run the zkvm prover to verify that each state transition is correct. This is the foundation of the fraud proof system.
+
+Without a DA layer, the exchange's state transitions are only verifiable by parties who were online during execution. With a DA layer, historical verification is always possible.
+
+## DataAvailabilityClient Trait
+
+The DA layer is abstracted behind a trait, allowing different backends to be swapped in:
+
+```rust
+pub trait DataAvailabilityClient: Send + Sync {
+    /// Publish a batch to the DA layer.
+    /// Returns a receipt with the content hash and sequence number.
+    async fn publish(&self, batch: &DaBatch) -> Result<DaReceipt, DaError>;
+
+    /// Fetch a previously published batch by sequence number.
+    async fn fetch(&self, sequence: u64) -> Result<DaBatch, DaError>;
+
+    /// Get the latest published sequence number.
+    async fn latest_sequence(&self) -> Result<u64, DaError>;
+}
+```
+
+## DaBatch Structure
+
+Each published batch contains the full information needed to verify and recover state:
+
+```rust
+pub struct DaBatch {
+    /// Monotonically increasing sequence number
+    pub sequence: u64,
+    /// State root before this batch
+    pub pre_root: [u8; 32],
+    /// State root after this batch (claimed by engine)
+    pub post_root: [u8; 32],
+    /// All requests in this batch (signed orders, cancels, etc.)
+    pub requests: Vec<EngineRequest>,
+    /// Fills produced by the engine for each request
+    pub fills: Vec<Vec<Fill>>,
+    /// Timestamp of batch creation
+    pub created_at: u64,
+    /// Schema version for forward compatibility
+    pub schema_version: u8,
+}
+```
+
+## DaReceipt
+
+After publishing, the DA client returns a receipt:
+
+```rust
+pub struct DaReceipt {
+    /// keccak256 hash of the serialized DaBatch
+    pub content_hash: [u8; 32],
+    /// Sequence number assigned by the DA layer
+    pub sequence: u64,
+    /// Timestamp of publication
+    pub published_at: u64,
+}
+```
+
+The `content_hash` is a commitment to the batch contents. If a batch is tampered with after publication, the hash will not match, and the DA layer (or any independent verifier) can detect the modification.
+
+## LocalDaClient
+
+In the current beta deployment, the `LocalDaClient` writes batch files to the local filesystem:
+
+```rust
+pub struct LocalDaClient {
+    base_path: PathBuf,
+}
+
+impl DataAvailabilityClient for LocalDaClient {
+    async fn publish(&self, batch: &DaBatch) -> Result<DaReceipt> {
+        let path = self.base_path.join(format!("da_batch_{}.bin", batch.sequence));
+        let serialized = bincode::serialize(batch)?;
+        tokio::fs::write(&path, &serialized).await?;
+        
+        let content_hash = keccak256(&serialized);
+        Ok(DaReceipt {
+            content_hash,
+            sequence: batch.sequence,
+            published_at: unix_timestamp(),
+        })
+    }
+}
+```
+
+Batch files are named `da_batch_{seq}.bin` and written to a configurable directory. They are binary-encoded using `bincode` for compact serialization.
+
+<Info>
+The `LocalDaClient` is appropriate for development and the current beta. For mainnet, a production DA layer (Celestia or EigenDA) provides cryptographic availability guarantees — the DA operator cannot selectively withhold data.
+</Info>
+
+## Production DA Layer (Roadmap)
+
+The M7 roadmap targets integration with a production DA layer. The two primary candidates are:
+
+<Tabs>
+  <Tab title="Celestia">
+    **Celestia** is a modular DA layer that uses erasure coding and data availability sampling (DAS) to provide strong availability guarantees with light client verification.
+
+    Integration approach:
+    - Implement `DataAvailabilityClient` for the Celestia HTTP API
+    - Submit `DaBatch` serialized data as a Celestia blob
+    - Store the Celestia commitment (block height + blob index) in the `DaReceipt`
+    - Fraud proof submission on-chain references the Celestia commitment
+
+    Celestia's DAS means that even light nodes can verify data availability without downloading the full batch.
+  </Tab>
+  <Tab title="EigenDA">
+    **EigenDA** is Ethereum-based DA using restaked ETH for economic security. It provides strong finality guarantees anchored to Ethereum.
+
+    Integration approach:
+    - Implement `DataAvailabilityClient` for the EigenDA disperser API
+    - Submit batch data to the disperser
+    - Store the EigenDA certificate in the `DaReceipt`
+    - On-chain verifier reads the EigenDA certificate to confirm availability
+
+    EigenDA's economic security inherits from Ethereum's validator set via EigenLayer restaking.
+  </Tab>
+</Tabs>
+
+## Batch Continuity
+
+The DA layer enforces batch continuity through the `pre_root` / `post_root` chain. Each batch's `pre_root` must equal the previous batch's `post_root`:
+
+```
+batch_0: pre=genesis_root     → post=root_1
+batch_1: pre=root_1           → post=root_2
+batch_2: pre=root_2           → post=root_3
+...
+```
+
+Any gap or root mismatch in this chain indicates either a missing batch or a state transition error. The on-chain verifier contract (M7) will enforce this chain on-chain, making it impossible for the operator to skip batches or reorder them.

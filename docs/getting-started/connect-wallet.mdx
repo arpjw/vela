@@ -1,0 +1,83 @@
+---
+title: "Connect Your Wallet"
+description: "Connect an Ethereum-compatible wallet to Vela Exchange."
+---
+
+Vela uses your Ethereum wallet as your identity. There are no usernames, passwords, or API keys. Your wallet signs every order you place, and the engine verifies each signature before accepting it.
+
+<Warning>
+Vela is currently in **public beta**. All features are functional, but on-chain settlement is not yet live. See the [Trust Model](/security/trust-model) for what is and is not trustless in the current release.
+</Warning>
+
+## Supported Wallets
+
+Any wallet that supports `personal_sign` (EIP-191) works with Vela. Tested wallets:
+
+| Wallet | Browser Extension | Mobile | WalletConnect |
+|---|---|---|---|
+| MetaMask | Yes | Yes | Yes |
+| Coinbase Wallet | Yes | Yes | Yes |
+| Rainbow | — | Yes | Yes |
+| Rabby | Yes | — | — |
+| Frame | Yes | — | — |
+
+<Info>
+Hardware wallets (Ledger, Trezor) connected through MetaMask also work. Signing may be slower due to device confirmation steps.
+</Info>
+
+## Connection Flow
+
+<Steps>
+  <Step title="Click Connect Wallet">
+    In the top navigation bar of the Vela UI, click the **Connect Wallet** button in the upper right corner. A wallet selection modal will appear.
+  </Step>
+  <Step title="Select your wallet">
+    Choose your wallet provider from the list. If your wallet is not shown, select **WalletConnect** to connect via QR code or deep link.
+  </Step>
+  <Step title="Approve the connection">
+    Your wallet extension or app will show a connection request from `vela.monolithsystematic.com`. Review the permissions and click **Connect** or **Approve**.
+
+    <Note>
+    Vela only requests access to your public address. It cannot initiate transactions without your signature.
+    </Note>
+  </Step>
+  <Step title="Sign the challenge nonce">
+    After connecting, the Vela server issues a one-time challenge nonce. Your wallet will prompt you to sign a message that looks like:
+
+    ```
+    Vela Exchange Authentication
+    Nonce: 7f3a91c2e8d40b56
+    Timestamp: 2026-04-15T12:00:00Z
+    ```
+
+    This is an off-chain signature — no gas is spent. Click **Sign** in your wallet.
+  </Step>
+  <Step title="Session established">
+    The server recovers your Ethereum address from the signature and establishes a session. Your address appears in the top navigation bar and your balances load in the sidebar.
+
+    Your session remains active as long as your browser tab is open. Refreshing the page requires re-signing.
+  </Step>
+</Steps>
+
+## What the Signature Proves
+
+When you sign the challenge nonce, you prove that you control the private key corresponding to your Ethereum address. This is the same mechanism used by Ethereum itself — `personal_sign` prepends a standard prefix (`\x19Ethereum Signed Message:\n`) to the message before hashing, preventing replay attacks across different applications.
+
+**Your private key is never shared.** The signature is a one-way proof. Vela can verify your address from the signature, but cannot recover your private key from it.
+
+## After Connecting
+
+Once connected, you can:
+
+- View your balances across all supported assets
+- Deposit funds to start trading (see [Deposit Funds](/getting-started/deposit))
+- Place orders on any of the 11 live markets
+- View your open orders and trade history
+
+<Tip>
+If you want to use the API directly instead of the UI, see [API Authentication](/api-reference/authentication) for how to implement the signing flow programmatically.
+</Tip>
+
+## Disconnecting
+
+To disconnect your wallet, click your address in the top navigation and select **Disconnect**. This clears your session on the server side. Your funds remain safe — disconnecting does not affect your balances.

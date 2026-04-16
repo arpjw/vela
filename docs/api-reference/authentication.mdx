@@ -1,0 +1,193 @@
+---
+title: "Authentication"
+description: "ECDSA authentication for Vela's API."
+---
+
+Vela uses ECDSA (secp256k1) signatures for all authentication. There are no API keys or passwords. Your Ethereum wallet is your identity, and your signatures prove you control it.
+
+## Signature Scheme
+
+Vela uses the same elliptic curve as Ethereum: **secp256k1**. Signatures follow the EIP-191 personal sign standard, which prepends a standard prefix to prevent signed messages from being mistaken for Ethereum transactions:
+
+```
+prefixed_message = "\x19Ethereum Signed Message:\n" + len(message) + message
+hash = keccak256(prefixed_message)
+signature = sign(hash, private_key)
+```
+
+The resulting signature is a 65-byte (130 hex character) value: `r` (32 bytes) + `s` (32 bytes) + `v` (1 byte, recovery id: 27 or 28).
+
+## Order Signing
+
+Every order submitted to Vela must be signed by the account's private key. The signing payload is the canonical JSON serialization of the order parameters:
+
+```javascript
+const order = {
+  market_id: "ETH-USDC",
+  side: "bid",
+  price: "3200000000",
+  quantity: "1000000",
+  order_type: "limit",
+  time_in_force: "gtc",
+  nonce: 1
+};
+
+const message = JSON.stringify(order);
+const signature = await signer.signMessage(message);
+```
+
+<Warning>
+The field order in the JSON matters for signature verification. Always use the canonical field order shown above: `market_id`, `side`, `price`, `quantity`, `order_type`, `time_in_force`, `nonce`.
+</Warning>
+
+The signed order is submitted as:
+
+```json
+{
+  "order": {
+    "market_id": "ETH-USDC",
+    "side": "bid",
+    "price": "3200000000",
+    "quantity": "1000000",
+    "order_type": "limit",
+    "time_in_force": "gtc",
+    "nonce": 1
+  },
+  "signature": "0x...",
+  "address": "0xYourEthereumAddress"
+}
+```
+
+The engine recovers the signer address from the signature and verifies it matches the `address` field. If verification fails, the order is rejected with `INVALID_SIGNATURE`.
+
+## WebSocket Authentication
+
+WebSocket private channels use a challenge-response flow:
+
+<Steps>
+  <Step title="Request challenge">
+    ```json
+    {
+      "type": "request_challenge",
+      "address": "0xYourAddress"
+    }
+    ```
+  </Step>
+  <Step title="Receive challenge">
+    ```json
+    {
+      "type": "challenge",
+      "nonce": "7f3a91c2e8d40b56"
+    }
+    ```
+  </Step>
+  <Step title="Sign and respond">
+    ```javascript
+    const message = `Vela Exchange\nNonce: ${challenge.nonce}`;
+    const signature = await signer.signMessage(message);
+
+    ws.send(JSON.stringify({
+      type: "auth",
+      address: "0xYourAddress",
+      signature
+    }));
+    ```
+  </Step>
+</Steps>
+
+## Nonce Replay Prevention
+
+The `nonce` field in each order is a per-account monotonic integer. The engine tracks a **nonce high-water mark** per account and rejects any order with `nonce ≤ high_water_mark`.
+
+This prevents replay attacks: a signed order cannot be re-submitted by a third party who intercepts it, because the nonce has already been consumed.
+
+**Nonce management best practices:**
+
+```javascript
+class NonceManager {
+  constructor(startNonce) {
+    this.nonce = startNonce;
+  }
+  
+  next() {
+    return this.nonce++;
+  }
+}
+
+// Seed from server on startup
+const { nonce_high_water } = await fetchBalances(address);
+const nonces = new NonceManager(nonce_high_water + 1);
+```
+
+## Implementation: ethers.js
+
+<CodeGroup>
+```javascript ethers.js v6
+import { ethers } from 'ethers';
+
+const provider = new ethers.BrowserProvider(window.ethereum);
+const signer = await provider.getSigner();
+
+async function signOrder(order) {
+  const message = JSON.stringify(order);
+  return await signer.signMessage(message);
+}
+
+async function submitOrder(order) {
+  const signature = await signOrder(order);
+  const address = await signer.getAddress();
+  
+  const response = await fetch('https://vela-engine.fly.dev/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order, signature, address })
+  });
+  
+  return response.json();
+}
+```
+
+```python Python (eth_account)
+from eth_account import Account
+from eth_account.messages import encode_defunct
+import json
+
+def sign_order(private_key: str, order: dict) -> str:
+    message = json.dumps(order, separators=(',', ':'))
+    msg = encode_defunct(text=message)
+    signed = Account.sign_message(msg, private_key=private_key)
+    return signed.signature.hex()
+
+def submit_order(private_key: str, order: dict):
+    account = Account.from_key(private_key)
+    signature = sign_order(private_key, order)
+    
+    payload = {
+        "order": order,
+        "signature": "0x" + signature,
+        "address": account.address
+    }
+    # POST to /orders
+    return payload
+```
+</CodeGroup>
+
+## Address Derivation
+
+The engine derives the signer address from the signature using the standard Ethereum address derivation:
+
+1. Recover the public key from `(hash, r, s, v)`
+2. Take `keccak256` of the uncompressed public key (64 bytes, without the 0x04 prefix)
+3. Take the last 20 bytes → Ethereum address
+
+This is implemented using the `k256` Rust crate in the engine.
+
+## Security Properties
+
+| Property | Guarantee |
+|---|---|
+| **Authentication** | Only the holder of the private key can produce valid signatures |
+| **Order integrity** | Any modification to an order invalidates the signature |
+| **Replay prevention** | Nonce high-water mark prevents reuse of signed orders |
+| **No key exposure** | The private key never leaves the signer's device |
+| **Standard scheme** | EIP-191 personal_sign — auditable and battle-tested |

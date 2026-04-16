@@ -1,0 +1,91 @@
+---
+title: "Fees and Rebates"
+description: "Vela's fee structure for makers and takers."
+---
+
+Vela uses a standard maker-taker fee model. Orders that provide liquidity to the market (makers) are treated differently from orders that remove liquidity (takers).
+
+<Info>
+Specific fee rates are **to be announced** before mainnet launch. This page describes the fee model and mechanism. Actual rates will be published when the mainnet fee schedule is finalized.
+</Info>
+
+## Maker vs. Taker
+
+Every fill on Vela is classified as either a maker trade or a taker trade:
+
+| Role | Description | Example |
+|---|---|---|
+| **Maker** | Order rested in the book and was matched by an incoming order | Limit GTC order that fills when another order arrives |
+| **Taker** | Incoming order that matches against a resting order | Market order, or aggressive limit that immediately crosses |
+
+The same order can generate both maker and taker fills — for example, if you place a limit order that partially matches immediately (taker fills) and partially rests (future maker fills).
+
+## Fee Model
+
+```
+Taker pays a fee on each taker fill:
+  Taker fee = fill_quantity × fill_price × taker_rate
+
+Maker receives a rebate on each maker fill:
+  Maker rebate = fill_quantity × fill_price × maker_rate
+```
+
+The taker rate is higher than the maker rebate. The difference is exchange revenue. Makers are compensated for providing liquidity and bearing inventory risk.
+
+<Tip>
+Use **Post-Only** Time in Force to guarantee maker status on all your orders. Post-Only orders are rejected if they would match immediately, ensuring you never accidentally pay taker fees.
+</Tip>
+
+## How Fees Are Settled
+
+Fees are settled at fill time, not at order placement. When a fill event is generated:
+
+1. The taker's fill is reduced by the taker fee
+2. The maker's fill is increased by the maker rebate
+3. Both are reflected in the final balance updates from the fill
+
+You see net amounts in your balance — fees and rebates are already included. The `fill` WebSocket message includes gross and net amounts so you can reconcile.
+
+## Fee Tiers
+
+Vela will introduce volume-based fee tiers at mainnet. Higher 30-day trading volume unlocks lower taker rates. Market makers with committed quoting programs may receive custom rates.
+
+The tier structure and requirements will be announced prior to mainnet.
+
+## Market Maker Fee Program
+
+Active market makers who meet minimum quoting requirements (minimum uptime, maximum spread, minimum depth) will be eligible for the market maker program. Program participants receive:
+
+- Enhanced maker rebates
+- Higher credit ratios
+- Dedicated support and early access to new features
+
+Apply via the market maker onboarding flow in the MM Dashboard, or contact the Vela team through the GitHub repository.
+
+## Zero-Fee Beta
+
+During the public beta, all trading is **fee-free**. Fees will be activated at mainnet launch. This allows traders to test execution without fee consideration.
+
+## Fee Calculation Example
+
+When fees are live, a sample taker buy of 1 ETH at 3200 USDC with a 0.05% taker rate would look like:
+
+```
+Gross fill:  1.000 ETH at 3200 USDC = 3200.00 USDC cost
+Taker fee:   3200.00 × 0.0005       = 1.60 USDC
+Net cost:    3200.00 + 1.60         = 3201.60 USDC total
+ETH received: 1.000 ETH
+```
+
+And the corresponding maker sell:
+
+```
+Gross fill:  1.000 ETH at 3200 USDC = 3200.00 USDC received
+Maker rebate: 3200.00 × 0.0002      = 0.64 USDC
+Net received: 3200.00 + 0.64        = 3200.64 USDC
+ETH paid: 1.000 ETH
+```
+
+<Note>
+These example rates are illustrative only. Actual rates will be published before mainnet.
+</Note>

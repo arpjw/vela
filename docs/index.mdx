@@ -1,0 +1,35 @@
+---
+title: "Vela Exchange Documentation"
+description: "A high-performance verifiable spot DEX built by Monolith Systematic LLC."
+---
+
+Welcome to the Vela Exchange documentation. Vela is a central limit order book (CLOB) spot exchange where every match is cryptographically verifiable.
+
+<CardGroup cols={2}>
+  <Card title="What is Vela?" icon="book" href="/introduction/what-is-vela">
+    Learn about Vela's architecture, performance, and design philosophy.
+  </Card>
+  <Card title="Getting Started" icon="rocket" href="/getting-started/connect-wallet">
+    Connect your wallet and place your first order in minutes.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/http">
+    Full HTTP and WebSocket API documentation for developers.
+  </Card>
+  <Card title="Market Making" icon="chart-line" href="/market-making/credit-system">
+    Learn about Vela's capital-efficient MM credit system.
+  </Card>
+</CardGroup>
+
+<Info>
+Vela is currently in **public beta**. Deposits are trust-based and not settled on-chain. Do not deposit significant funds.
+</Info>
+
+## Key Stats
+
+| Metric | Result |
+|---|---|
+| Match latency (p50) | 1.08 μs |
+| Throughput | 57.3k ops/sec |
+| vs. Pulse baseline | 4.7× faster |
+| p99.9 tail reduction | −73% |
+| Tests passing | 73/73 |

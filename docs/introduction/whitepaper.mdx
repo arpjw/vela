@@ -1,0 +1,103 @@
+---
+title: "White Paper"
+description: "Vela Exchange — Monolith Research Vol. 2, by Arya Somu."
+---
+
+The Vela Exchange white paper is the authoritative reference for the system's architecture, mathematical foundations, and performance methodology. It is published through Monolith Research, the research division of Monolith Systematic LLC.
+
+<Card title="Read the White Paper on SSRN" icon="file-lines" href="https://ssrn.com/abstract=6579199">
+  Vela Exchange — Monolith Research Vol. 2. SSRN Abstract ID: 6579199.
+</Card>
+
+## Paper Details
+
+| Field | Value |
+|---|---|
+| Title | Vela Exchange |
+| Series | Monolith Research, Vol. 2 |
+| SSRN Abstract ID | 6579199 |
+| Author | Arya Somu |
+| Affiliation | Monolith Systematic LLC |
+| Published | April 2026 |
+
+## Abstract
+
+Vela Exchange is a high-performance verifiable central limit order book (CLOB) spot exchange. The paper presents the complete design: a single-threaded Rust matching engine with microsecond latency, a novel market maker credit system for capital-efficient multi-market quoting, an optimistic-ZK verification layer for trustless state transition proofs, and a forced inclusion mechanism for anti-censorship guarantees.
+
+Benchmarks show 1.08 μs median match latency and 57,300 operations per second, representing a 4.7× throughput improvement over the Pulse baseline with a 73% reduction in p99.9 tail latency.
+
+## Sections
+
+<AccordionGroup>
+  <Accordion title="1. Motivation and CEX vs. DEX Tradeoffs" icon="scale-balanced">
+    The paper opens with a structured analysis of the centralized vs. decentralized exchange landscape. It quantifies the latency and throughput gap between CEXes and on-chain DEXes, and identifies the specific trust assumptions each model requires from users.
+
+    The key insight: the tradeoff is not fundamental. With off-chain matching, cryptographic authentication, and a verifiable state transition layer, it is possible to approach CEX performance while providing meaningful trustlessness guarantees.
+  </Accordion>
+
+  <Accordion title="2. Architecture Deep Dive" icon="sitemap">
+    Full description of the six-crate Rust workspace: `types`, `engine`, `state`, `api`, `committer`, and `zkvm`. Includes data flow diagrams, interface definitions, and rationale for key design decisions.
+
+    Notable topics: why a single-threaded engine outperforms naive parallelism for a CLOB, the CoW cache execution model, and the relationship between the MPT state layer and the zkvm prover.
+  </Accordion>
+
+  <Accordion title="3. Market Maker Credit System" icon="calculator">
+    The credit system allows market makers to quote across multiple markets with a single collateral deposit. The paper derives the credit utilization formula:
+
+    ```
+    total_quoted_value = Σ(price_i × size_i)
+    credit_utilization = total_quoted_value / (deposited × credit_ratio)
+    ```
+
+    It proves that atomic auto-cancel — firing at the moment a fill would push utilization past 1.0 — is necessary for the invariant to hold, and describes the implementation that achieves this within the single-threaded engine.
+  </Accordion>
+
+  <Accordion title="4. Optimistic-ZK Design" icon="shield-check">
+    The paper describes the optimistic execution model: batches are assumed correct by default, and any party can challenge by running the zkvm prover against the published DA batch. A fraud proof is generated if the prover's state root diverges from the published root.
+
+    This section covers the `verify_execution()` algorithm, the `ZkvmInput` and `FraudProof` data structures, and the planned on-chain verifier contract design.
+  </Accordion>
+
+  <Accordion title="5. Benchmarking Methodology" icon="stopwatch">
+    Benchmarks are run using Criterion.rs with statistical rigor: 100 sample runs, outlier detection, and comparison against a baseline. The paper describes the benchmark harness, the workload generator (uniform random order stream across all price levels), and the hardware profile.
+
+    All benchmarks are reproducible from the open-source repository.
+  </Accordion>
+
+  <Accordion title="6. Comparison to Pulse, dYdX, Vertex, and Serum" icon="chart-bar">
+    Structured comparison of Vela against four reference systems:
+
+    - **Pulse** — the baseline CLOB implementation used for benchmarking
+    - **dYdX v4** — off-chain matching with on-chain settlement, Cosmos-based
+    - **Vertex Protocol** — integrated AMM + CLOB on Arbitrum
+    - **Serum / OpenBook** — on-chain CLOB on Solana
+
+    Comparison axes: match latency, throughput, trust model, DA approach, on-chain settlement, fraud proof support.
+  </Accordion>
+</AccordionGroup>
+
+## Citation
+
+If you reference the Vela Exchange white paper in academic or technical work, please use:
+
+```
+Somu, Arya. "Vela Exchange." Monolith Research, Vol. 2. Monolith Systematic LLC, April 2026.
+Available at SSRN: https://ssrn.com/abstract=6579199
+```
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Architecture Overview" icon="sitemap" href="/introduction/architecture">
+    Codebase-level walkthrough of the six crates.
+  </Card>
+  <Card title="Matching Engine" icon="bolt" href="/architecture/matching-engine">
+    Engine internals: price-time priority, CoW cache, credit integration.
+  </Card>
+  <Card title="zkVM and Fraud Proofs" icon="shield-check" href="/architecture/zk-vm">
+    Optimistic-ZK design and verify_execution() algorithm.
+  </Card>
+  <Card title="MM Credit System" icon="calculator" href="/market-making/credit-system">
+    Capital-efficient multi-market quoting math and implementation.
+  </Card>
+</CardGroup>

@@ -1,0 +1,124 @@
+---
+title: "FAQ"
+description: "Frequently asked questions about Vela Exchange."
+---
+
+<AccordionGroup>
+  <Accordion title="Is Vela live?" icon="circle-question">
+    Yes. Vela is in **public beta** as of April 2026. The exchange is live at [vela.monolithsystematic.com](https://vela.monolithsystematic.com) with 11 spot markets, a full trading UI, and a working API.
+
+    Beta means the on-chain components (deposit contracts, fraud proof enforcement, forced inclusion) are not yet deployed. See [Trust Model](/security/trust-model) for what this means in practice.
+  </Accordion>
+
+  <Accordion title="Are deposits safe?" icon="shield">
+    In the current beta, deposits are **trust-based**. They are held by the operator (Monolith Systematic LLC) and tracked in Vela's state layer. There is no on-chain smart contract holding your funds.
+
+    You should only deposit funds you are willing to lose. On-chain deposit settlement (where funds are held by a smart contract, not the operator) is the M6 milestone.
+
+    See [Deposit Funds](/getting-started/deposit) and [Trust Model](/security/trust-model) for the full picture.
+  </Accordion>
+
+  <Accordion title="What wallets are supported?" icon="wallet">
+    Any Ethereum-compatible wallet that supports `personal_sign` (EIP-191) works with Vela. Tested wallets include:
+
+    - MetaMask (browser extension and mobile)
+    - Coinbase Wallet
+    - Rainbow
+    - Rabby
+    - Frame
+
+    Hardware wallets (Ledger, Trezor) connected through MetaMask also work, though signing may be slower.
+  </Accordion>
+
+  <Accordion title="What is the credit system?" icon="gauge-high">
+    The credit system allows market makers to quote across multiple markets using a single collateral deposit. A market maker depositing 10,000 USDC with a 5× credit ratio can maintain up to 50,000 USDC of open order value across all markets simultaneously.
+
+    An atomic auto-cancel mechanism ensures the credit utilization invariant is never violated: if a fill would push utilization past 100%, the lowest-priority resting order is atomically cancelled in the same engine tick.
+
+    See [MM Credit System](/market-making/credit-system) for the full mathematical treatment.
+  </Accordion>
+
+  <Accordion title="Is the source code available?" icon="code">
+    Yes. The Vela engine is open source on GitHub at [github.com/arpjw/vela](https://github.com/arpjw/vela). The repository includes the full six-crate Rust workspace: types, engine, state, api, committer, and zkvm.
+
+    The matching engine benchmarks are reproducible: `cargo bench --bench engine`.
+  </Accordion>
+
+  <Accordion title="What is the white paper?" icon="file-lines">
+    The Vela Exchange white paper is **Monolith Research, Vol. 2** by Arya Somu (Monolith Systematic LLC). It covers the full architecture, MM credit system mathematics, optimistic-ZK design, benchmarking methodology, and comparison to Pulse, dYdX, Vertex, and Serum.
+
+    Available on SSRN: [Abstract ID 6579199](https://ssrn.com/abstract=6579199).
+  </Accordion>
+
+  <Accordion title="How fast is the engine?" icon="bolt">
+    Benchmark results on the Vela matching engine:
+
+    | Metric | Result |
+    |---|---|
+    | Match latency (p50) | 1.08 μs |
+    | Match latency (p99.9) | 5.1 μs |
+    | Throughput | 57.3k ops/sec |
+    | vs. Pulse baseline | 4.7× faster |
+    | p99.9 tail reduction | −73% |
+
+    All benchmarks use Criterion.rs and are reproducible from the open-source repository.
+  </Accordion>
+
+  <Accordion title="What order types are supported?" icon="list">
+    Vela supports two order types:
+    - **Limit** — executes at your specified price or better
+    - **Market** — executes immediately at the best available price
+
+    And four Time in Force options:
+    - **GTC** (Good Till Cancelled) — rests until filled or cancelled
+    - **IOC** (Immediate or Cancel) — fills what it can, cancels the rest
+    - **FOK** (Fill or Kill) — fills completely or cancels entirely
+    - **Post-Only** — guaranteed maker; rejected if it would match immediately
+
+    See [Order Types](/trading/order-types) and [Time in Force](/trading/time-in-force).
+  </Accordion>
+
+  <Accordion title="What are the fees?" icon="receipt">
+    During the public beta, **all trading is fee-free**. Fees will be activated at mainnet launch.
+
+    Vela will use a maker-taker fee model: takers pay a fee, makers receive a rebate. Volume-based tiers will be available. Specific rates will be announced before mainnet.
+
+    See [Fees and Rebates](/trading/fees) for the full model description.
+  </Accordion>
+
+  <Accordion title="How do I become a market maker?" icon="chart-bar">
+    All accounts can place limit orders and use the basic order book. The full market maker experience — credit system, private L3 feeds, MM dashboard — is available to any connected account.
+
+    For institutional market maker programs (enhanced rebates, higher credit ratios, dedicated support), apply via the MM Dashboard or reach out through [GitHub](https://github.com/arpjw/vela).
+  </Accordion>
+
+  <Accordion title="What is optimistic-ZK?" icon="shield-check">
+    Optimistic-ZK is Vela's approach to verifiable execution. Batches of state transitions are published to a data availability layer. An independent prover can re-execute any batch and generate a **fraud proof** if the engine produced incorrect results.
+
+    "Optimistic" means batches are assumed correct by default — verification only happens when challenged. "ZK" refers to the fact that fraud proofs can be made succinct using zero-knowledge techniques (on the M7 roadmap).
+
+    The key advantage: the proving cost is zero unless fraud occurs, enabling Vela's high throughput while preserving verifiability.
+
+    See [zkVM and Fraud Proofs](/architecture/zk-vm) for the full design.
+  </Accordion>
+
+  <Accordion title="When is mainnet?" icon="calendar">
+    Mainnet development is in progress (M6 milestone). M6 includes on-chain deposit contracts, withdrawal settlement, and forced inclusion. See the [Roadmap](/resources/roadmap) for current milestone status.
+
+    No date is promised. The roadmap shows direction and priority, not schedule.
+  </Accordion>
+
+  <Accordion title="What markets are available?" icon="chart-candlestick">
+    11 spot markets are live in beta, all quoted in USDC:
+
+    BTC-USDC, ETH-USDC, SOL-USDC, AVAX-USDC, MATIC-USDC, LINK-USDC, UNI-USDC, ARB-USDC, OP-USDC, AAVE-USDC, DOGE-USDC
+
+    Additional markets will be added based on trader demand and liquidity.
+  </Accordion>
+
+  <Accordion title="Can I use the API without the UI?" icon="terminal">
+    Yes. The full REST and WebSocket API is documented at [API Reference](/api-reference/http). All functionality available in the UI is also available via the API.
+
+    Authentication uses ECDSA signatures — you'll need an Ethereum wallet or signing library to authenticate. See [Authentication](/api-reference/authentication) for implementation examples in JavaScript and Python.
+  </Accordion>
+</AccordionGroup>

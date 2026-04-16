@@ -1,0 +1,162 @@
+---
+title: "Order Status"
+description: "Understanding the lifecycle of an order on Vela."
+---
+
+Every order on Vela passes through a defined set of states from submission to final disposition. Understanding these states helps you track your orders, diagnose issues, and build reliable integrations.
+
+## Order Lifecycle
+
+```
+                    ┌─────────┐
+                    │ Submit  │
+                    └────┬────┘
+                         │
+              ┌──────────▼──────────┐
+              │  Signature verified? │
+              └──────────┬──────────┘
+               No        │ Yes
+               │         │
+               ▼         ▼
+          Rejected      Open
+                         │
+               ┌─────────┼──────────┐
+               │         │          │
+               ▼         ▼          ▼
+          Cancelled  Partially   Filled
+                       Filled
+                         │
+                    ┌────┴────┐
+                    │ Cancel? │
+                    └────┬────┘
+                         │
+                    Cancelled
+```
+
+## Status Reference
+
+<AccordionGroup>
+  <Accordion title="Open" icon="circle-dot">
+    The order has been accepted by the engine, passed signature and balance verification, and is resting in the order book waiting to be matched.
+
+    **What it means:**
+    - Your funds are reserved (unavailable for other orders)
+    - The order is visible in the public order book (price and size, not your address)
+    - Counter-orders at matching prices will fill against it immediately
+
+    **When you see it:**
+    - Immediately after placing a limit order that does not immediately match
+    - After a partial fill, for the remaining unfilled quantity
+
+    **Next states:** Partially Filled, Filled, Cancelled
+  </Accordion>
+
+  <Accordion title="Partially Filled" icon="circle-half-stroke">
+    Some quantity of the order has been matched and executed, but the order is not yet fully filled. The remaining quantity continues to rest in the book.
+
+    **What it means:**
+    - You have received the filled portion of the base/quote asset
+    - The unfilled portion remains reserved
+    - The order remains open and visible in the book at the unfilled quantity
+
+    **Example:** You placed a GTC buy order for 1.0 ETH at 3200 USDC. A sell order for 0.3 ETH arrives at that price. Your order is now Partially Filled (0.3 filled, 0.7 remaining). 0.3 ETH is credited to your balance, 960 USDC is consumed, and 2240 USDC remains reserved.
+
+    **Next states:** Filled (when remaining quantity matches), Cancelled
+  </Accordion>
+
+  <Accordion title="Filled" icon="circle-check">
+    The order has been fully matched. All quantity has been executed. This is a terminal state.
+
+    **What it means:**
+    - The full order quantity has been executed
+    - Your balances have been updated: sold asset consumed, bought asset credited
+    - The order is removed from the order book
+    - A fill event was published to the trades feed and your private fills channel
+
+    **Next states:** None (terminal)
+  </Accordion>
+
+  <Accordion title="Cancelled" icon="circle-xmark">
+    The order was removed from the book before being fully filled. A cancellation can be triggered by the user or automatically by the system.
+
+    **User-initiated cancellation:**
+    - You clicked Cancel in the Open Orders panel
+    - You submitted `POST /orders/cancel` via the API
+    - All reserved funds are returned to available immediately
+
+    **System-initiated cancellation:**
+    - **IOC remainder:** An IOC order filled partially; the unfilled remainder is automatically cancelled
+    - **FOK failure:** A FOK order could not fill in full immediately; the entire order is cancelled
+    - **Credit auto-cancel:** A fill on one of your orders would push your credit utilization past the configured ratio; the order at the margin is atomically cancelled (market makers only)
+    - **Market pause:** The operator paused the market; all resting orders are cancelled
+
+    **Next states:** None (terminal)
+  </Accordion>
+
+  <Accordion title="Rejected" icon="circle-exclamation">
+    The order was not accepted by the engine. No reservation of funds occurred. This is not the same as cancelled — rejected orders never entered the book.
+
+    **Rejection reasons:**
+
+    | Code | Reason |
+    |---|---|
+    | `INVALID_SIGNATURE` | ECDSA signature verification failed |
+    | `INSUFFICIENT_BALANCE` | Available balance too low for the order |
+    | `DUPLICATE_NONCE` | A previous order with the same nonce was already processed |
+    | `MARKET_NOT_FOUND` | The specified market ID does not exist |
+    | `INVALID_ORDER` | Malformed order parameters (price ≤ 0, quantity ≤ 0, invalid TIF, etc.) |
+    | `CREDIT_BREACH` | The order would exceed the account's credit ratio before even being placed |
+
+    **Next states:** None (terminal)
+  </Accordion>
+</AccordionGroup>
+
+## Tracking Order Status
+
+### In the UI
+
+The **Open Orders** panel below the chart shows all orders with status `Open` or `Partially Filled`. Completed orders (Filled, Cancelled, Rejected) appear in the **Order History** tab.
+
+### Via the REST API
+
+```bash
+GET /account/{address}/orders
+```
+
+Returns all orders for the account. Use the `status` query parameter to filter:
+
+```bash
+# Get all open orders
+GET /account/0xabc.../orders?status=open
+
+# Get order history
+GET /account/0xabc.../orders?status=filled,cancelled,rejected
+```
+
+### Via WebSocket
+
+Subscribe to the `orders:<address>` channel (requires authentication) to receive real-time `order_update` messages whenever an order's status changes:
+
+```json
+{
+  "type": "order_update",
+  "order_id": "ord_7f3a91c2",
+  "status": "partially_filled",
+  "filled_quantity": "300000",
+  "remaining_quantity": "700000",
+  "last_fill_price": "3200000000",
+  "timestamp": "2026-04-15T12:00:01.234Z"
+}
+```
+
+See [WebSocket Protocol](/api-reference/websocket) for the full message schema.
+
+## Nonce Management
+
+Every order must include a `nonce` — a unique integer per account. The engine rejects orders with a nonce ≤ the account's last accepted nonce. This prevents replay attacks.
+
+<Tip>
+Keep a local monotonic counter for nonces. A simple approach: start at `Date.now()` on session start and increment by 1 per order. This ensures nonces are unique across sessions without coordination.
+</Tip>
+
+If you receive a `DUPLICATE_NONCE` rejection, your local nonce counter has fallen behind the server's high-water mark. Fetch your current nonce from `GET /account/:address/balances` (the response includes `nonce_high_water`) and reset your counter.

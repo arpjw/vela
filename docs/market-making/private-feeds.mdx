@@ -1,0 +1,207 @@
+---
+title: "Private L3 Feeds"
+description: "Authenticated WebSocket feeds for market makers."
+---
+
+Vela provides private WebSocket feeds for authenticated accounts. Private feeds deliver order-level data that is not visible on public channels — your fills, order status updates, and balance changes arrive in real time over a persistent, authenticated connection.
+
+The term **L3** refers to the full order-level event stream: every fill, every order update, every balance delta. Public L2 feeds show aggregated price levels; private L3 feeds show every event that affects your account.
+
+## Public vs. Private Feed Content
+
+| Event | Public Feed | Private Feed |
+|---|---|---|
+| Order book snapshots | Yes | Yes |
+| Trade ticker | Yes | Yes |
+| Your fills | No | Yes |
+| Your order status changes | No | Yes |
+| Your balance updates | No | Yes |
+| Book updates triggered by your orders | No | Yes |
+
+## Authentication Flow
+
+Private channels require authentication before messages are delivered. Authentication is a challenge-response flow over the same WebSocket connection.
+
+<Steps>
+  <Step title="Connect to the WebSocket endpoint">
+    ```javascript
+    const ws = new WebSocket('wss://vela-engine.fly.dev/ws');
+    ```
+  </Step>
+  <Step title="Request a challenge nonce">
+    After the connection opens, send a `request_challenge` message with your address:
+
+    ```json
+    {
+      "type": "request_challenge",
+      "address": "0xYourEthereumAddress"
+    }
+    ```
+  </Step>
+  <Step title="Receive the challenge">
+    The server responds with a one-time challenge nonce:
+
+    ```json
+    {
+      "type": "challenge",
+      "nonce": "7f3a91c2e8d40b56a1c3e9f2",
+      "expires_at": "2026-04-15T12:05:00Z"
+    }
+    ```
+
+    The challenge expires in 5 minutes. You must sign and respond before expiry.
+  </Step>
+  <Step title="Sign the challenge with your wallet">
+    Sign the challenge nonce using `personal_sign` (EIP-191):
+
+    ```javascript
+    const message = `Vela Exchange\nNonce: 7f3a91c2e8d40b56a1c3e9f2`;
+    const signature = await signer.signMessage(message);
+    ```
+  </Step>
+  <Step title="Send the auth message">
+    ```json
+    {
+      "type": "auth",
+      "address": "0xYourEthereumAddress",
+      "signature": "0x..."
+    }
+    ```
+  </Step>
+  <Step title="Confirmation and private channel access">
+    On successful auth, the server sends a confirmation:
+
+    ```json
+    {
+      "type": "auth_success",
+      "address": "0xYourEthereumAddress"
+    }
+    ```
+
+    You can now subscribe to private channels.
+  </Step>
+  <Step title="Subscribe to private channels">
+    ```json
+    {
+      "type": "subscribe",
+      "channels": [
+        "fills:0xYourEthereumAddress",
+        "orders:0xYourEthereumAddress",
+        "balances:0xYourEthereumAddress"
+      ]
+    }
+    ```
+  </Step>
+</Steps>
+
+## Private Message Types
+
+### `fill` — Execution notification
+
+Delivered when one of your orders is matched:
+
+```json
+{
+  "type": "fill",
+  "fill_id": "fill_8a2c3d",
+  "order_id": "ord_7f3a91",
+  "market_id": "ETH-USDC",
+  "side": "bid",
+  "price": "3200000000",
+  "quantity": "500000",
+  "is_maker": true,
+  "fee": "320",
+  "rebate": "128",
+  "timestamp": "2026-04-15T12:00:01.234Z"
+}
+```
+
+### `order_update` — Order lifecycle event
+
+Delivered when an order's status changes:
+
+```json
+{
+  "type": "order_update",
+  "order_id": "ord_7f3a91",
+  "market_id": "ETH-USDC",
+  "status": "partially_filled",
+  "filled_quantity": "300000",
+  "remaining_quantity": "700000",
+  "last_fill_price": "3200000000",
+  "timestamp": "2026-04-15T12:00:01.234Z"
+}
+```
+
+### `balance_update` — Balance change notification
+
+Delivered when your balance changes (fill, deposit, withdrawal, cancel):
+
+```json
+{
+  "type": "balance_update",
+  "asset": "USDC",
+  "total": "98400000000",
+  "available": "96800000000",
+  "reserved": "1600000000",
+  "reason": "fill",
+  "timestamp": "2026-04-15T12:00:01.234Z"
+}
+```
+
+## Full Example: Node.js Market Maker Feed
+
+```javascript
+import { WebSocket } from 'ws';
+import { ethers } from 'ethers';
+
+const signer = new ethers.Wallet(process.env.PRIVATE_KEY);
+const address = await signer.getAddress();
+const ws = new WebSocket('wss://vela-engine.fly.dev/ws');
+
+ws.on('open', () => {
+  ws.send(JSON.stringify({
+    type: 'request_challenge',
+    address
+  }));
+});
+
+ws.on('message', async (data) => {
+  const msg = JSON.parse(data);
+
+  if (msg.type === 'challenge') {
+    const message = `Vela Exchange\nNonce: ${msg.nonce}`;
+    const signature = await signer.signMessage(message);
+    ws.send(JSON.stringify({ type: 'auth', address, signature }));
+  }
+
+  if (msg.type === 'auth_success') {
+    ws.send(JSON.stringify({
+      type: 'subscribe',
+      channels: [`fills:${address}`, `orders:${address}`, `balances:${address}`]
+    }));
+    console.log('Authenticated and subscribed to private feeds');
+  }
+
+  if (msg.type === 'fill') {
+    console.log(`Fill: ${msg.quantity} @ ${msg.price} (maker: ${msg.is_maker})`);
+    // Update your quoting logic here
+  }
+
+  if (msg.type === 'balance_update') {
+    console.log(`Balance update: ${msg.asset} available=${msg.available}`);
+  }
+});
+```
+
+## Reconnection Handling
+
+Private channels require re-authentication after reconnection. The server does not persist auth state across connections. Your reconnection logic should repeat the full challenge-response flow.
+
+<Tip>
+Implement exponential backoff for reconnections: 100ms, 200ms, 400ms, 800ms, up to a cap of 30s. After reconnecting and re-authenticating, re-fetch the full order book snapshot via HTTP to reconcile any missed updates.
+</Tip>
+
+## Latency
+
+Private feed messages are delivered with minimal additional latency over public messages. Fill notifications are sent in the same engine tick that generates the fill — before the HTTP response to the counter-party's order request returns. This means your private feed is typically the fastest way to learn about your own executions.

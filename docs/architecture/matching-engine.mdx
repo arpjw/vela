@@ -1,0 +1,152 @@
+---
+title: "Matching Engine"
+description: "Vela's single-threaded CLOB matching engine."
+---
+
+The matching engine is the performance-critical core of Vela. It is a single-threaded Rust event loop that processes orders with strict price-time priority, producing deterministic and verifiable results.
+
+## Design Philosophy
+
+**Single-threaded, not multi-threaded.** For a CLOB, sequential ordering is a requirement, not a limitation. Every order that modifies the book must see the effects of all prior orders. Parallelism introduces races that require synchronization, which negates the throughput gain and adds nondeterminism.
+
+A single-threaded design achieves:
+- Strict price-time priority with no edge cases
+- Deterministic execution that the zkvm prover can reproduce exactly
+- Zero synchronization overhead on the hot path
+- Simple reasoning about consistency — no locks, no CAS loops
+
+The benchmark result — 1.08 μs median match latency at 57.3k ops/sec — is achieved entirely within this single-threaded model.
+
+## Price-Time Priority
+
+The engine implements standard CLOB price-time priority:
+
+1. **Price priority:** Better-priced orders execute first. For buyers, higher prices have priority. For sellers, lower prices have priority.
+2. **Time priority:** Among orders at the same price, earlier orders execute first.
+
+This is implemented with a `BTreeMap<FixedPoint, VecDeque<Order>>` per side:
+- Asks: sorted ascending (best ask = lowest price = first entry)
+- Bids: sorted descending (best bid = highest price = first entry, via `Reverse` key wrapper)
+
+Matching against the book is O(log n) for finding the best price level and O(1) for the first order at that level.
+
+## CoW Cache Execution Flow
+
+The Copy-on-Write cache is a performance optimization that eliminates redundant state reads on the hot path.
+
+```
+                    ┌─────────────────────────┐
+Order arrives  ───▶ │       CoW Cache          │
+                    │  (snapshot of hot state) │
+                    │  - balances              │
+                    │  - order book state      │
+                    │  - nonce high-water      │
+                    └──────────┬──────────────┘
+                               │
+                    ┌──────────▼──────────────┐
+                    │    match_order()         │
+                    │  1. Check balance        │
+                    │  2. Check nonce          │
+                    │  3. Run matching loop    │
+                    │  4. Produce Fill events  │
+                    │  5. Update cache         │
+                    └──────────┬──────────────┘
+                               │
+                    ┌──────────▼──────────────┐
+                    │    Batch boundary        │
+                    │  StateDelta = cache diff │
+                    │  → committer             │
+                    └─────────────────────────┘
+```
+
+**Cache hit:** Balance reads, nonce checks, and order book reads all hit the in-memory cache. Zero disk I/O on the hot path.
+
+**Cache miss (first access):** The cache fetches the value from the MPT state layer and populates the cache entry. Subsequent accesses within the same batch hit the cache.
+
+**Rollback:** If a batch fails, the cache is discarded and re-seeded from the last committed state. Individual order failures (e.g., invalid signature) do not roll back the cache — only the request is rejected.
+
+## Fixed-Point Arithmetic
+
+All prices and quantities in the engine use a custom `FixedPoint` type: a 64-bit integer with an implicit scale factor of 1,000,000.
+
+```rust
+// 3200.000000 USDC
+let price = FixedPoint::from_raw(3_200_000_000);
+
+// 1.000000 ETH
+let quantity = FixedPoint::from_raw(1_000_000);
+
+// Value in USDC (fixed-point multiply)
+let value = price * quantity; // 3_200_000_000_000_000 / 1_000_000 = 3_200_000_000
+```
+
+This avoids all floating-point operations in the matching loop, ensuring identical results across the engine and the zkvm prover (which may run on different hardware).
+
+## Order Type Handling
+
+The matching loop handles all four TIF variants in a unified `match_order()` function:
+
+```
+match_order(order, book) → (fills, remainder_action)
+
+remainder_action ∈ {
+  Rest,      // GTC: add remainder to book
+  Cancel,    // IOC: discard remainder
+  Kill,      // FOK: abort entire match if not fully fillable
+  Reject,    // Post-Only: reject if would have been a taker
+}
+```
+
+**FOK implementation:** Before executing any fills, the engine pre-scans the book to verify the full quantity is available. Only if the full quantity is available does the matching loop proceed. This ensures atomicity — either the full FOK fills, or nothing fills.
+
+**Post-Only implementation:** Before the matching loop starts, the engine checks if the order would cross the spread. If the best ask (for a bid) is ≤ the order price, the order would be a taker and is rejected. If it would rest (best ask > order price), it is accepted and added to the book directly without entering the matching loop.
+
+## Credit System Integration
+
+After each fill is computed, the engine checks the maker's credit utilization:
+
+```rust
+let new_utilization = maker_state.compute_utilization_after_fill(&fill);
+if new_utilization >= 1.0 {
+    // Auto-cancel: find lowest-priority order to cancel
+    let cancel_order_id = maker_state.find_cancel_candidate();
+    engine.cancel_order(cancel_order_id);
+    // Then proceed with the fill
+}
+engine.apply_fill(&fill);
+```
+
+This happens atomically within the same engine tick. See [MM Credit System](/market-making/credit-system) for the full invariant proof.
+
+## CommitBatch Dispatch
+
+At the end of each processing batch (configurable interval, default 10ms), the engine:
+
+1. Drains the cache diff into a `StateDelta`
+2. Serializes all requests and fills into a `CommitBatch`
+3. Sends `CommitBatch` to the committer over an async channel
+4. Clears the processed request queue
+5. Begins the next batch
+
+The committer processes batches asynchronously — the engine does not block waiting for the committer to finish. The channel is buffered to absorb burst traffic.
+
+## Benchmarks
+
+All benchmarks use Criterion.rs with 100 samples, outlier rejection, and a synthetic order stream that uniformly samples across all price levels.
+
+| Benchmark | p50 | p99 | p99.9 | Throughput |
+|---|---|---|---|---|
+| match_order (limit, no fill) | 0.81 μs | 1.4 μs | 2.1 μs | 67k/s |
+| match_order (limit, full fill) | 1.08 μs | 2.3 μs | 5.1 μs | 57.3k/s |
+| match_order (market, walk 5 levels) | 1.92 μs | 4.1 μs | 8.7 μs | 32k/s |
+| cancel_order | 0.42 μs | 0.9 μs | 1.3 μs | 140k/s |
+
+Comparison to Pulse baseline (same workload):
+
+| Metric | Vela | Pulse | Improvement |
+|---|---|---|---|
+| p50 latency | 1.08 μs | 5.1 μs | 4.7× faster |
+| p99.9 latency | 5.1 μs | 19.2 μs | −73% |
+| Throughput | 57.3k/s | 12.2k/s | 4.7× higher |
+
+Benchmarks are reproducible from the open-source repository: `cargo bench --bench engine`.

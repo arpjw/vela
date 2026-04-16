@@ -1,0 +1,125 @@
+---
+title: "Place Your First Order"
+description: "Step-by-step guide to placing your first trade on Vela."
+---
+
+This guide walks through placing a limit order on Vela from start to finish. Before you begin, make sure you have [connected your wallet](/getting-started/connect-wallet) and [deposited funds](/getting-started/deposit).
+
+## Quick Reference
+
+| Order detail | Example |
+|---|---|
+| Market | ETH-USDC |
+| Side | Buy |
+| Type | Limit |
+| Price | 3,200 USDC |
+| Quantity | 0.5 ETH |
+| Time in Force | GTC |
+| Cost | 1,600 USDC |
+
+## Step-by-Step
+
+<Steps>
+  <Step title="Navigate to a market">
+    From the Vela home screen, select a market from the sidebar or navigate directly to `/markets/ETH-USDC`. The full-screen trading UI loads with the order book, chart, and order entry panel.
+  </Step>
+  <Step title="Verify your wallet is connected">
+    Your connected address should appear in the top navigation. If not, click **Connect Wallet** and complete the authentication flow. You cannot submit orders without a connected and authenticated wallet.
+  </Step>
+  <Step title="Check your balance">
+    In the order entry panel on the right side of the screen, your available USDC balance is shown below the order form. Make sure you have enough to cover the order you want to place.
+  </Step>
+  <Step title="Select Buy or Sell">
+    Click **Buy** (green) or **Sell** (red) in the order entry panel. This determines the side of your order.
+  </Step>
+  <Step title="Select Limit or Market order type">
+    Choose **Limit** to specify a price, or **Market** to fill immediately at the best available price. For your first order, **Limit** is recommended so you can see exactly what price you're agreeing to.
+  </Step>
+  <Step title="Enter your price and quantity">
+    For a limit order:
+    - **Price**: Enter the price per unit in USDC (e.g., `3200`)
+    - **Quantity**: Enter the quantity of the base asset (e.g., `0.5` for 0.5 ETH)
+
+    The order panel shows the total cost: `Price × Quantity = 3200 × 0.5 = 1600 USDC`.
+  </Step>
+  <Step title="Select Time in Force">
+    Choose how long the order should remain active:
+    - **GTC** (Good Till Cancelled) — rests in the book until filled or you cancel it. Best for most limit orders.
+    - **IOC** — fills immediately, cancels any unfilled remainder.
+    - **FOK** — must fill entirely immediately, or is cancelled.
+    - **Post-Only** — guaranteed maker order; rejected if it would match immediately.
+
+    See [Time in Force](/trading/time-in-force) for full details.
+  </Step>
+  <Step title="Click Submit — your wallet signs the order">
+    Click **Submit Order**. Your wallet will prompt you to sign the order. The signing payload is the canonical JSON serialization of your order parameters.
+
+    This is an off-chain signature — no gas is spent. Review the message and click **Sign**.
+
+    <Note>
+    Every order on Vela is signed by your wallet. The engine verifies the signature before accepting the order. This means no one can place an order in your name without access to your private key.
+    </Note>
+  </Step>
+  <Step title="Order appears in the book">
+    For a limit order that doesn't immediately match, your order appears in the order book as a resting order. You can see it in the **Open Orders** panel below the chart and in the order book itself (highlighted in your account color).
+
+    Your available USDC balance decreases by the reserved amount (price × quantity).
+  </Step>
+  <Step title="Fill appears in Trade History when matched">
+    When your order matches with a counter-order, a fill event is generated. The fill appears in:
+    - **Trade History** panel — shows the fill price, quantity, and timestamp
+    - **Open Orders** panel — the order updates to Partially Filled or disappears if fully filled
+    - **Balances** — your ETH balance increases, USDC reserved balance decreases
+
+    If you are subscribed to the WebSocket API, a `fill` message arrives on your private channel.
+  </Step>
+</Steps>
+
+## Order Signing Details
+
+Every order you submit to Vela is authenticated by your wallet. The signing payload is the canonical JSON representation of the order:
+
+```json
+{
+  "market_id": "ETH-USDC",
+  "side": "bid",
+  "price": "3200000000",
+  "quantity": "500000",
+  "order_type": "limit",
+  "time_in_force": "gtc",
+  "nonce": 1
+}
+```
+
+<Info>
+**Fixed-point encoding:** Prices and quantities are encoded as integers scaled by 1,000,000. A price of `3200.00 USDC` is `3200000000` (×1,000,000) and a quantity of `0.5 ETH` is `500000`. This ensures deterministic arithmetic across the engine and zkvm prover.
+</Info>
+
+The `nonce` is a monotonically increasing integer per account. Reusing a nonce is rejected with `DUPLICATE_NONCE`. Keep a local counter and increment for each order.
+
+## What Happens If My Order Doesn't Fill?
+
+A GTC limit order rests in the book indefinitely until:
+
+1. A counter-order arrives that matches your price
+2. You cancel the order manually from the Open Orders panel or via `POST /orders/cancel`
+3. The market is paused by the operator
+
+Your funds remain reserved (unavailable for other orders) while the order rests. Cancelling returns the reserved funds to available immediately.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Order Types" icon="list" href="/trading/order-types">
+    Learn more about limit vs. market orders.
+  </Card>
+  <Card title="Time in Force" icon="clock" href="/trading/time-in-force">
+    Understand GTC, IOC, FOK, and Post-Only.
+  </Card>
+  <Card title="Order Status" icon="circle-info" href="/getting-started/order-status">
+    Track your order through its lifecycle.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/http">
+    Automate order placement via the REST API.
+  </Card>
+</CardGroup>

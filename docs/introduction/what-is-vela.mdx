@@ -1,0 +1,89 @@
+---
+title: "What is Vela?"
+description: "Vela is a high-performance verifiable spot DEX built by Monolith Systematic LLC."
+---
+
+Vela Exchange is a central limit order book (CLOB) spot exchange that combines the speed of a centralized exchange with the verifiability of a blockchain system. Every trade is cryptographically signed, every match is deterministic, and every batch of state transitions is provable.
+
+## The Problem
+
+The exchange landscape today forces a hard choice:
+
+**Centralized exchanges (CEXes)** like Binance and Coinbase are fast — microsecond matching, deep liquidity, professional tooling. But they are opaque. You trust the exchange with your funds, your orders, and your trade history. There is no way to verify that the engine is running fairly, that your orders were processed in order, or that the exchange isn't front-running its own users.
+
+**Decentralized exchanges (DEXes)** like Uniswap and dYdX are transparent — every swap is on-chain and auditable. But they are slow, expensive, and architecturally constrained. AMMs trade away price efficiency for simplicity. On-chain CLOBs are bottlenecked by block times. Off-chain matching with on-chain settlement (like dYdX v3) gets closer, but verification is limited.
+
+Neither model is satisfying for serious traders.
+
+## Vela's Solution
+
+Vela resolves this tradeoff with a three-layer design:
+
+1. **Off-chain CLOB matching engine** — A single-threaded Rust engine with price-time priority, running at microsecond latency. Traders interact through a standard REST/WebSocket API, identical in feel to a CEX.
+
+2. **Cryptographic order authentication** — Every order is signed by the trader's Ethereum wallet using ECDSA (secp256k1). The engine verifies each signature before accepting an order. There are no API keys — your wallet is your identity.
+
+3. **Optimistic-ZK verification** — Batches of state transitions are published to a data availability layer. An optimistic-ZK prover can re-execute the batch and generate a fraud proof if any transition is incorrect. This provides a path to trustless verification without sacrificing throughput.
+
+## Performance
+
+Vela's matching engine was built from first principles in Rust, benchmarked rigorously against the [Pulse](https://github.com/arpjw/vela) baseline:
+
+| Metric | Result |
+|---|---|
+| Match latency (p50) | 1.08 μs |
+| Match latency (p99) | 3.2 μs |
+| Match latency (p99.9) | 5.1 μs |
+| Throughput | 57.3k ops/sec |
+| vs. Pulse baseline | 4.7× faster |
+| p99.9 tail reduction | −73% |
+| Test suite | 73/73 passing |
+
+These benchmarks run on a single thread. The engine is designed to scale horizontally across markets while keeping per-market order guarantees strict.
+
+## Who Is Vela For?
+
+<CardGroup cols={2}>
+  <Card title="Traders" icon="arrow-trend-up">
+    Fast order placement, limit and market orders, GTC/IOC/FOK/Post-Only, live order book with depth chart and analytics.
+  </Card>
+  <Card title="Market Makers" icon="chart-bar">
+    Credit system for capital-efficient quoting across 11 markets, private L3 authenticated feeds, MM dashboard with credit gauge and P&L tracker.
+  </Card>
+  <Card title="Developers" icon="code">
+    Full REST and WebSocket API, ECDSA auth, open-source Rust engine, white paper with full architectural and mathematical detail.
+  </Card>
+  <Card title="Researchers" icon="flask">
+    Open benchmarks, Monolith Research white paper, comparison to Pulse, dYdX, Vertex, and Serum, reproducible methodology.
+  </Card>
+</CardGroup>
+
+## Current Status
+
+Vela is in **public beta** as of April 2026. The following are live:
+
+- 11 spot markets: BTC-USDC, ETH-USDC, SOL-USDC, AVAX-USDC, MATIC-USDC, LINK-USDC, UNI-USDC, ARB-USDC, OP-USDC, AAVE-USDC, DOGE-USDC
+- Rust matching engine with full CLOB semantics
+- MM credit system with auto-cancel
+- Private L3 authenticated WebSocket feeds
+- Optimistic-ZK prover (DA layer active)
+- Full-screen trading UI deployed on Vercel
+
+<Warning>
+Beta deposits are **not settled on-chain**. The engine holds balances in memory and in a local state layer. Do not deposit funds you cannot afford to lose. On-chain deposit contracts are on the M6 roadmap.
+</Warning>
+
+## Roadmap Direction
+
+The path from beta to mainnet involves on-chain deposit settlement (M6), a Solidity verifier contract for fraud proofs, and a production DA layer (Celestia or EigenDA). See the [Roadmap](/resources/roadmap) for full milestone detail.
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card title="Architecture Overview" icon="sitemap" href="/introduction/architecture">
+    Deep dive into the six-crate Rust workspace.
+  </Card>
+  <Card title="White Paper" icon="file-lines" href="/introduction/whitepaper">
+    Monolith Research Vol. 2 — full mathematical and architectural treatment.
+  </Card>
+</CardGroup>

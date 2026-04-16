@@ -1,0 +1,99 @@
+{
+  "name": "Vela Exchange",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#C41E3A",
+    "light": "#E8829A",
+    "dark": "#8B0F22",
+    "background": {
+      "light": "#FFFFFF",
+      "dark": "#0F0B06"
+    }
+  },
+  "topbarLinks": [
+    { "name": "Exchange", "url": "https://vela.monolithsystematic.com" },
+    { "name": "GitHub", "url": "https://github.com/arpjw/vela" }
+  ],
+  "topbarCtaButton": {
+    "name": "Launch App",
+    "url": "https://vela.monolithsystematic.com"
+  },
+  "navigation": [
+    {
+      "group": "Introduction",
+      "pages": [
+        "introduction/what-is-vela",
+        "introduction/architecture",
+        "introduction/whitepaper"
+      ]
+    },
+    {
+      "group": "Getting Started",
+      "pages": [
+        "getting-started/connect-wallet",
+        "getting-started/deposit",
+        "getting-started/first-order",
+        "getting-started/order-status"
+      ]
+    },
+    {
+      "group": "Trading",
+      "pages": [
+        "trading/order-types",
+        "trading/time-in-force",
+        "trading/order-book",
+        "trading/fees"
+      ]
+    },
+    {
+      "group": "Market Making",
+      "pages": [
+        "market-making/credit-system",
+        "market-making/private-feeds",
+        "market-making/dashboard"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api-reference/authentication",
+        "api-reference/http",
+        "api-reference/websocket",
+        "api-reference/errors"
+      ]
+    },
+    {
+      "group": "Architecture",
+      "pages": [
+        "architecture/matching-engine",
+        "architecture/state-layer",
+        "architecture/zk-vm",
+        "architecture/da-layer",
+        "architecture/forced-inclusion"
+      ]
+    },
+    {
+      "group": "Security",
+      "pages": [
+        "security/ecdsa",
+        "security/fraud-proofs",
+        "security/trust-model"
+      ]
+    },
+    {
+      "group": "Resources",
+      "pages": [
+        "resources/faq",
+        "resources/roadmap",
+        "resources/changelog"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/arpjw/vela"
+  }
+}

@@ -1,0 +1,97 @@
+---
+title: "Forced Inclusion"
+description: "Anti-censorship mechanism in Vela Exchange."
+---
+
+Forced inclusion is a mechanism that prevents the exchange operator from censoring specific users. Even if the operator refuses to process a user's orders, the user can submit their transactions directly to an L1 contract and force the operator to include them — or face a fraud proof.
+
+## The Censorship Problem
+
+In a purely off-chain exchange, the operator controls which transactions are processed. A malicious or compromised operator could:
+
+- Refuse to process orders from specific accounts
+- Front-run users by delaying their orders
+- Prevent users from withdrawing funds by ignoring withdrawal requests
+
+Without a forced inclusion mechanism, users have no recourse.
+
+## The DelayedInbox
+
+Vela implements a `DelayedInbox` pattern (inspired by Arbitrum's design):
+
+```
+User                    L1 Contract             Vela Engine
+  │                         │                         │
+  │  submitTransaction()    │                         │
+  ├────────────────────────▶│                         │
+  │                         │  TransactionQueued      │
+  │                         │  event emitted          │
+  │                         │                         │
+  │                         │  ... timeout period ... │
+  │                         │                         │
+  │                         │  If operator has not    │
+  │                         │  included by deadline:  │
+  │                         │                         │
+  │                         │──── challenge period ───▶ Operator must
+  │                         │                           include or prove
+  │                         │                           fraud proof fails
+```
+
+### How it works:
+
+1. A user submits a signed transaction (order, cancel, withdrawal) directly to the `DelayedInbox` L1 contract by calling `submitTransaction(bytes signedTx)`
+
+2. The contract emits a `TransactionQueued(uint256 indexed seq, bytes signedTx, uint256 deadline)` event
+
+3. The `deadline` is `block.timestamp + FORCED_INCLUSION_TIMEOUT` (e.g., 24 hours)
+
+4. The Vela engine monitors the L1 contract for `TransactionQueued` events and processes them automatically — including them in the next batch before the deadline
+
+5. **If the operator does not include the transaction before the deadline:** Any party can submit a fraud proof to the on-chain verifier showing that the batch chain is missing the forced transaction. The verifier slashes the operator's bond.
+
+## Forced Inclusion Timeout
+
+The timeout is a security parameter. A shorter timeout provides faster censorship resistance but requires the engine to monitor L1 more frequently.
+
+| Parameter | Value |
+|---|---|
+| Forced inclusion timeout | 24 hours (configurable) |
+| L1 monitoring frequency | Every L1 block (~12s on Ethereum) |
+| Max forced transactions per batch | 1,000 |
+
+<Info>
+In the current beta, forced inclusion is implemented in the engine codebase but the L1 contract has not been deployed. This feature activates at mainnet (M6).
+</Info>
+
+## Withdrawal Guarantee
+
+Forced inclusion is particularly important for withdrawals. In a purely off-chain exchange, users cannot withdraw without the operator's cooperation. With forced inclusion:
+
+1. User submits `withdraw(asset, amount)` to the `DelayedInbox`
+2. Engine observes the L1 event and processes the withdrawal
+3. Engine updates the state to reduce the user's balance
+4. The on-chain settlement contract (M6) releases funds to the user's address
+
+If the operator refuses step 2, the user can challenge on-chain. The fraud proof will show that the forced transaction was queued but not included in any batch within the timeout period.
+
+## Relationship to Trust Model
+
+Forced inclusion is one of the mechanisms that transitions Vela from a trust-based model to a trustless model:
+
+| Feature | Trust-based (Beta) | Trustless (Mainnet) |
+|---|---|---|
+| Order execution | Trust operator | Trust operator + fraud proofs |
+| Balance custody | Trust operator | On-chain deposit contract |
+| Withdrawals | Trust operator | Forced inclusion + on-chain settlement |
+| Censorship resistance | None | DelayedInbox with L1 timeout |
+
+See [Trust Model](/security/trust-model) for the full picture.
+
+## Implementation Status
+
+| Component | Status |
+|---|---|
+| `DelayedInbox` in engine logic | Implemented — processes forced transactions when detected |
+| L1 contract (`DelayedInbox.sol`) | Roadmap (M6) |
+| Operator bond and slashing | Roadmap (M7) |
+| L1 event monitoring | Implemented — `L1Monitor` watches for events |

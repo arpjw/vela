@@ -1,0 +1,146 @@
+---
+title: "ECDSA Authentication"
+description: "How Vela uses secp256k1 signatures for security."
+---
+
+Every action that modifies state on Vela — placing an order, cancelling an order, requesting a withdrawal — requires a valid ECDSA signature from the account holder's Ethereum wallet. This makes Vela's authentication model identical to Ethereum's: your private key is your identity, and signatures are your authorization.
+
+## Elliptic Curve: secp256k1
+
+Vela uses the **secp256k1** elliptic curve, the same curve used by Bitcoin and Ethereum. Signatures are produced using the standard ECDSA algorithm over this curve.
+
+Curve parameters (for reference):
+- Field prime: `p = 2²⁵⁶ − 2³² − 977`
+- Generator point: standard secp256k1 `G`
+- Order: `n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141`
+
+In Rust, Vela uses the `k256` crate (part of the `RustCrypto` ecosystem) for all signature operations. `k256` is a pure-Rust, constant-time implementation with no unsafe code.
+
+## EIP-191 Personal Sign
+
+Raw ECDSA signatures over arbitrary data have a replay attack vector: a signature produced for one application could be replayed in another. EIP-191 prevents this by prepending a standard prefix before hashing:
+
+```
+message = "\x19Ethereum Signed Message:\n" + len(data) + data
+hash = keccak256(message)
+signature = ECDSA.sign(hash, private_key)
+```
+
+The `\x19Ethereum Signed Message:\n` prefix ensures that a personal signature cannot be mistaken for an Ethereum transaction signature (which uses a different prefix).
+
+Vela uses `personal_sign` (EIP-191 personal sign) for all signatures. This is the standard method exposed by MetaMask, ethers.js (`signer.signMessage()`), and all major Ethereum wallets.
+
+## Order Signing
+
+The signing payload for an order is the canonical JSON encoding of the order parameters:
+
+```json
+{"market_id":"ETH-USDC","side":"bid","price":"3200000000","quantity":"1000000","order_type":"limit","time_in_force":"gtc","nonce":42}
+```
+
+**Canonical format rules:**
+1. No whitespace (no spaces after `:` or `,`)
+2. Fields in this exact order: `market_id`, `side`, `price`, `quantity`, `order_type`, `time_in_force`, `nonce`
+3. All values are strings or integers — no floats
+4. UTF-8 encoding
+
+The engine re-computes the canonical encoding from the submitted order fields and verifies the signature against that encoding. This means if a single character is different, the signature check fails.
+
+## Address Recovery
+
+The engine recovers the signer address from the signature and verifies it matches the claimed address:
+
+```
+1. Reconstruct the prefixed hash:
+   hash = keccak256("\x19Ethereum Signed Message:\n" + len(message) + message)
+
+2. Extract (r, s, v) from the 65-byte signature
+
+3. Recover public key:
+   pubkey = ECDSA.recover(hash, r, s, v)
+
+4. Derive Ethereum address:
+   address = "0x" + keccak256(pubkey[1:])[12:].hex()
+
+5. Compare to claimed address:
+   assert address == request.address
+```
+
+Step 2 uses the recovery id (`v`) — either 27 or 28 — to select which of the two possible public keys corresponds to the signature. The `k256` crate handles this via `RecoveryId`.
+
+## Nonce Replay Prevention
+
+Each order includes a `nonce` field. The engine maintains a **nonce high-water mark** per account, initialized at 0:
+
+- When an order with `nonce = N` is accepted, the high-water mark becomes `N`
+- Any future order with `nonce ≤ N` is rejected with `DUPLICATE_NONCE`
+- Nonces must be strictly increasing, but do not need to be contiguous
+
+This prevents a replayed signature attack: even if an attacker intercepts a valid signed order, they cannot re-submit it because the nonce has already been consumed.
+
+<Warning>
+Nonces are per-account and persisted in the state layer. They survive engine restarts. Your local nonce counter must start from `nonce_high_water + 1` fetched from the API, not from 0.
+</Warning>
+
+## Cancel Signing
+
+Cancel requests are also signed to prevent unauthorized order cancellation:
+
+```json
+{"order_id":"ord_7f3a91c2","address":"0xYourAddress","nonce":43}
+```
+
+An attacker who knows your order ID cannot cancel your order without your signature.
+
+## WebSocket Authentication
+
+WebSocket private channel authentication uses a challenge-response scheme:
+
+1. Client sends `request_challenge` with address
+2. Server returns a random `nonce` (hex string, 24 bytes)
+3. Client signs: `"Vela Exchange\nNonce: " + challenge_nonce`
+4. Client sends `auth` with address and signature
+5. Server recovers address, verifies match, grants session
+
+The challenge nonce expires in 5 minutes to prevent offline brute-force attacks. The format (`Vela Exchange\nNonce: ...`) is distinct from order signing to prevent cross-use of signatures.
+
+## Rust Implementation (k256)
+
+```rust
+use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
+use k256::ecdsa::signature::hazmat::PrehashVerifier;
+use sha3::{Digest, Keccak256};
+
+pub fn recover_signer(message: &str, signature_bytes: &[u8; 65]) -> Result<Address> {
+    // EIP-191 prefix
+    let prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
+    let hash = Keccak256::new()
+        .chain_update(prefix.as_bytes())
+        .chain_update(message.as_bytes())
+        .finalize();
+
+    let (r_s, v) = signature_bytes.split_at(64);
+    let sig = Signature::from_bytes(r_s.into())?;
+    let recovery_id = RecoveryId::try_from(v[0] - 27)?;
+
+    let verifying_key = VerifyingKey::recover_from_prehash(&hash, &sig, recovery_id)?;
+    let pubkey_bytes = verifying_key.to_encoded_point(false);
+
+    // keccak256(pubkey[1:]), take last 20 bytes
+    let pubkey_hash = Keccak256::digest(&pubkey_bytes.as_bytes()[1..]);
+    let address = Address::from_slice(&pubkey_hash[12..]);
+
+    Ok(address)
+}
+```
+
+## Security Properties
+
+| Property | Mechanism |
+|---|---|
+| Authentication | secp256k1 ECDSA — only private key holder can sign |
+| Authorization | Signature covers full order details — no partial authorization |
+| Integrity | Any field modification invalidates the signature |
+| Replay prevention | Per-account nonce high-water mark |
+| Cross-application isolation | EIP-191 prefix prevents signature reuse across apps |
+| Constant-time | k256 crate uses constant-time operations |

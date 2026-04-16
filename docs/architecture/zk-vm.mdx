@@ -1,0 +1,158 @@
+---
+title: "zkVM and Fraud Proofs"
+description: "Optimistic-ZK design for verifiable execution in Vela."
+---
+
+Vela uses an **optimistic execution** model with a **ZK-based fraud proof** mechanism. State transitions are assumed correct by default; any party with access to the data availability layer can independently verify them and generate a fraud proof if a discrepancy is found.
+
+## Optimistic vs. ZK-Validity
+
+There are two approaches to verifiable off-chain computation:
+
+| Approach | How it works | Trade-off |
+|---|---|---|
+| **ZK-Validity** | Every batch is accompanied by a zero-knowledge proof of correctness | High proving cost per batch, instant finality |
+| **Optimistic** | Batches are assumed correct; fraud proofs challenge incorrect transitions | Low overhead per batch, challenge period required |
+
+Vela uses the **optimistic** approach because:
+1. The proving cost of a ZK-validity proof per batch would be prohibitive at Vela's throughput (57k+ ops/sec)
+2. The fraud window provides sufficient security for exchange use cases
+3. Deterministic execution (fixed-point arithmetic, single-threaded engine) makes fraud proof generation tractable
+
+The "ZK" in "optimistic-ZK" refers to the fact that fraud proofs can be made succinct using ZK techniques. In the current implementation, fraud proofs are computational proofs without ZK succinctness — the ZK component is on the roadmap.
+
+## Architecture
+
+```
+Off-chain (engine):                     Off-chain (prover):
+┌──────────────────┐                   ┌──────────────────────┐
+│  matching engine │──CommitBatch──▶   │  committer + DA      │
+└──────────────────┘                   │  publishes ZkvmInput │
+                                        └──────────┬───────────┘
+                                                   │
+                                        ┌──────────▼───────────┐
+                                        │   zkvm prover        │
+                                        │   verify_execution() │
+                                        └──────────┬───────────┘
+                                                   │
+                                       ┌───────────▼──────────┐
+                                       │  FraudProof (if any) │
+                                       │  → on-chain verifier │
+                                       │    (M7 roadmap)      │
+                                       └──────────────────────┘
+```
+
+## ZkvmInput Structure
+
+Each batch published to the DA layer contains a `ZkvmInput`:
+
+```rust
+pub struct ZkvmInput {
+    /// State root before this batch was applied
+    pub pre_root: [u8; 32],
+    /// All requests in the batch, in order
+    pub requests: Vec<EngineRequest>,
+    /// State root the engine claims after applying all requests
+    pub expected_post_root: [u8; 32],
+    /// Batch sequence number
+    pub sequence: u64,
+}
+```
+
+The `requests` vector contains every order placement, cancellation, and other state-modifying operation in the batch, in the exact order the engine processed them.
+
+## verify_execution()
+
+The `verify_execution()` function is the heart of the fraud proof system:
+
+```rust
+pub fn verify_execution(input: &ZkvmInput, state: &StateSnapshot) -> VerifyResult {
+    // 1. Seed a fresh engine from the pre-batch state snapshot
+    let mut engine = Engine::from_snapshot(state, input.pre_root);
+
+    // 2. Re-execute all requests in order
+    for (i, request) in input.requests.iter().enumerate() {
+        let result = engine.process(request);
+
+        // 3. Check for first divergence
+        if let Some(divergence) = check_divergence(result, &input.expected_fills[i]) {
+            return VerifyResult::FraudDetected(FraudProof {
+                sequence: input.sequence,
+                request_index: i,
+                divergence,
+                pre_execution_state: engine.capture_snapshot(),
+            });
+        }
+    }
+
+    // 4. Compare final state root
+    let computed_post_root = engine.state_root();
+    if computed_post_root != input.expected_post_root {
+        return VerifyResult::FraudDetected(FraudProof {
+            sequence: input.sequence,
+            request_index: input.requests.len(),
+            divergence: Divergence::StateRootMismatch {
+                expected: input.expected_post_root,
+                computed: computed_post_root,
+            },
+            pre_execution_state: engine.capture_snapshot(),
+        });
+    }
+
+    VerifyResult::Valid
+}
+```
+
+**Key properties:**
+- The re-execution is deterministic: identical inputs (same requests, same pre-state) always produce the same outputs
+- The engine used in the prover is the same codebase as the live engine — there is no separate "provable" implementation
+- The first divergence is identified at the request level, not just the batch level, making fraud proofs maximally specific
+
+## FraudProof Structure
+
+```rust
+pub struct FraudProof {
+    /// Which batch
+    pub sequence: u64,
+    /// Which request in the batch caused the divergence (N = post-execution root mismatch)
+    pub request_index: usize,
+    /// What diverged: fill amount, order status, balance delta, or state root
+    pub divergence: Divergence,
+    /// State snapshot before the divergent request (for on-chain verification)
+    pub pre_execution_state: StateSnapshot,
+}
+
+pub enum Divergence {
+    FillAmountMismatch { expected: FixedPoint, computed: FixedPoint },
+    BalanceDeltaMismatch { asset: String, expected: FixedPoint, computed: FixedPoint },
+    OrderStatusMismatch { expected: OrderStatus, computed: OrderStatus },
+    StateRootMismatch { expected: [u8; 32], computed: [u8; 32] },
+}
+```
+
+## Current Status
+
+| Component | Status |
+|---|---|
+| `zkvm` crate | Complete — `verify_execution()` implemented and tested |
+| Fraud proof generation | Working — generates `FraudProof` on divergence |
+| DA batch publication | Active — `LocalDaClient` writes batch files |
+| Test coverage | 100% of zkvm paths covered by test suite |
+| On-chain verifier contract | Roadmap (M7) — Solidity contract to verify fraud proofs on-chain |
+| Celestia/EigenDA integration | Roadmap (M7) — production DA layer |
+
+<Info>
+The zkvm prover currently runs locally. In the full architecture, any third party with access to the DA layer can run the prover and submit fraud proofs to the on-chain verifier contract. This is the M7 milestone.
+</Info>
+
+## Determinism Guarantees
+
+Fraud proofs only work if the prover's re-execution is bit-for-bit identical to the original. Vela achieves this through:
+
+1. **Fixed-point arithmetic** — no floating-point, no platform-dependent rounding
+2. **Single-threaded engine** — no nondeterministic scheduling
+3. **`BTreeMap` for ordered iteration** — no `HashMap` with randomized iteration order on the hot path
+4. **Canonical serialization** — all state is serialized with deterministic field ordering
+5. **Same codebase** — the prover uses the exact same `engine` crate as the live system
+
+Any code change to the engine that affects execution results must also be reflected in the DA batch format, or old batches become un-provable. This is managed through the batch schema version field.

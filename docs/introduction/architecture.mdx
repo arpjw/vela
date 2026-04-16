@@ -1,0 +1,189 @@
+---
+title: "Architecture Overview"
+description: "Six-crate Rust workspace powering the Vela exchange."
+---
+
+Vela is implemented as a Cargo workspace with six crates. Each crate has a focused responsibility. The crates are layered: `types` sits at the bottom (no dependencies on other vela crates), `engine` and `state` sit in the middle, and `api`, `committer`, and `zkvm` sit at the top.
+
+## System Diagram
+
+```
+            ┌─────────────────┐
+HTTP/WS     │   api handler   │
+────────────▶  ECDSA auth     │
+            │  feed manager   │
+            └────────┬────────┘
+                     │ Request
+            ┌────────▼────────┐
+            │ matching engine │
+            │  CoW cache      │
+            │  credit system  │
+            └────────┬────────┘
+                     │ CommitBatch
+            ┌────────▼────────┐
+            │   committer     │
+            │   MPT state     │
+            │   DA layer      │
+            └────────┬────────┘
+                     │ ZkvmInput
+            ┌────────▼────────┐
+            │     zkvm        │
+            │ fraud proofs    │
+            └─────────────────┘
+```
+
+## Crate Reference
+
+<AccordionGroup>
+  <Accordion title="types — Shared types and wire protocol" icon="shapes">
+    The `types` crate is the dependency foundation for the entire workspace. It defines all shared data structures, fixed-point arithmetic, and the wire protocol used between crates and over the API.
+
+    **Key contents:**
+    - `Order`, `Fill`, `Trade`, `Balance`, `Market` structs
+    - `FixedPoint` — 64-bit integer with ×1,000,000 scale factor, used for all prices and quantities to avoid floating-point nondeterminism
+    - `Side` (Bid/Ask), `OrderType` (Limit/Market), `TimeInForce` (GTC/IOC/FOK/PostOnly)
+    - `OrderStatus` lifecycle enum
+    - Serialization/deserialization via `serde` for both JSON (API) and binary (DA layer)
+    - `MarketId` — newtype wrapper around a string, e.g. `"ETH-USDC"`
+
+    All arithmetic in the engine uses `FixedPoint` to guarantee identical results across the engine and the zkvm prover when re-executing batches.
+  </Accordion>
+
+  <Accordion title="engine — Matching engine, CoW cache, credit system" icon="bolt">
+    The `engine` crate contains the core business logic. It is the most performance-critical component and is designed to run single-threaded with no async overhead on the hot path.
+
+    **Matching engine:**
+    - Price-time priority CLOB with `BTreeMap`-based order book (asks ascending, bids descending)
+    - Handles GTC, IOC, FOK, and Post-Only semantics in a unified `match_order` function
+    - Produces `Fill` events for each partial or full execution
+    - Atomically updates balances on fill
+
+    **CoW (Copy-on-Write) cache:**
+    - Captures a snapshot of relevant state before executing a batch of requests
+    - Applies mutations in-memory; if the batch fails, rolls back to snapshot
+    - Eliminates redundant state reads on the hot path
+    - The cache diff is handed to the committer as a `StateDelta`
+
+    **Credit system:**
+    - Tracks total quoted value per market maker account
+    - Auto-cancel fires atomically when a fill would push utilization past the configured ratio
+    - Credit parameters (ratio, max quoted value) are per-account, configurable by the operator
+    - See [MM Credit System](/market-making/credit-system) for full detail
+
+    **Order book:**
+    - Separate `OrderBook` struct per market, owned by the engine
+    - `BTreeMap<FixedPoint, VecDeque<Order>>` for price level → queue of resting orders
+    - O(log n) insertion and O(1) best price lookup
+  </Accordion>
+
+  <Accordion title="state — MPT state layer and in-memory cache" icon="database">
+    The `state` crate manages persistent state between batches. It uses a Merkle Patricia Trie (MPT) to produce a deterministic state root after each committed batch, which is published to the DA layer and used by the zkvm prover.
+
+    **State keys:**
+    - `Balance(address, asset)` — account balance for a given asset
+    - `Metadata(address)` — account metadata (nonce high-water mark, credit params)
+    - `OrderBook(market_id)` — serialized order book snapshot
+    - `MarketConfig(market_id)` — market parameters (tick size, lot size, status)
+    - `GlobalSequence` — monotonically increasing batch sequence number
+
+    **In-memory cache:**
+    - Hot-path reads skip the trie entirely; the cache is a `HashMap` of `StateKey → StateValue`
+    - Cache is populated on first access and kept warm across batches
+    - MPT root is only computed at commit time, amortizing the cost across all requests in the batch
+
+    **Determinism:**
+    - All iteration over state uses `BTreeMap` to guarantee consistent ordering
+    - The state root is a function of the full state, not just the delta, so any divergence in execution produces a different root
+  </Accordion>
+
+  <Accordion title="api — HTTP/WS handler and ECDSA auth" icon="network-wired">
+    The `api` crate exposes Vela to the outside world. It handles HTTP and WebSocket connections, authenticates requests via ECDSA, and dispatches to the engine.
+
+    **HTTP handler:**
+    - Built on `axum` with `tokio` async runtime
+    - Routes: `GET /health`, `GET /markets`, `GET /markets/:id/book`, `GET /account/:addr/balances`, `GET /account/:addr/orders`, `POST /orders`, `POST /orders/cancel`, `POST /withdrawals`
+    - Request validation happens in the handler before the request reaches the engine
+    - ECDSA signature verification is a middleware layer; invalid signatures return `401` before the engine is touched
+
+    **WebSocket handler:**
+    - Persistent connections for real-time book, trade, and private fill data
+    - Channel subscriptions: `book:<market>`, `trades:<market>`, `fills:<address>` (authenticated), `orders:<address>` (authenticated)
+    - Private channels require a challenge-response auth flow over the WS connection
+
+    **Feed manager:**
+    - Fan-out of engine events to subscribed WS clients
+    - Separate fanout channels per market for book and trade updates
+    - Private fill events routed by address to authenticated connections only
+  </Accordion>
+
+  <Accordion title="committer — Async batch committer and DA layer" icon="hard-drive">
+    The `committer` crate is responsible for durability. It receives `CommitBatch` events from the engine, updates the MPT state layer, and publishes batch data to the data availability layer.
+
+    **Batch flow:**
+    1. Engine completes processing a batch of requests and emits `CommitBatch { requests, fills, state_delta, pre_root }`
+    2. Committer applies `state_delta` to the MPT, computes new `post_root`
+    3. Committer serializes `ZkvmInput { pre_root, requests, expected_post_root }` and publishes to the DA layer
+    4. DA layer returns a `DaReceipt { content_hash, sequence }` which is persisted
+
+    **Data availability:**
+    - `DataAvailabilityClient` trait with pluggable backends
+    - `LocalDaClient` writes `da_batch_{seq}.bin` files for development and testing
+    - Production target: Celestia or EigenDA
+    - See [DA Layer](/architecture/da-layer) for detail
+  </Accordion>
+
+  <Accordion title="zkvm — Optimistic-ZK prover and fraud proofs" icon="shield-check">
+    The `zkvm` crate implements the optimistic-ZK verification layer. It is not on the hot path — it runs asynchronously against published DA batches.
+
+    **verify_execution():**
+    1. Fetches `ZkvmInput` from the DA layer for a given sequence number
+    2. Seeds a fresh engine from the `pre_root` state snapshot
+    3. Re-executes all requests in the batch
+    4. Computes resulting `post_root`
+    5. Compares to `expected_post_root` from the `ZkvmInput`
+    6. If roots diverge: generates a `FraudProof` struct identifying the first divergent transition
+
+    **Current status:**
+    - zkvm crate is complete and tested
+    - On-chain fraud proof submission (Solidity verifier contract) is on the M7 roadmap
+    - Fraud proofs are generated and logged locally; on-chain submission pending
+
+    See [zkVM and Fraud Proofs](/architecture/zk-vm) for the full design.
+  </Accordion>
+</AccordionGroup>
+
+## Data Flow Summary
+
+A single order placement flows through the system as follows:
+
+<Steps>
+  <Step title="API receives request">
+    The `api` handler receives a `POST /orders` request. ECDSA middleware recovers the signer address from the order signature and verifies it matches the `address` field.
+  </Step>
+  <Step title="Engine processes order">
+    The validated order enters the engine. The engine checks the CoW cache for balance and nonce, runs the matching algorithm, and produces `Fill` events for any executions.
+  </Step>
+  <Step title="State delta captured">
+    The engine writes balance updates and order state changes into the CoW cache. At batch boundary, the cache diff becomes a `StateDelta`.
+  </Step>
+  <Step title="Committer persists">
+    The committer applies the `StateDelta` to the MPT, computes the new state root, and publishes the batch to the DA layer.
+  </Step>
+  <Step title="zkvm can verify">
+    Any observer with access to the DA layer can download the batch and run `verify_execution()` to confirm the state transition was correct.
+  </Step>
+</Steps>
+
+## Technology Stack
+
+| Component | Technology |
+|---|---|
+| Language | Rust (stable) |
+| Async runtime | tokio |
+| HTTP framework | axum |
+| Serialization | serde + serde_json |
+| Crypto | k256 (secp256k1) |
+| State trie | Custom MPT |
+| Fixed-point math | Custom FixedPoint (×1M scale) |
+| Build system | Cargo workspace |
+| Deployment | fly.io (engine) + Vercel (frontend) |

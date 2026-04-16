@@ -1,0 +1,153 @@
+---
+title: "Roadmap"
+description: "Vela Exchange development roadmap."
+---
+
+This roadmap tracks Vela's development milestones from initial research through full trustless mainnet. Completed milestones are marked with their completion status; active and future milestones show planned scope.
+
+<Info>
+The roadmap shows direction and priority — not a release schedule. No dates are promised for future milestones.
+</Info>
+
+## Milestone Overview
+
+| Milestone | Name | Status |
+|---|---|---|
+| M1 | Research & Foundation | Complete |
+| M2 | Core Engine | Complete |
+| M3 | Premium Features | Complete |
+| M4 | Benchmark and OSS Release | Complete |
+| M5 | Vela UI and Public Beta | Complete |
+| M6 | Live Trading | In Progress |
+| M7 | Institutional Features | Planned |
+
+---
+
+## M1 — Research & Foundation
+
+**Status: Complete**
+
+- Literature review: existing CLOB designs (Serum, dYdX, Vertex, Pulse)
+- Architecture design: six-crate workspace, state model, DA strategy
+- Fixed-point arithmetic design and validation
+- White paper outline and research framework
+
+---
+
+## M2 — Core Engine
+
+**Status: Complete**
+
+- `types` crate: all shared types, fixed-point math, serialization
+- `engine` crate: CLOB matching engine, GTC/IOC/FOK/Post-Only, price-time priority
+- `state` crate: MPT state layer, in-memory cache, deterministic root
+- `api` crate: HTTP handler (axum), WebSocket, ECDSA auth, feed manager
+- `committer` crate: async batch committer, LocalDaClient
+- `zkvm` crate: verify_execution(), FraudProof generation
+- Full test suite: 73/73 tests passing
+
+---
+
+## M3 — Premium Features
+
+**Status: Complete**
+
+- MM credit system with atomic auto-cancel
+- Private L3 authenticated WebSocket feeds
+- Forced inclusion (DelayedInbox) implementation in engine
+- Credit gauge and MM dashboard backend
+
+---
+
+## M4 — Benchmark and OSS Release
+
+**Status: Complete**
+
+- Criterion.rs benchmark harness
+- Benchmark results: 1.08 μs p50, 57.3k ops/sec, 4.7× vs Pulse baseline
+- Open-source repository published: [github.com/arpjw/vela](https://github.com/arpjw/vela)
+- White paper published on SSRN (Abstract ID: 6579199)
+- Monolith Research, Vol. 2 released
+
+---
+
+## M5 — Vela UI and Public Beta
+
+**Status: Complete**
+
+- Full-screen trading UI built on Next.js, deployed on Vercel
+- 11 live markets: BTC, ETH, SOL, AVAX, MATIC, LINK, UNI, ARB, OP, AAVE, DOGE
+- Order book composition view with depth chart
+- Analytics panel: OFI, spread decomposition, VWAS, depth chart
+- MM dashboard: credit gauge, open orders table, P&L tracker, market summary
+- Trade history with CSV export
+- Engine deployed on fly.io, frontend on Vercel, domain on Cloudflare
+- Public beta launch
+
+---
+
+## M6 — Live Trading
+
+**Status: In Progress**
+
+The M6 milestone transitions Vela from a trust-based beta to a system with on-chain deposit and withdrawal guarantees.
+
+<CardGroup cols={2}>
+  <Card title="On-chain Deposit Contract" icon="file-contract">
+    Solidity deposit contract deployed. Users call `deposit()` to lock funds in the contract. Engine observes `Deposited` events and credits accounts. Deposits are held by the contract, not the operator.
+  </Card>
+  <Card title="On-chain Withdrawal Settlement" icon="arrow-up-from-bracket">
+    Engine approves withdrawal requests and signs a message authorizing the contract to release funds. Users call `withdraw()` on the contract with the signed authorization. Funds transfer directly to the user's wallet.
+  </Card>
+  <Card title="Forced Inclusion (DelayedInbox)" icon="inbox">
+    `DelayedInbox.sol` deployed on L1. Users can submit signed transactions directly. Engine must include forced transactions within 24 hours or face on-chain challenge. Prevents operator censorship.
+  </Card>
+  <Card title="Mainnet Deployment" icon="server">
+    Engine and contracts deployed to mainnet (Ethereum or L2). Real wallet deposits activated. Beta trust-based deposits migrated or wound down.
+  </Card>
+</CardGroup>
+
+---
+
+## M7 — Institutional Features
+
+**Status: Planned**
+
+M7 completes the trustless architecture and adds institutional-grade features.
+
+### On-chain Fraud Proof Verifier
+
+Deploy a Solidity contract that:
+- Accepts fraud proof submissions from any party
+- Fetches batch data from the DA layer commitment
+- Re-executes the challenged request on-chain
+- Slashes the operator bond if fraud is confirmed
+- Halts new batch acceptance pending resolution
+
+### Celestia / EigenDA Integration
+
+Replace `LocalDaClient` with a production DA layer:
+- Public batch availability — anyone can download batches
+- Cryptographic availability proofs
+- DA-anchored fraud proof submissions
+
+### HFT Nonce Scheme (VEL-10)
+
+High-frequency trading requires sub-microsecond nonce coordination. VEL-10 designs a nonce scheme that:
+- Supports concurrent order submission from the same account
+- Eliminates the sequential nonce bottleneck for HFT strategies
+- Maintains replay prevention guarantees
+
+### CoW Cache Delta Buffer (VEL-11)
+
+Performance optimization for the CoW cache:
+- Buffer balance deltas in a compact delta structure
+- Coalesce multiple fills per account per batch into a single MPT write
+- Reduces MPT write amplification at high fill rates
+
+### Additional Institutional Features
+
+- Custom credit ratio requests via dashboard
+- Sub-account support for institutional traders
+- Fix/binary protocol adapter for trading system integration
+- Co-location and dedicated engine instance options

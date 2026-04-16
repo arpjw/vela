@@ -1,0 +1,354 @@
+---
+title: "HTTP Endpoints"
+description: "Full REST API reference for Vela Exchange."
+---
+
+**Base URL:** `https://vela-engine.fly.dev`
+
+All requests and responses use JSON (`Content-Type: application/json`). Prices and quantities are fixed-point integers scaled by 1,000,000 (e.g., `3200000000` = 3200.000000 USDC).
+
+## GET /health
+
+Check if the engine is running.
+
+<CodeGroup>
+```bash curl
+curl https://vela-engine.fly.dev/health
+```
+```javascript JS
+const res = await fetch('https://vela-engine.fly.dev/health');
+const data = await res.json();
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "version": "0.1.0",
+  "uptime_seconds": 86400,
+  "sequence": 12345
+}
+```
+
+---
+
+## GET /markets
+
+List all available markets and their configuration.
+
+<CodeGroup>
+```bash curl
+curl https://vela-engine.fly.dev/markets
+```
+```javascript JS
+const res = await fetch('https://vela-engine.fly.dev/markets');
+const { markets } = await res.json();
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "markets": [
+    {
+      "market_id": "ETH-USDC",
+      "base_asset": "ETH",
+      "quote_asset": "USDC",
+      "tick_size": "100",
+      "lot_size": "1000",
+      "status": "active",
+      "best_bid": "3200000000",
+      "best_ask": "3202000000",
+      "last_price": "3201000000",
+      "volume_24h": "1240500000000"
+    }
+  ]
+}
+```
+
+---
+
+## GET /markets/:market/book
+
+Get the current order book for a market.
+
+**Path parameters:** `market` — market ID (e.g., `ETH-USDC`)
+
+**Query parameters:**
+- `depth` (optional) — number of price levels to return per side (default: 20, max: 100)
+
+<CodeGroup>
+```bash curl
+curl "https://vela-engine.fly.dev/markets/ETH-USDC/book?depth=10"
+```
+```javascript JS
+const res = await fetch('https://vela-engine.fly.dev/markets/ETH-USDC/book?depth=10');
+const book = await res.json();
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "market_id": "ETH-USDC",
+  "sequence": 12345,
+  "bids": [
+    ["3200000000", "1500000"],
+    ["3198000000", "2700000"]
+  ],
+  "asks": [
+    ["3202000000", "3200000"],
+    ["3205500000", "800000"]
+  ],
+  "timestamp": "2026-04-15T12:00:00.000Z"
+}
+```
+
+Each entry is `[price, quantity]` — both are fixed-point integer strings.
+
+---
+
+## GET /account/:address/balances
+
+Get all balances for an account.
+
+**Path parameters:** `address` — Ethereum address (checksummed or lowercase)
+
+<CodeGroup>
+```bash curl
+curl https://vela-engine.fly.dev/account/0xabc.../balances
+```
+```javascript JS
+const res = await fetch(`https://vela-engine.fly.dev/account/${address}/balances`);
+const data = await res.json();
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "address": "0x...",
+  "balances": {
+    "USDC": {
+      "total": "10000000000",
+      "available": "8400000000",
+      "reserved": "1600000000"
+    },
+    "ETH": {
+      "total": "500000",
+      "available": "500000",
+      "reserved": "0"
+    }
+  },
+  "nonce_high_water": 42,
+  "credit": {
+    "ratio": 5,
+    "max_quoted_value": "50000000000",
+    "current_quoted_value": "16000000000",
+    "utilization": 0.32
+  }
+}
+```
+
+---
+
+## GET /account/:address/orders
+
+Get orders for an account.
+
+**Query parameters:**
+- `status` — comma-separated statuses: `open`, `filled`, `cancelled`, `rejected`, `partially_filled`
+- `market` — filter by market ID
+- `limit` — max results (default: 100, max: 1000)
+- `before` — cursor for pagination (order ID)
+
+<CodeGroup>
+```bash curl
+curl "https://vela-engine.fly.dev/account/0x.../orders?status=open"
+```
+```javascript JS
+const res = await fetch(`/account/${address}/orders?status=open,partially_filled`);
+const { orders } = await res.json();
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "orders": [
+    {
+      "order_id": "ord_7f3a91c2",
+      "market_id": "ETH-USDC",
+      "side": "bid",
+      "price": "3200000000",
+      "quantity": "1000000",
+      "filled_quantity": "300000",
+      "remaining_quantity": "700000",
+      "order_type": "limit",
+      "time_in_force": "gtc",
+      "status": "partially_filled",
+      "nonce": 42,
+      "created_at": "2026-04-15T11:55:00Z",
+      "updated_at": "2026-04-15T12:00:01Z"
+    }
+  ],
+  "next_cursor": "ord_6e2b80b1"
+}
+```
+
+---
+
+## POST /orders
+
+Place a new order. Requires a valid ECDSA signature.
+
+**Request body:**
+
+```json
+{
+  "order": {
+    "market_id": "ETH-USDC",
+    "side": "bid",
+    "price": "3200000000",
+    "quantity": "1000000",
+    "order_type": "limit",
+    "time_in_force": "gtc",
+    "nonce": 43
+  },
+  "signature": "0x...",
+  "address": "0xYourAddress"
+}
+```
+
+**Field reference:**
+
+| Field | Type | Description |
+|---|---|---|
+| `market_id` | string | Market identifier (e.g., `"ETH-USDC"`) |
+| `side` | `"bid"` \| `"ask"` | Buy or sell |
+| `price` | string (int) | Fixed-point price. Required for limit orders; omit for market orders |
+| `quantity` | string (int) | Fixed-point quantity in base asset |
+| `order_type` | `"limit"` \| `"market"` | Order type |
+| `time_in_force` | `"gtc"` \| `"ioc"` \| `"fok"` \| `"post_only"` | TIF |
+| `nonce` | integer | Monotonic per-account integer |
+
+<CodeGroup>
+```bash curl
+curl -X POST https://vela-engine.fly.dev/orders \
+  -H "Content-Type: application/json" \
+  -d '{"order":{...},"signature":"0x...","address":"0x..."}'
+```
+```javascript JS
+const response = await fetch('https://vela-engine.fly.dev/orders', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ order, signature, address })
+});
+const result = await response.json();
+```
+</CodeGroup>
+
+**Success response (200):**
+```json
+{
+  "order_id": "ord_9b4c2e1f",
+  "status": "open",
+  "fills": [],
+  "timestamp": "2026-04-15T12:00:00.123Z"
+}
+```
+
+**Fill response (immediate match):**
+```json
+{
+  "order_id": "ord_9b4c2e1f",
+  "status": "filled",
+  "fills": [
+    {
+      "fill_id": "fill_3a1b2c",
+      "price": "3202000000",
+      "quantity": "1000000",
+      "is_maker": false
+    }
+  ],
+  "timestamp": "2026-04-15T12:00:00.456Z"
+}
+```
+
+---
+
+## POST /orders/cancel
+
+Cancel a resting order.
+
+**Request body:**
+
+```json
+{
+  "order_id": "ord_7f3a91c2",
+  "address": "0xYourAddress",
+  "signature": "0x...",
+  "nonce": 44
+}
+```
+
+The signature covers `{ order_id, address, nonce }` serialized as canonical JSON.
+
+<CodeGroup>
+```bash curl
+curl -X POST https://vela-engine.fly.dev/orders/cancel \
+  -H "Content-Type: application/json" \
+  -d '{"order_id":"ord_...","address":"0x...","signature":"0x...","nonce":44}'
+```
+```javascript JS
+const cancelPayload = { order_id: orderId, address, nonce };
+const signature = await signer.signMessage(JSON.stringify(cancelPayload));
+await fetch('/orders/cancel', {
+  method: 'POST',
+  body: JSON.stringify({ ...cancelPayload, signature })
+});
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "order_id": "ord_7f3a91c2",
+  "status": "cancelled",
+  "timestamp": "2026-04-15T12:01:00.000Z"
+}
+```
+
+---
+
+## POST /withdrawals
+
+Request a withdrawal.
+
+<Warning>
+In beta, withdrawals record the request in the state layer but do not transfer funds on-chain. On-chain withdrawal settlement is part of the M6 roadmap.
+</Warning>
+
+**Request body:**
+
+```json
+{
+  "asset": "USDC",
+  "amount": "5000000000",
+  "address": "0xYourAddress",
+  "signature": "0x...",
+  "nonce": 45
+}
+```
+
+**Response:**
+```json
+{
+  "withdrawal_id": "wd_2c4e6f",
+  "asset": "USDC",
+  "amount": "5000000000",
+  "status": "pending",
+  "timestamp": "2026-04-15T12:05:00.000Z"
+}
+```

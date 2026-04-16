@@ -1,0 +1,90 @@
+---
+title: "Changelog"
+description: "What's new in Vela Exchange."
+---
+
+## v0.1.0 — Public Beta
+
+**Released: April 2026**
+
+The first public release of Vela Exchange. This release represents the completion of milestones M1–M5: from initial architecture research through the live public beta.
+
+### Exchange
+
+- **11 markets live:** BTC-USDC, ETH-USDC, SOL-USDC, AVAX-USDC, MATIC-USDC, LINK-USDC, UNI-USDC, ARB-USDC, OP-USDC, AAVE-USDC, DOGE-USDC
+- Trust-based deposit model for beta period
+- ECDSA wallet authentication (MetaMask, Coinbase Wallet, Rainbow, Rabby, Frame, WalletConnect)
+
+### Matching Engine
+
+- Single-threaded Rust CLOB matching engine
+- Price-time priority with GTC, IOC, FOK, and Post-Only Time in Force
+- Fixed-point arithmetic (×1,000,000 scale) for deterministic execution
+- **1.08 μs p50 match latency** — 4.7× faster than the Pulse baseline
+- **57.3k ops/sec** throughput
+- **−73% p99.9 tail reduction** vs. Pulse
+- **73/73 tests passing**
+- CoW cache for zero-disk-I/O on the hot path
+
+### Market Making
+
+- Credit system with configurable ratio per account
+- Atomic auto-cancel: fires at the moment a fill would breach credit ratio
+- Credit gauge: amber warning at 80%, critical at 95%
+- Private L3 authenticated WebSocket feeds for market makers
+- MM dashboard with credit gauge, open orders, P&L tracker, and market summary table
+
+### Optimistic-ZK Layer
+
+- `committer` crate: async batch committer with `LocalDaClient`
+- DA batch publication: `da_batch_{seq}.bin` files with full `ZkvmInput`
+- `zkvm` crate: `verify_execution()` with fraud proof generation
+- MPT state layer with deterministic root computation
+- Forced inclusion (DelayedInbox) implementation in engine (L1 contract pending M6)
+
+### API
+
+- `GET /health`, `GET /markets`, `GET /markets/:market/book`
+- `GET /account/:address/balances`, `GET /account/:address/orders`
+- `POST /orders` with full ECDSA authentication
+- `POST /orders/cancel` with signed cancel requests
+- `POST /withdrawals`
+- WebSocket: `book:<market>`, `trades:<market>`, `fills:<addr>`, `orders:<addr>`, `balances:<addr>`
+- Challenge-response WebSocket authentication
+
+### Trading UI
+
+- Full-screen order book composition view
+- Real-time order book with depth bars and spread display
+- Depth chart: cumulative liquidity visualization
+- Analytics panel: OFI, spread decomposition, VWAS, trade intensity
+- Order entry panel: limit/market, all TIF options, wallet signing integration
+- Open orders table with optimistic cancel
+- Trade history with timestamp, price, quantity, side
+- CSV export of trade history
+- MM dashboard: credit gauge (SVG arc), open orders, P&L tracker, market summary
+
+### Infrastructure
+
+- Engine: deployed on **fly.io** (single instance, Sydney region for beta)
+- Frontend: deployed on **Vercel** (Next.js, Edge Network)
+- Domain: **Cloudflare** DNS and DDoS protection
+- Monitoring: fly.io metrics + Vercel Analytics
+
+### Research
+
+- **SSRN white paper published:** Monolith Research, Vol. 2 (Abstract ID: 6579199)
+- Open-source repository: [github.com/arpjw/vela](https://github.com/arpjw/vela)
+- Benchmark harness: Criterion.rs, reproducible from repo (`cargo bench --bench engine`)
+- Full architectural and mathematical documentation in this docs site
+
+---
+
+## Upcoming: v0.2.0 — Live Trading (M6)
+
+In progress. See the [Roadmap](/resources/roadmap) for planned scope.
+
+- On-chain deposit contract
+- On-chain withdrawal settlement
+- Forced inclusion (L1 DelayedInbox contract)
+- Mainnet deployment

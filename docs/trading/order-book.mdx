@@ -1,0 +1,140 @@
+---
+title: "Reading the Order Book"
+description: "How to interpret Vela's live order book."
+---
+
+The order book is the central display of market state. It shows all resting limit orders — what prices buyers and sellers are willing to trade at, and how much quantity is available at each price level.
+
+## Book Structure
+
+Vela's order book is a standard CLOB (Central Limit Order Book):
+
+```
+ASKS (Sellers)
+──────────────────────────────────
+Price       Quantity    Depth
+──────────────────────────────────
+3 210.00     2.400 ETH  ████████
+3 208.00     1.100 ETH  ████
+3 205.50     0.800 ETH  ███
+3 202.00     3.200 ETH  ████████████
+─────────────── SPREAD ────────────
+3 200.00     1.500 ETH  ██████
+3 198.00     2.700 ETH  ██████████
+3 195.00     0.900 ETH  ███
+3 190.00     5.000 ETH  ████████████████████
+──────────────────────────────────
+BIDS (Buyers)
+```
+
+### Asks (Top Half)
+
+Asks are sell orders — traders willing to sell the base asset. They are sorted **ascending by price**: the best ask (lowest price a seller will accept) is closest to the spread. When you place a market buy, you match against asks starting from the best ask and walking up.
+
+### Bids (Bottom Half)
+
+Bids are buy orders — traders willing to buy the base asset. They are sorted **descending by price**: the best bid (highest price a buyer will pay) is closest to the spread. When you place a market sell, you match against bids starting from the best bid and walking down.
+
+### Spread
+
+The spread is the gap between the best ask and best bid:
+
+```
+Spread (absolute) = Best Ask − Best Bid
+Spread (bps)      = (Spread / Mid Price) × 10,000
+```
+
+**Example:** Best ask = 3202.00, Best bid = 3200.00
+- Spread: 2.00 USDC
+- Mid price: 3201.00
+- Spread in bps: (2.00 / 3201.00) × 10,000 ≈ 6.2 bps
+
+A tight spread indicates a competitive, liquid market. A wide spread indicates less liquidity or higher uncertainty. The Vela UI displays both the absolute spread and spread in basis points.
+
+## Depth Bars
+
+Each price level in the order book displays a depth bar — a horizontal bar whose width is proportional to the quantity available at that level relative to the largest level visible on screen. Depth bars give an immediate visual sense of where concentration of orders is.
+
+<Info>
+Depth bars are relative to the current visible range, not the entire book. Scrolling the book changes the scale. The depth chart (below) gives a more accurate picture of cumulative depth.
+</Info>
+
+## Best Bid and Ask
+
+The best bid and best ask are the most competitive prices in the book:
+
+| Term | Definition |
+|---|---|
+| **Best Bid** | The highest price any buyer is currently offering |
+| **Best Ask** | The lowest price any seller is currently accepting |
+| **Mid Price** | (Best Bid + Best Ask) / 2 |
+| **Mark Price** | Used for reference; may incorporate off-chain price feeds |
+
+The best bid/ask are shown prominently above the order book in large text. They update in real time as orders are placed, filled, and cancelled.
+
+## Depth Chart
+
+The depth chart is a cumulative view of available liquidity across the full book. It shows how much volume is available within a certain price distance from the current mid price.
+
+```
+Cumulative
+Volume
+(ETH)
+  │
+20│                                ●●
+  │                           ●●●
+15│                       ●●●●
+  │               ●●●●●●●
+10│           ●●●
+  │       ●●●
+ 5│   ●●●
+  │●●●
+  └────────────────────────────────── Price
+     ← Bids              Asks →
+```
+
+**Reading the depth chart:**
+- The **X-axis** shows price. The midpoint is the current mid price.
+- The **Y-axis** shows cumulative ETH available from the mid price out to that price level.
+- **Steep slope** = thin book, large slippage for market orders
+- **Flat slope** = deep book, low slippage
+
+Use the depth chart to estimate slippage before placing a large market order. If buying X ETH would move the curve significantly, expect meaningful price impact.
+
+## Analytics Panel
+
+The Vela UI includes an analytics panel alongside the order book with several advanced metrics:
+
+| Metric | Description |
+|---|---|
+| **OFI (Order Flow Imbalance)** | Measures buying vs. selling pressure from recent order flow |
+| **Spread Decomposition** | Breaks spread into adverse selection and inventory components |
+| **VWAS (Volume-Weighted Average Spread)** | Average spread weighted by trade volume over a rolling window |
+| **Trade Intensity** | Trades per second, updated every 5 seconds |
+
+These metrics are primarily useful for market makers and algorithmic traders evaluating market quality.
+
+## WebSocket Updates
+
+The order book updates in real time via WebSocket. Subscribe to the `book:<market>` channel to receive incremental updates:
+
+```json
+{
+  "type": "book_snapshot",
+  "market_id": "ETH-USDC",
+  "sequence": 12345,
+  "bids": [
+    ["3200000000", "1500000"],
+    ["3198000000", "2700000"]
+  ],
+  "asks": [
+    ["3202000000", "3200000"],
+    ["3205500000", "800000"]
+  ],
+  "timestamp": "2026-04-15T12:00:00.000Z"
+}
+```
+
+Price levels with quantity `"0"` should be removed from your local book. The `sequence` field monotonically increases; gaps indicate missed messages, which should trigger a full snapshot re-fetch.
+
+See [WebSocket Protocol](/api-reference/websocket) for full subscription details.
