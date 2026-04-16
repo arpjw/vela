@@ -12,6 +12,7 @@ const LINKS = [
   { href: '/dashboard',  label: 'Dashboard' },
   { href: '/analytics',  label: 'Analytics' },
   { href: '/history',    label: 'History'   },
+  { href: '/docs',       label: 'Docs'      },
 ]
 
 export default function Nav() {

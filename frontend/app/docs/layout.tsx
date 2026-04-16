@@ -1,0 +1,277 @@
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useState } from 'react'
+
+interface NavItem {
+  label: string
+  href: string
+}
+
+interface NavSection {
+  section: string
+  items: NavItem[]
+}
+
+const SIDEBAR_NAV: NavSection[] = [
+  {
+    section: 'INTRODUCTION',
+    items: [
+      { label: 'What is Vela?', href: '/docs/introduction/what-is-vela' },
+      { label: 'Architecture Overview', href: '/docs/introduction/architecture-overview' },
+      { label: 'White Paper', href: '/docs/introduction/white-paper' },
+    ],
+  },
+  {
+    section: 'GETTING STARTED',
+    items: [
+      { label: 'Connect Your Wallet', href: '/docs/getting-started/connect-wallet' },
+      { label: 'Deposit Funds', href: '/docs/getting-started/deposit-funds' },
+      { label: 'Place Your First Order', href: '/docs/getting-started/place-first-order' },
+      { label: 'Understanding Order Status', href: '/docs/getting-started/understanding-order-status' },
+    ],
+  },
+  {
+    section: 'TRADING',
+    items: [
+      { label: 'Order Types', href: '/docs/trading/order-types' },
+      { label: 'Time in Force', href: '/docs/trading/time-in-force' },
+      { label: 'Fees and Rebates', href: '/docs/trading/fees-and-rebates' },
+      { label: 'Reading the Order Book', href: '/docs/trading/reading-order-book' },
+      { label: 'Depth Chart', href: '/docs/trading/depth-chart' },
+    ],
+  },
+  {
+    section: 'MARKET MAKING',
+    items: [
+      { label: 'Credit System', href: '/docs/market-making/credit-system' },
+      { label: 'Managing Credit Ratio', href: '/docs/market-making/managing-credit-ratio' },
+      { label: 'Private L3 Feeds', href: '/docs/market-making/private-l3-feeds' },
+      { label: 'MM Dashboard', href: '/docs/market-making/mm-dashboard' },
+    ],
+  },
+  {
+    section: 'API REFERENCE',
+    items: [
+      { label: 'Authentication', href: '/docs/api-reference/authentication' },
+      { label: 'HTTP Endpoints', href: '/docs/api-reference/http-endpoints' },
+      { label: 'WebSocket Protocol', href: '/docs/api-reference/websocket-protocol' },
+      { label: 'Error Codes', href: '/docs/api-reference/error-codes' },
+    ],
+  },
+  {
+    section: 'ARCHITECTURE',
+    items: [
+      { label: 'Matching Engine', href: '/docs/architecture/matching-engine' },
+      { label: 'MPT State Layer', href: '/docs/architecture/mpt-state-layer' },
+      { label: 'Committer Thread', href: '/docs/architecture/committer-thread' },
+      { label: 'zkVM and Fraud Proofs', href: '/docs/architecture/zk-vm' },
+      { label: 'DA Layer', href: '/docs/architecture/da-layer' },
+      { label: 'Forced Inclusion', href: '/docs/architecture/forced-inclusion' },
+    ],
+  },
+  {
+    section: 'SECURITY',
+    items: [
+      { label: 'ECDSA Authentication', href: '/docs/security/ecdsa-authentication' },
+      { label: 'Replay Protection', href: '/docs/security/replay-protection' },
+      { label: 'Fraud Proofs', href: '/docs/security/fraud-proofs' },
+      { label: 'Trust Model', href: '/docs/security/trust-model' },
+    ],
+  },
+  {
+    section: 'FAQ',
+    items: [{ label: 'FAQ', href: '/docs/faq' }],
+  },
+]
+
+export default function DocsLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  const sidebarContent = (
+    <nav style={{ padding: '24px 0 48px' }}>
+      {SIDEBAR_NAV.map(({ section, items }) => (
+        <div key={section} style={{ marginBottom: '24px' }}>
+          <div
+            style={{
+              fontSize: '0.625rem',
+              fontWeight: 600,
+              letterSpacing: '0.12em',
+              color: '#8B6E5A',
+              textTransform: 'uppercase' as const,
+              padding: '0 20px',
+              marginBottom: '6px',
+              fontFamily: 'var(--font-inter)',
+            }}
+          >
+            {section}
+          </div>
+          {items.map(({ label, href }) => {
+            const active = pathname === href
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMobileOpen(false)}
+                style={{
+                  display: 'block',
+                  padding: '5px 20px 5px 18px',
+                  fontSize: '0.875rem',
+                  fontWeight: 400,
+                  fontFamily: 'var(--font-inter)',
+                  color: active ? '#1A0608' : '#6B4F2E',
+                  backgroundColor: active ? 'rgba(196,30,58,0.04)' : 'transparent',
+                  borderLeft: active ? '2px solid #C41E3A' : '2px solid transparent',
+                  textDecoration: 'none',
+                  transition: 'color 0.15s, background-color 0.15s',
+                  lineHeight: '1.6',
+                }}
+              >
+                {label}
+              </Link>
+            )
+          })}
+        </div>
+      ))}
+    </nav>
+  )
+
+  return (
+    <div style={{ display: 'flex', minHeight: 'calc(100vh - 60px)' }}>
+      <aside
+        className="hidden md:block"
+        style={{
+          width: '260px',
+          flexShrink: 0,
+          backgroundColor: '#F7F5F0',
+          borderRight: '1px solid rgba(26,18,8,0.08)',
+          position: 'sticky',
+          top: '60px',
+          height: 'calc(100vh - 60px)',
+          overflowY: 'auto',
+        }}
+      >
+        <div
+          style={{
+            padding: '16px 20px 12px',
+            borderBottom: '1px solid rgba(26,18,8,0.08)',
+          }}
+        >
+          <Link
+            href="/docs"
+            style={{
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              color: '#C41E3A',
+              textTransform: 'uppercase' as const,
+              textDecoration: 'none',
+              fontFamily: 'var(--font-inter)',
+            }}
+          >
+            Documentation
+          </Link>
+        </div>
+        {sidebarContent}
+      </aside>
+
+      {mobileOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 50,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+          }}
+          onClick={() => setMobileOpen(false)}
+        >
+          <aside
+            style={{
+              width: '280px',
+              height: '100%',
+              backgroundColor: '#F7F5F0',
+              overflowY: 'auto',
+              borderRight: '1px solid rgba(26,18,8,0.08)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid rgba(26,18,8,0.08)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '0.65rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  color: '#C41E3A',
+                  textTransform: 'uppercase' as const,
+                  fontFamily: 'var(--font-inter)',
+                }}
+              >
+                Documentation
+              </span>
+              <button
+                onClick={() => setMobileOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  color: '#6B4F2E',
+                  lineHeight: 1,
+                  padding: '4px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          className="md:hidden"
+          style={{
+            padding: '12px 24px',
+            borderBottom: '1px solid rgba(26,18,8,0.08)',
+            backgroundColor: '#F7F5F0',
+          }}
+        >
+          <button
+            onClick={() => setMobileOpen(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              color: '#1A0608',
+              fontFamily: 'var(--font-inter)',
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+              <path d="M0 0h16v2H0zm0 5h16v2H0zm0 5h16v2H0z" fill="#1A0608" />
+            </svg>
+            Documentation
+          </button>
+        </div>
+        <div className="px-6 py-12 md:px-16" style={{ maxWidth: '760px' }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
