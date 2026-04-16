@@ -5,6 +5,44 @@ use types::{
     Request, UserId,
 };
 
+fn seed_markets(engine: &mut MatchingEngine) {
+    for ticker in &[
+        "ETH", "BTC", "SOL", "ARB", "OP", "AVAX", "MATIC", "LINK", "UNI", "AAVE", "DOGE",
+    ] {
+        engine.add_market(Market {
+            id: MarketId(format!("{ticker}-USDC")),
+            base: AssetId(ticker.to_string()),
+            quote: AssetId("USDC".into()),
+            max_orders: 10_000,
+            min_order_size: 1,
+            price_tick: 1,
+            quantity_tick: 1,
+        });
+    }
+
+    let test_user = UserId([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+
+    for (i, asset) in [
+        "ETH", "BTC", "SOL", "ARB", "OP", "AVAX", "MATIC", "LINK", "UNI", "AAVE", "DOGE", "USDC",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let mut hash = [0u8; 32];
+        hash[31] = i as u8;
+
+        engine.process(
+            Request::Deposit(DepositRequest {
+                user: test_user.clone(),
+                asset: AssetId(asset.to_string()),
+                amount: 1_000_000_000_000,
+                l1_tx_hash: hash,
+            }),
+            0,
+        );
+    }
+}
+
 fn seed_order_books(engine: &mut MatchingEngine) {
     let seed_user = UserId([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
 
@@ -119,51 +157,40 @@ async fn main() {
 
     let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
 
-    for ticker in &[
-        "ETH", "BTC", "SOL", "ARB", "OP", "AVAX", "MATIC", "LINK", "UNI", "AAVE", "DOGE",
-    ] {
-        engine.add_market(Market {
-            id: MarketId(format!("{ticker}-USDC")),
-            base: AssetId(ticker.to_string()),
-            quote: AssetId("USDC".into()),
-            max_orders: 10_000,
-            min_order_size: 1,
-            price_tick: 1,
-            quantity_tick: 1,
-        });
+    match api::snapshot::load_snapshot().await {
+        Ok(Some(snapshot)) => {
+            match api::snapshot::restore_engine_from_snapshot(&mut engine, snapshot) {
+                Ok(()) => println!("Restored from snapshot"),
+                Err(e) => {
+                    eprintln!("Snapshot restore failed: {e} — starting fresh");
+                    engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+                    seed_markets(&mut engine);
+                    seed_order_books(&mut engine);
+                }
+            }
+        }
+        Ok(None) => {
+            seed_markets(&mut engine);
+            seed_order_books(&mut engine);
+            println!("Fresh start — seeded markets");
+        }
+        Err(e) => {
+            eprintln!("Snapshot load failed: {e} — starting fresh");
+            seed_markets(&mut engine);
+            seed_order_books(&mut engine);
+        }
     }
-
-    let test_user = UserId([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    ]);
-
-    for (i, asset) in [
-        "ETH", "BTC", "SOL", "ARB", "OP", "AVAX", "MATIC", "LINK", "UNI", "AAVE", "DOGE", "USDC",
-    ]
-    .iter()
-    .enumerate()
-    {
-        let mut hash = [0u8; 32];
-        hash[31] = i as u8;
-
-        engine.process(
-            Request::Deposit(DepositRequest {
-                user: test_user.clone(),
-                asset: AssetId(asset.to_string()),
-                amount: 1_000_000_000_000,
-                l1_tx_hash: hash,
-            }),
-            0,
-        );
-    }
-
-    seed_order_books(&mut engine);
 
     let state = api::AppState::new(engine);
 
     let engine_arc = Arc::clone(&state.engine);
     tokio::spawn(async move {
         api::mm::run_mm_bot(engine_arc).await;
+    });
+
+    let snapshot_engine = Arc::clone(&state.engine);
+    tokio::spawn(async move {
+        api::snapshot::run_snapshot_task(snapshot_engine).await;
     });
 
     let router = api::build_router(state);

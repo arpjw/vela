@@ -2,6 +2,7 @@ pub mod auth;
 pub mod feeds;
 pub mod handler;
 pub mod mm;
+pub mod snapshot;
 pub mod types;
 pub mod ws;
 

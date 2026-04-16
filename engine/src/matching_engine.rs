@@ -564,4 +564,12 @@ impl MatchingEngine {
     pub fn snapshot_metadata(&self) -> &std::collections::HashMap<UserId, UserMetadata> {
         &self.metadata
     }
+
+    pub fn next_order_id(&self) -> OrderId {
+        self.next_order_id
+    }
+
+    pub fn set_next_order_id(&mut self, id: OrderId) {
+        self.next_order_id = id;
+    }
 }

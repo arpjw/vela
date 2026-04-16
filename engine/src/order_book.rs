@@ -202,4 +202,15 @@ impl OrderBook {
             .map(|(p, l)| (*p, l.total_quantity()))
             .collect()
     }
+
+    pub fn all_orders(&self) -> Vec<Order> {
+        let mut orders = Vec::new();
+        for level in self.bids.values() {
+            orders.extend(level.orders.iter().cloned());
+        }
+        for level in self.asks.values() {
+            orders.extend(level.orders.iter().cloned());
+        }
+        orders
+    }
 }
