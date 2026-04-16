@@ -10,6 +10,7 @@ import {
   type MarketResponse,
   type PostOrderBody,
 } from '@/lib/api'
+import { signOrder } from '@/lib/signing'
 import { getWsClient, type WsStatus } from '@/lib/ws'
 import { useAuth } from '@/lib/auth'
 import { Badge } from '@/components/ui/Badge'
@@ -544,23 +545,36 @@ function OrderEntryForm({
   )
 
   const handleSubmit = useCallback(async () => {
-    if (!address || !size) return
+    if (!address || !isConnected || !size) return
     if (orderType === 'limit' && !price) return
 
     setSubmitting(true)
     setSubmitError(null)
     setSubmitOk(false)
 
+    const scaledPrice = orderType === 'limit' ? Math.round(parseFloat(price) * 1_000_000) : 0
+    const scaledQty = Math.round(parseFloat(size) * 1_000_000)
+    const nonce = Date.now()
+
     try {
+      const sig = await signOrder({
+        market: marketId,
+        side,
+        price: scaledPrice,
+        quantity: scaledQty,
+        nonce,
+        address,
+      })
+
       const body: PostOrderBody = {
         market: marketId,
         side,
         order_type: orderType,
-        price: orderType === 'limit' ? Math.round(parseFloat(price) * 1e8) : 0,
-        quantity: Math.round(parseFloat(size) * 1e8),
-        nonce: Date.now(),
+        price: scaledPrice,
+        quantity: scaledQty,
+        nonce,
         address,
-        signature: '0x',
+        signature: sig,
       }
       const res = await postOrder(body)
       if (res.ok) {
@@ -571,12 +585,18 @@ function OrderEntryForm({
       } else {
         setSubmitError(res.error ?? 'Order failed')
       }
-    } catch {
-      setSubmitError('Network error')
+    } catch (err) {
+      if (err instanceof Error && (err.message.includes('rejected') || err.message.includes('denied') || err.message.includes('cancelled'))) {
+        setSubmitError('Signature rejected')
+      } else if (err instanceof Error) {
+        setSubmitError(err.message || 'Signing failed')
+      } else {
+        setSubmitError('Network error')
+      }
     } finally {
       setSubmitting(false)
     }
-  }, [address, marketId, orderType, price, side, size])
+  }, [address, isConnected, marketId, orderType, price, side, size])
 
   const canSubmit =
     isConnected &&
@@ -689,7 +709,7 @@ function OrderEntryForm({
         <p className="text-xs text-terra font-mono">{submitError}</p>
       )}
       {submitOk && (
-        <p className="text-xs font-medium text-sage font-mono">Order submitted</p>
+        <p className="text-xs font-medium text-sage font-mono">Order placed</p>
       )}
 
       {isConnected ? (
@@ -711,10 +731,10 @@ function OrderEntryForm({
           {submitting ? (
             <span className="flex items-center justify-center gap-2">
               <span className="inline-block w-4 h-4 rounded-full border-2 border-parchment border-t-transparent animate-spin" />
-              {side === 'buy' ? 'Buy' : 'Sell'} {base}
+              Place Order
             </span>
           ) : (
-            `${side === 'buy' ? 'Buy' : 'Sell'} ${base}`
+            'Place Order'
           )}
         </motion.button>
       ) : (

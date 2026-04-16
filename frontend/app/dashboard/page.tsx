@@ -8,6 +8,7 @@ import {
   type BalanceResponse,
   type Order,
 } from '@/lib/api'
+import { signCancel } from '@/lib/signing'
 import { getWsClient } from '@/lib/ws'
 import { useAuth } from '@/lib/auth'
 import { Card } from '@/components/ui/Card'
@@ -731,12 +732,9 @@ export default function DashboardPage() {
       if (!address) return
       dispatch({ type: 'CANCEL_OPTIMISTIC', orderId: order.id })
       try {
-        const res = await cancelOrder({
-          order_id: order.id,
-          nonce: order.nonce + 1,
-          address,
-          signature: '0x',
-        })
+        const nonce = Date.now()
+        const sig = await signCancel({ order_id: order.id, nonce, address })
+        const res = await cancelOrder({ order_id: order.id, nonce, address, signature: sig })
         if (res.ok) {
           dispatch({ type: 'CANCEL_DONE', orderId: order.id })
         } else {
