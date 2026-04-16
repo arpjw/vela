@@ -118,10 +118,10 @@ function BookRowItem({
   }, [level.price])
 
   const barStyle = side === 'bid'
-    ? 'linear-gradient(to left, rgba(196,30,58,0.25), rgba(196,30,58,0.05))'
-    : 'linear-gradient(to left, rgba(232,130,154,0.25), rgba(232,130,154,0.05))'
+    ? 'linear-gradient(to left, rgba(0,210,210,0.25), rgba(0,210,210,0.05))'
+    : 'linear-gradient(to left, rgba(0,176,176,0.25), rgba(0,176,176,0.05))'
   const priceColor = side === 'bid' ? 'text-ochre' : 'text-fresco'
-  const hoverBg = side === 'bid' ? 'hover:bg-[rgba(196,30,58,0.08)]' : 'hover:bg-[rgba(232,130,154,0.08)]'
+  const hoverBg = side === 'bid' ? 'hover:bg-[rgba(0,210,210,0.08)]' : 'hover:bg-[rgba(0,176,176,0.08)]'
 
   return (
     <div
@@ -234,7 +234,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       ctx.beginPath()
       ctx.moveTo(PAD_LEFT, y)
       ctx.lineTo(PAD_LEFT + chartW, y)
-      ctx.strokeStyle = 'rgba(26,18,8,0.07)'
+      ctx.strokeStyle = 'rgba(14,26,32,0.07)'
       ctx.lineWidth = 0.5
       ctx.setLineDash([])
       ctx.stroke()
@@ -254,7 +254,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       ctx.lineTo(PAD_LEFT, toY(bidPoints[bidPoints.length - 1].cum))
       ctx.lineTo(PAD_LEFT, baseY)
       ctx.closePath()
-      ctx.fillStyle = 'rgba(196,30,58,0.10)'
+      ctx.fillStyle = 'rgba(0,210,210,0.10)'
       ctx.fill()
 
       ctx.beginPath()
@@ -265,7 +265,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
         ctx.lineTo(currX, toY(bidPoints[i].cum))
       }
       ctx.lineTo(PAD_LEFT, toY(bidPoints[bidPoints.length - 1].cum))
-      ctx.strokeStyle = '#C41E3A'
+      ctx.strokeStyle = '#00D2D2'
       ctx.lineWidth = 1.5
       ctx.setLineDash([])
       ctx.stroke()
@@ -285,7 +285,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       const lastX = toX(askPoints[askPoints.length - 1].price)
       ctx.lineTo(lastX, baseY)
       ctx.closePath()
-      ctx.fillStyle = 'rgba(232,130,154,0.15)'
+      ctx.fillStyle = 'rgba(0,176,176,0.15)'
       ctx.fill()
 
       ctx.beginPath()
@@ -296,7 +296,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
         ctx.lineTo(currX, toY(askPoints[i].cum))
       }
       ctx.lineTo(toX(askPoints[askPoints.length - 1].price), toY(askPoints[askPoints.length - 1].cum))
-      ctx.strokeStyle = '#E8829A'
+      ctx.strokeStyle = '#00B0B0'
       ctx.lineWidth = 1.5
       ctx.setLineDash([])
       ctx.stroke()
@@ -310,15 +310,15 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       ctx.beginPath()
       ctx.moveTo(midX, PAD_TOP)
       ctx.lineTo(midX, PAD_TOP + chartH)
-      ctx.strokeStyle = 'rgba(26,18,8,0.15)'
+      ctx.strokeStyle = 'rgba(14,26,32,0.15)'
       ctx.lineWidth = 0.5
       ctx.setLineDash([3, 3])
       ctx.stroke()
       ctx.setLineDash([])
     }
 
-    ctx.font = '10px JetBrains Mono, monospace'
-    ctx.fillStyle = 'rgba(107,79,46,0.7)'
+    ctx.font = '10px IBM Plex Mono, monospace'
+    ctx.fillStyle = 'rgba(42,64,80,0.7)'
     const labelY = h - 6
 
     if (bidPoints.length > 0) {
@@ -337,8 +337,8 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       ctx.fillText(maxPrice.toFixed(2), PAD_LEFT + chartW, labelY)
     }
 
-    ctx.font = '10px JetBrains Mono, monospace'
-    ctx.fillStyle = 'rgba(107,79,46,0.5)'
+    ctx.font = '10px IBM Plex Mono, monospace'
+    ctx.fillStyle = 'rgba(42,64,80,0.5)'
     ctx.textAlign = 'right'
     ctx.fillText(maxDepth.toFixed(2), PAD_LEFT + chartW, PAD_TOP + 10)
   }, [bids, asks])
@@ -348,11 +348,11 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       <div className="px-3 py-2 border-b border-border">
         <span
           style={{
-            fontFamily: 'Inter, sans-serif',
+            fontFamily: 'IBM Plex Mono, monospace',
             fontSize: '0.65rem',
             textTransform: 'uppercase',
             letterSpacing: '0.15em',
-            color: '#6B4F2E',
+            color: '#2A4050',
             marginBottom: '8px',
             display: 'block',
           }}
@@ -463,7 +463,7 @@ function TradesFeed({ trades }: { trades: TradeEntry[] }) {
               initial={{ opacity: 0, x: -20, height: 0 }}
               animate={{ opacity: 1, x: 0, height: 'auto' }}
               transition={{ duration: 0.25 }}
-              className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-[rgba(196,30,58,0.08)] transition-colors duration-75 cursor-default select-none overflow-hidden"
+              className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-[rgba(0,210,210,0.08)] transition-colors duration-75 cursor-default select-none overflow-hidden"
             >
               <span
                 className={
@@ -703,8 +703,8 @@ function OrderEntryForm({
           className={[
             'w-full h-12 font-sans font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 disabled:opacity-50',
             side === 'buy'
-              ? 'bg-sage text-parchment hover:bg-[#C0506A]'
-              : 'bg-terra text-parchment hover:bg-[#7A0D1E]',
+              ? 'bg-sage text-parchment hover:bg-[#007A70]'
+              : 'bg-terra text-parchment hover:bg-[#AA2222]',
             submitting ? 'opacity-70' : '',
           ].join(' ')}
         >
@@ -862,7 +862,7 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
               <WsStatusBadge status={wsStatus} />
             </div>
             <div className="flex items-end gap-5">
-              <BestPriceDisplay value={bestBid} label="Best Bid" color="#C41E3A" />
+              <BestPriceDisplay value={bestBid} label="Best Bid" color="#00D2D2" />
               <div className="pb-0.5 text-center">
                 <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">Spread</span>
                 <motion.span
@@ -878,7 +878,7 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
                   )}
                 </motion.span>
               </div>
-              <BestPriceDisplay value={bestAsk} label="Best Ask" color="#E8829A" />
+              <BestPriceDisplay value={bestAsk} label="Best Ask" color="#00B0B0" />
             </div>
           </div>
         </div>
@@ -917,7 +917,7 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: EASE, delay: 0.3 }}
-          className="bg-canvas border border-border shadow-card p-6 shadow-[0_4px_24px_rgba(26,18,8,0.08)]"
+          className="bg-canvas border border-border shadow-card p-6 shadow-[0_4px_24px_rgba(14,26,32,0.08)]"
         >
           <OrderEntryForm
             marketId={marketId}

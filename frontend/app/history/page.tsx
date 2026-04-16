@@ -236,12 +236,12 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
           <rect
             x="2" y="7" width="20" height="14"
-            stroke="#C41E3A" strokeWidth="1.5"
+            stroke="#00D2D2" strokeWidth="1.5"
           />
-          <circle cx="14" cy="14" r="2" fill="#C41E3A" />
+          <circle cx="14" cy="14" r="2" fill="#00D2D2" />
           <path
             d="M17 7V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2"
-            stroke="#C41E3A" strokeWidth="1.5" strokeLinecap="round"
+            stroke="#00D2D2" strokeWidth="1.5" strokeLinecap="round"
           />
         </svg>
       </div>
@@ -434,7 +434,7 @@ function FillHistoryTable({
                   <tr
                     key={f.key}
                     className={[
-                      'hover:bg-[rgba(196,30,58,0.08)] transition-colors duration-75 border-b border-border last:border-0',
+                      'hover:bg-[rgba(0,210,210,0.08)] transition-colors duration-75 border-b border-border last:border-0',
                       idx % 2 === 0 ? 'bg-parchment' : 'bg-canvas',
                     ].join(' ')}
                   >
@@ -546,7 +546,7 @@ function PublicFeed({
               {trades.map((t) => (
                 <tr
                   key={t.key}
-                  className="hover:bg-[rgba(196,30,58,0.08)] transition-colors duration-75 border-b border-border last:border-0"
+                  className="hover:bg-[rgba(0,210,210,0.08)] transition-colors duration-75 border-b border-border last:border-0"
                 >
                   <td className="px-5 py-[3px] text-[11px] tabular-nums text-brown font-mono">
                     {fmtTime(t.ts)}

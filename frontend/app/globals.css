@@ -4,9 +4,10 @@
 
 @layer base {
   :root {
-    --background: #FFFFFF;
-    --foreground: #1A1208;
-    --border: rgba(26, 18, 8, 0.1);
+    --background: #080C10;
+    --foreground: #E8F4F8;
+    --border: rgba(14, 26, 32, 1);
+    --font-mono: var(--font-inter);
   }
 
   html {
@@ -16,9 +17,9 @@
   }
 
   body {
-    background-color: #FFFFFF;
-    color: #1A1208;
-    font-family: 'Inter', sans-serif;
+    background-color: #080C10;
+    color: #E8F4F8;
+    font-family: 'IBM Plex Mono', monospace;
     min-height: 100vh;
     position: relative;
   }
@@ -33,13 +34,26 @@
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   }
 
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 800px;
+    height: 400px;
+    background: radial-gradient(ellipse at top, rgba(0,210,210,0.07) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
   * {
     box-sizing: border-box;
   }
 
   ::selection {
-    background-color: rgba(196, 30, 58, 0.35);
-    color: #1A0608;
+    background-color: rgba(0, 210, 210, 0.35);
+    color: #E8F4F8;
   }
 
   ::-webkit-scrollbar {
@@ -52,20 +66,20 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(26, 18, 8, 0.15);
+    background: #0E1A20;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(26, 18, 8, 0.3);
+    background: rgba(14, 26, 32, 0.8);
   }
 
   input,
   select,
   textarea {
-    background: #FFFFFF;
-    border: 1px solid rgba(26, 18, 8, 0.12);
-    color: #1A1208;
-    font-family: 'JetBrains Mono', monospace;
+    background: #131920;
+    border: 1px solid #0E1A20;
+    color: #E8F4F8;
+    font-family: 'IBM Plex Mono', monospace;
     outline: none;
     border-radius: 0;
   }
@@ -73,8 +87,8 @@
   input:focus,
   select:focus,
   textarea:focus {
-    border-color: #C4943A;
-    box-shadow: 0 0 0 2px rgba(196, 148, 58, 0.2);
+    border-color: #00D2D2;
+    box-shadow: 0 0 0 2px rgba(0, 210, 210, 0.2);
   }
 }
 
@@ -87,12 +101,12 @@
 }
 
 @keyframes flashUp {
-  0% { background: rgba(107, 140, 82, 0.3); }
+  0% { background: rgba(0, 160, 144, 0.3); }
   100% { background: transparent; }
 }
 
 @keyframes flashDown {
-  0% { background: rgba(160, 64, 42, 0.2); }
+  0% { background: rgba(204, 51, 51, 0.2); }
   100% { background: transparent; }
 }
 
@@ -110,8 +124,8 @@
   }
 
   .card {
-    background: #F7F5F0;
-    border: 1px solid rgba(26, 18, 8, 0.08);
-    box-shadow: 0 2px 20px rgba(26, 18, 8, 0.06);
+    background: #0D1218;
+    border: 1px solid #0E1A20;
+    box-shadow: none;
   }
 }

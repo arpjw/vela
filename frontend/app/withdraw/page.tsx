@@ -30,20 +30,20 @@ function ConnectGate() {
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm text-center bg-canvas border border-border shadow-[0_4px_24px_rgba(26,18,8,0.08)] p-8" style={{ borderRadius: 0 }}>
+      <div className="w-full max-w-sm text-center bg-canvas border border-border shadow-[0_4px_24px_rgba(14,26,32,0.08)] p-8" style={{ borderRadius: 0 }}>
         <div className="w-16 h-16 bg-ochre/10 flex items-center justify-center mx-auto mb-5">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path
               d="M21 7H3C2.44772 7 2 7.44772 2 8V20C2 20.5523 2.44772 21 3 21H21C21.5523 21 22 20.5523 22 20V8C22 7.44772 21.5523 7 21 7Z"
-              stroke="#C41E3A"
+              stroke="#00D2D2"
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            <circle cx="14" cy="14" r="2" fill="#C41E3A" />
+            <circle cx="14" cy="14" r="2" fill="#00D2D2" />
             <path
               d="M17 7V5C17 3.89543 16.1046 3 15 3H9C7.89543 3 7 3.89543 7 5V7"
-              stroke="#C41E3A"
+              stroke="#00D2D2"
               strokeWidth="1.5"
               strokeLinecap="round"
             />
@@ -154,8 +154,8 @@ export default function WithdrawPage() {
         <div
           className="mb-6"
           style={{
-            borderLeft: '3px solid #C41E3A',
-            background: 'rgba(196,30,58,0.04)',
+            borderLeft: '3px solid #00D2D2',
+            background: 'rgba(0,210,210,0.04)',
             padding: '12px 16px',
           }}
         >
@@ -177,10 +177,10 @@ export default function WithdrawPage() {
               fill="none"
               className="mb-5"
             >
-              <circle cx="24" cy="24" r="23" stroke="#16a34a" strokeWidth="2" />
+              <circle cx="24" cy="24" r="23" stroke="#00A090" strokeWidth="2" />
               <path
                 d="M14 24l7 7 13-14"
-                stroke="#16a34a"
+                stroke="#00A090"
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -204,8 +204,8 @@ export default function WithdrawPage() {
             </p>
             <Link
               href="/dashboard"
-              className="w-full flex items-center justify-center h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-white transition-colors duration-150"
-              style={{ background: '#C41E3A', borderRadius: 0 }}
+              className="w-full flex items-center justify-center h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150"
+              style={{ background: '#00D2D2', borderRadius: 0 }}
             >
               VIEW BALANCE
             </Link>
@@ -222,7 +222,7 @@ export default function WithdrawPage() {
               </p>
               <p
                 className="text-sm"
-                style={{ fontFamily: 'var(--font-mono)', color: '#6B4F2E' }}
+                style={{ fontFamily: 'var(--font-mono)', color: '#2A4050' }}
               >
                 {shortAddress}
               </p>
@@ -238,7 +238,7 @@ export default function WithdrawPage() {
                   setSelectedAsset(e.target.value)
                   setAmount('')
                 }}
-                className="w-full h-10 px-3 bg-white border border-border text-sm text-ink appearance-none focus:outline-none focus:border-ink"
+                className="w-full h-10 px-3 bg-vellum border border-border text-sm text-ink appearance-none focus:outline-none focus:border-ink"
                 style={{ borderRadius: 0, fontFamily: 'var(--font-mono)' }}
               >
                 {ASSETS.map((a) => {
@@ -264,9 +264,9 @@ export default function WithdrawPage() {
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
                   className={[
-                    'w-full h-10 pl-3 pr-24 bg-white border text-sm text-ink focus:outline-none',
+                    'w-full h-10 pl-3 pr-24 bg-vellum border text-sm text-ink focus:outline-none',
                     amountExceedsBalance
-                      ? 'border-red-500 focus:border-red-500'
+                      ? 'border-terra focus:border-terra'
                       : 'border-border focus:border-ink',
                   ].join(' ')}
                   style={{ borderRadius: 0, fontFamily: 'var(--font-mono)' }}
@@ -288,7 +288,7 @@ export default function WithdrawPage() {
                 </div>
               </div>
               {amountExceedsBalance && (
-                <p className="text-xs mt-1" style={{ color: '#C41E3A' }}>
+                <p className="text-xs mt-1" style={{ color: '#00D2D2' }}>
                   Amount exceeds available balance
                 </p>
               )}
@@ -300,14 +300,14 @@ export default function WithdrawPage() {
               </p>
               <p
                 className="text-sm break-all"
-                style={{ fontFamily: 'var(--font-mono)', color: '#6B4F2E' }}
+                style={{ fontFamily: 'var(--font-mono)', color: '#2A4050' }}
               >
                 {address}
               </p>
             </div>
 
             {error && (
-              <p className="text-xs mb-4" style={{ color: '#C41E3A' }}>
+              <p className="text-xs mb-4" style={{ color: '#00D2D2' }}>
                 {error}
               </p>
             )}
@@ -315,8 +315,8 @@ export default function WithdrawPage() {
             <button
               type="submit"
               disabled={submitting || !amount || amountExceedsBalance}
-              className="w-full flex items-center justify-center gap-2 h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-white transition-colors duration-150 disabled:opacity-50"
-              style={{ background: '#C41E3A', borderRadius: 0 }}
+              className="w-full flex items-center justify-center gap-2 h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150 disabled:opacity-50"
+              style={{ background: '#00D2D2', borderRadius: 0 }}
             >
               {submitting && <Spinner size="xs" className="text-white" />}
               WITHDRAW {amount || '0'} {selectedAsset}

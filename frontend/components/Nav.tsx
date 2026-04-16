@@ -40,7 +40,7 @@ export default function Nav() {
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
           <div className="w-6 h-6 bg-ochre flex items-center justify-center">
             <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-              <path d="M2 10L7 2l5 8H2z" fill="#1A1208" />
+              <path d="M2 10L7 2l5 8H2z" fill="#E8F4F8" />
             </svg>
           </div>
           <span className="font-bold text-ink text-base tracking-[0.06em] uppercase">VELA</span>
@@ -88,11 +88,11 @@ export default function Nav() {
                     ? 'text-crimson'
                     : 'text-crimson hover:text-crimson/70',
                 ].join(' ')}
-                style={{ color: '#C41E3A' }}
+                style={{ color: '#00D2D2' }}
               >
                 DEPOSIT
                 {pathname.startsWith('/deposit') && (
-                  <span className="absolute bottom-0 left-4 right-4 h-[2px]" style={{ background: '#C41E3A' }} />
+                  <span className="absolute bottom-0 left-4 right-4 h-[2px]" style={{ background: '#00D2D2' }} />
                 )}
               </Link>
             </motion.div>
@@ -111,11 +111,11 @@ export default function Nav() {
                     ? 'text-crimson'
                     : 'text-crimson hover:text-crimson/70',
                 ].join(' ')}
-                style={{ color: '#C41E3A' }}
+                style={{ color: '#00D2D2' }}
               >
                 WITHDRAW
                 {pathname.startsWith('/withdraw') && (
-                  <span className="absolute bottom-0 left-4 right-4 h-[2px]" style={{ background: '#C41E3A' }} />
+                  <span className="absolute bottom-0 left-4 right-4 h-[2px]" style={{ background: '#00D2D2' }} />
                 )}
               </Link>
             </motion.div>

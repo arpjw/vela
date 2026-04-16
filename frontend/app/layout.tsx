@@ -1,23 +1,16 @@
 'use client'
 
-import { Inter, JetBrains_Mono } from 'next/font/google'
+import { IBM_Plex_Mono } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth'
 import Nav from '@/components/Nav'
 import { AnimatePresence, motion } from 'framer-motion'
 import { usePathname } from 'next/navigation'
 
-const inter = Inter({
+const ibmPlexMono = IBM_Plex_Mono({
   subsets: ['latin'],
   variable: '--font-inter',
-  weight: ['400', '500', '600', '700', '800'],
-  display: 'swap',
-})
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  weight: ['400', '500', '600'],
+  weight: ['400', '700'],
   display: 'swap',
 })
 
@@ -29,7 +22,7 @@ export default function RootLayout({
   const pathname = usePathname()
 
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" className={ibmPlexMono.variable}>
       <head>
         <title>Vela Exchange</title>
         <meta name="description" content="High-performance verifiable spot DEX" />

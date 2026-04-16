@@ -19,11 +19,11 @@ export interface BadgeProps {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
-  primary:   'bg-[rgba(196,30,58,0.1)] text-ochre border border-[rgba(196,30,58,0.25)]',
-  secondary: 'bg-[rgba(232,130,154,0.1)] text-fresco border border-[rgba(232,130,154,0.25)]',
-  success:   'bg-[rgba(212,96,122,0.1)] text-sage border border-[rgba(212,96,122,0.25)]',
-  warning:   'bg-[rgba(196,30,58,0.1)] text-ochre border border-[rgba(196,30,58,0.25)]',
-  error:     'bg-[rgba(139,15,34,0.1)] text-terra border border-[rgba(139,15,34,0.25)]',
+  primary:   'bg-[rgba(0,210,210,0.1)] text-ochre border border-[rgba(0,210,210,0.25)]',
+  secondary: 'bg-[rgba(0,176,176,0.1)] text-fresco border border-[rgba(0,176,176,0.25)]',
+  success:   'bg-[rgba(0,160,144,0.1)] text-sage border border-[rgba(0,160,144,0.25)]',
+  warning:   'bg-[rgba(0,210,210,0.1)] text-ochre border border-[rgba(0,210,210,0.25)]',
+  error:     'bg-[rgba(204,51,51,0.1)] text-terra border border-[rgba(204,51,51,0.25)]',
   neutral:   'bg-canvas text-brown border border-border',
 }
 
