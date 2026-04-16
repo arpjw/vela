@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { withdraw, getBalances, type BalanceResponse } from '@/lib/api'
+import { requestWithdrawalSignature, withdrawETH } from '@/lib/contract'
 import { Spinner } from '@/components/ui/Spinner'
 
 const ASSETS = [
@@ -73,6 +74,7 @@ interface SuccessState {
   amount: string
   asset: string
   nonce: number
+  txHash: string | null
 }
 
 export default function WithdrawPage() {
@@ -82,6 +84,7 @@ export default function WithdrawPage() {
   const [amount, setAmount] = useState('')
   const [balances, setBalances] = useState<BalanceResponse[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [loadingMsg, setLoadingMsg] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<SuccessState | null>(null)
 
@@ -113,23 +116,31 @@ export default function WithdrawPage() {
     setError(null)
 
     try {
-      const rawAmount = Math.round(parseFloat(amount) * 1_000_000)
-      const nonce = Date.now()
-      const message = `vela:withdraw:${selectedAsset}:${rawAmount}:${nonce}`
-      const signature = (await window.ethereum!.request({
-        method: 'personal_sign',
-        params: [message, address],
-      })) as string
+      if (selectedAsset === 'ETH') {
+        const nonce = Date.now()
+        setLoadingMsg('Requesting operator signature...')
+        const { signature, amountWei } = await requestWithdrawalSignature(address, 'ETH', amount, nonce)
+        setLoadingMsg('Confirm transaction in MetaMask...')
+        const txHash = await withdrawETH(amountWei, nonce, signature)
+        setSuccess({ amount, asset: selectedAsset, nonce, txHash })
+      } else {
+        const rawAmount = Math.round(parseFloat(amount) * 1_000_000)
+        const nonce = Date.now()
+        const message = `vela:withdraw:${selectedAsset}:${rawAmount}:${nonce}`
+        const signature = (await (window as any).ethereum.request({
+          method: 'personal_sign',
+          params: [message, address],
+        })) as string
 
-      const res = await withdraw(address, selectedAsset, amount, signature, nonce)
-      setSubmitting(false)
-
-      if (!res.ok) {
-        setError(res.error ?? 'Withdrawal failed')
-        return
+        const res = await withdraw(address, selectedAsset, amount, signature, nonce)
+        if (!res.ok) {
+          setError(res.error ?? 'Withdrawal failed')
+          setSubmitting(false)
+          return
+        }
+        setSuccess({ amount, asset: selectedAsset, nonce, txHash: null })
       }
-
-      setSuccess({ amount, asset: selectedAsset, nonce })
+      setSubmitting(false)
     } catch (err) {
       setSubmitting(false)
       setError(err instanceof Error ? err.message : 'Withdrawal failed')
@@ -144,40 +155,14 @@ export default function WithdrawPage() {
     ? `${address.slice(0, 6)}...${address.slice(-4)}`
     : ''
 
+  const isOnChain = selectedAsset === 'ETH'
+
   return (
     <div className="min-h-[calc(100vh-60px)] bg-parchment flex items-start justify-center px-4 py-12">
       <div className="w-full max-w-[480px]">
         <p className="text-[0.7rem] font-medium uppercase tracking-[0.15em] text-brown mb-6">
           WITHDRAW FUNDS
         </p>
-
-        <div
-          className="mb-6"
-          style={{
-            borderLeft: '3px solid #00D2D2',
-            background: 'rgba(0,210,210,0.04)',
-            padding: '12px 16px',
-          }}
-        >
-          <p className="text-[0.8rem] text-ink leading-relaxed">
-            Withdrawals in beta are processed manually within 24 hours.
-            Funds will be sent to your connected wallet address.
-          </p>
-        </div>
-
-        <div
-          className="mb-6"
-          style={{
-            borderLeft: '3px solid rgba(123,164,184,0.4)',
-            background: 'rgba(123,164,184,0.04)',
-            padding: '12px 16px',
-          }}
-        >
-          <p className="text-[0.8rem] text-brown leading-relaxed">
-            On-chain withdrawals via smart contract coming in the next update.
-            Current withdrawals are processed manually within 24 hours.
-          </p>
-        </div>
 
         {success ? (
           <div
@@ -200,26 +185,58 @@ export default function WithdrawPage() {
                 strokeLinejoin="round"
               />
             </svg>
-            <p className="text-xl font-semibold text-ink mb-2">
-              Withdrawal requested
-            </p>
-            <p className="text-sm text-brown mb-5">
-              Your withdrawal of {success.amount} {success.asset} has been submitted.
-              Funds will arrive in your wallet within 24 hours.
-            </p>
-            <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
-              REFERENCE NUMBER
-            </p>
-            <p
-              className="text-sm font-mono text-ink mb-7"
-              style={{ fontFamily: 'var(--font-mono)' }}
-            >
-              {success.nonce}
-            </p>
+            {success.txHash ? (
+              <>
+                <p className="text-xl font-semibold text-ink mb-2">
+                  Withdrawal submitted on-chain
+                </p>
+                <p className="text-sm text-brown mb-5">
+                  Your {success.amount} ETH will arrive in your wallet once the
+                  transaction confirms on Ethereum Sepolia.
+                </p>
+                <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
+                  TRANSACTION HASH
+                </p>
+                <p
+                  className="text-xs font-mono text-ink mb-4 break-all"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                >
+                  {success.txHash}
+                </p>
+                <a
+                  href={`https://sepolia.etherscan.io/tx/${success.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150 mb-4"
+                  style={{ background: '#00D2D2', borderRadius: 0 }}
+                >
+                  VIEW ON ETHERSCAN
+                </a>
+              </>
+            ) : (
+              <>
+                <p className="text-xl font-semibold text-ink mb-2">
+                  Withdrawal requested
+                </p>
+                <p className="text-sm text-brown mb-5">
+                  Your withdrawal of {success.amount} {success.asset} has been submitted.
+                  Funds will arrive in your wallet within 24 hours.
+                </p>
+                <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
+                  REFERENCE NUMBER
+                </p>
+                <p
+                  className="text-sm font-mono text-ink mb-7"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                >
+                  {success.nonce}
+                </p>
+              </>
+            )}
             <Link
               href="/dashboard"
-              className="w-full flex items-center justify-center h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150"
-              style={{ background: '#00D2D2', borderRadius: 0 }}
+              className="w-full flex items-center justify-center h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink border border-border transition-colors duration-150 hover:bg-vellum"
+              style={{ borderRadius: 0 }}
             >
               VIEW BALANCE
             </Link>
@@ -265,6 +282,27 @@ export default function WithdrawPage() {
                   )
                 })}
               </select>
+            </div>
+
+            <div className="mb-5">
+              <div
+                style={{
+                  borderLeft: '3px solid ' + (isOnChain ? '#00D2D2' : 'rgba(123,164,184,0.4)'),
+                  background: isOnChain ? 'rgba(0,210,210,0.04)' : 'rgba(123,164,184,0.04)',
+                  padding: '8px 12px',
+                }}
+              >
+                <p className="text-[0.72rem] text-brown leading-relaxed">
+                  {isOnChain
+                    ? '● Ethereum Sepolia — on-chain withdrawal'
+                    : '● Manual withdrawal — processed within 24 hours'}
+                </p>
+                {!isOnChain && (
+                  <p className="text-[0.68rem] text-brown mt-1 opacity-70">
+                    ERC20 on-chain withdrawals coming soon
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="mb-5">
@@ -333,7 +371,7 @@ export default function WithdrawPage() {
               style={{ background: '#00D2D2', borderRadius: 0 }}
             >
               {submitting && <Spinner size="xs" className="text-white" />}
-              WITHDRAW {amount || '0'} {selectedAsset}
+              {submitting ? loadingMsg || 'Processing...' : `WITHDRAW ${amount || '0'} ${selectedAsset}`}
             </button>
           </form>
         )}

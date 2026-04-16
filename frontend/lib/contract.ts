@@ -64,6 +64,72 @@ export async function depositETH(amountEth: string): Promise<string> {
   return txHash
 }
 
+function encodeWithdrawCall(
+  assetAddress: string,
+  amountWei: string,
+  nonce: number,
+  signature: string
+): string {
+  const selector = '3ccfd60b'
+  const paddedAsset = assetAddress.slice(2).padStart(64, '0')
+  const paddedAmount = BigInt(amountWei).toString(16).padStart(64, '0')
+  const paddedNonce = BigInt(nonce).toString(16).padStart(64, '0')
+  const offset = '0000000000000000000000000000000000000000000000000000000000000080'
+  const sigHex = signature.startsWith('0x') ? signature.slice(2) : signature
+  const sigLength = BigInt(sigHex.length / 2).toString(16).padStart(64, '0')
+  const sigPadded = sigHex.padEnd(Math.ceil(sigHex.length / 64) * 64, '0')
+  return '0x' + selector + paddedAsset + paddedAmount + paddedNonce + offset + sigLength + sigPadded
+}
+
+export async function withdrawETH(
+  amountWei: string,
+  nonce: number,
+  signature: string
+): Promise<string> {
+  await switchToSepolia()
+  const ethereum = (window as any).ethereum
+  const accounts: string[] = await ethereum.request({ method: 'eth_accounts' })
+  if (!accounts.length) throw new Error('No connected account')
+
+  const data = encodeWithdrawCall(ETH_ASSET, amountWei, nonce, signature)
+
+  const txHash: string = await ethereum.request({
+    method: 'eth_sendTransaction',
+    params: [
+      {
+        from: accounts[0],
+        to: CONTRACT_ADDRESS,
+        data,
+        value: '0x0',
+      },
+    ],
+  })
+
+  return txHash
+}
+
+export async function requestWithdrawalSignature(
+  user: string,
+  asset: string,
+  amount: string,
+  nonce: number
+): Promise<{ signature: string; amountWei: string; assetAddress: string }> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
+  const res = await fetch(`${apiUrl}/withdrawal-signature`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user, asset, amount, nonce }),
+    cache: 'no-store',
+  })
+  const data = await res.json()
+  if (!data.ok) throw new Error(data.error ?? 'Failed to get signature')
+  return {
+    signature: data.data.signature,
+    amountWei: data.data.amount_wei,
+    assetAddress: data.data.asset,
+  }
+}
+
 export async function getOnChainBalance(userAddress: string): Promise<string> {
   const ethereum = (window as any).ethereum
 

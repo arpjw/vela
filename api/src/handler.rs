@@ -6,6 +6,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use k256::ecdsa::SigningKey;
 use sha3::{Digest, Keccak256};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use types::{
@@ -14,13 +15,101 @@ use types::{
 };
 use crate::{
     AppState,
-    auth::{cancel_signing_message, order_signing_message, verify_matches_async, withdrawal_signing_message},
+    auth::{cancel_signing_message, eth_message_hash, order_signing_message, verify_matches_async, withdrawal_signing_message},
     types::{
         ApiResponse, BalanceResponse, BookLevel, BookResponse, CancelOrderBody,
         DepositBody, MarketResponse, PostOrderBody, WithdrawBody, format_amount,
     },
     ws::handle_ws,
 };
+
+#[derive(serde::Deserialize)]
+struct WithdrawalSignatureRequest {
+    user: String,
+    asset: String,
+    amount: String,
+    nonce: u64,
+}
+
+#[derive(serde::Serialize)]
+struct WithdrawalSignatureData {
+    signature: String,
+    user: String,
+    asset: String,
+    amount_wei: String,
+    nonce: u64,
+}
+
+fn parse_eth_amount_wei(s: &str) -> Option<u128> {
+    let s = s.trim();
+    let (integer_part, frac_part) = match s.find('.') {
+        Some(pos) => (&s[..pos], &s[pos + 1..]),
+        None => (s, ""),
+    };
+    let integer_val: u128 = integer_part.parse().ok()?;
+    let mut frac_str = frac_part.to_string();
+    while frac_str.len() < 18 {
+        frac_str.push('0');
+    }
+    frac_str.truncate(18);
+    let frac_val: u128 = frac_str.parse().ok()?;
+    integer_val.checked_mul(1_000_000_000_000_000_000u128)?.checked_add(frac_val)
+}
+
+fn asset_address_for(asset: &str) -> Option<[u8; 20]> {
+    if asset.eq_ignore_ascii_case("ETH") {
+        Some([0u8; 20])
+    } else {
+        None
+    }
+}
+
+fn sign_withdrawal_op(
+    operator_key_hex: String,
+    user_bytes: [u8; 20],
+    asset_addr: [u8; 20],
+    amount_wei: u128,
+    nonce: u64,
+) -> Result<String, String> {
+    let key_hex = operator_key_hex.strip_prefix("0x").unwrap_or(&operator_key_hex).to_string();
+    let key_bytes = hex::decode(&key_hex).map_err(|_| "invalid operator key".to_string())?;
+    let signing_key = SigningKey::from_slice(&key_bytes).map_err(|e| e.to_string())?;
+
+    const CHAIN_ID: u64 = 11155111;
+    let mut packed: Vec<u8> = Vec::with_capacity(136);
+    packed.extend_from_slice(&user_bytes);
+    packed.extend_from_slice(&asset_addr);
+
+    let mut amount_bytes = [0u8; 32];
+    amount_bytes[16..].copy_from_slice(&amount_wei.to_be_bytes());
+    packed.extend_from_slice(&amount_bytes);
+
+    let mut nonce_bytes = [0u8; 32];
+    nonce_bytes[24..].copy_from_slice(&nonce.to_be_bytes());
+    packed.extend_from_slice(&nonce_bytes);
+
+    let mut chain_id_bytes = [0u8; 32];
+    chain_id_bytes[24..].copy_from_slice(&CHAIN_ID.to_be_bytes());
+    packed.extend_from_slice(&chain_id_bytes);
+
+    let inner_hash: [u8; 32] = {
+        let mut h = Keccak256::new();
+        h.update(&packed);
+        h.finalize().into()
+    };
+
+    let final_hash = eth_message_hash(&inner_hash);
+
+    let (sig, recid) = signing_key
+        .sign_prehash_recoverable(&final_hash)
+        .map_err(|e| e.to_string())?;
+
+    let mut eth_sig = Vec::with_capacity(65);
+    eth_sig.extend_from_slice(sig.to_bytes().as_ref());
+    eth_sig.push(recid.to_byte() + 27);
+
+    Ok(format!("0x{}", hex::encode(&eth_sig)))
+}
 
 pub fn build_router(state: Arc<AppState>) -> Router {
     let cors = CorsLayer::new()
@@ -41,6 +130,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/orders", post(post_order))
         .route("/orders/cancel", post(cancel_order))
         .route("/withdrawals", post(initiate_withdrawal))
+        .route("/withdrawal-signature", post(withdrawal_signature_handler))
         .route("/deposit", post(deposit_handler))
         .route("/ws", get(ws_handler))
         .with_state(state)
@@ -323,6 +413,54 @@ async fn deposit_handler(
         .collect();
 
     (StatusCode::OK, Json(ApiResponse::ok(balances))).into_response()
+}
+
+async fn withdrawal_signature_handler(
+    Json(body): Json<WithdrawalSignatureRequest>,
+) -> impl IntoResponse {
+    let operator_key = match std::env::var("OPERATOR_PRIVATE_KEY") {
+        Ok(k) => k,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::<()>::err("Operator key not configured"))).into_response(),
+    };
+
+    let user_id = match UserId::from_hex(&body.user) {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid address"))).into_response(),
+    };
+
+    let asset_addr = match asset_address_for(&body.asset) {
+        Some(a) => a,
+        None => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("unsupported asset"))).into_response(),
+    };
+
+    let amount_wei = match parse_eth_amount_wei(&body.amount) {
+        Some(a) => a,
+        None => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid amount"))).into_response(),
+    };
+
+    let user_bytes = user_id.0;
+    let user_hex = format!("0x{}", hex::encode(user_bytes));
+    let asset_hex = format!("0x{}", hex::encode(asset_addr));
+    let amount_wei_str = amount_wei.to_string();
+    let nonce = body.nonce;
+
+    let signature = match tokio::task::spawn_blocking(move || {
+        sign_withdrawal_op(operator_key, user_bytes, asset_addr, amount_wei, nonce)
+    })
+    .await
+    {
+        Ok(Ok(sig)) => sig,
+        Ok(Err(e)) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::<()>::err(e))).into_response(),
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::<()>::err("signing failed"))).into_response(),
+    };
+
+    (StatusCode::OK, Json(ApiResponse::ok(WithdrawalSignatureData {
+        signature,
+        user: user_hex,
+        asset: asset_hex,
+        amount_wei: amount_wei_str,
+        nonce,
+    }))).into_response()
 }
 
 fn parse_decimal_amount(s: &str) -> Option<u64> {
