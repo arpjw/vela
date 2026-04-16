@@ -222,7 +222,7 @@ export default function WithdrawPage() {
               </p>
               <p
                 className="text-sm"
-                style={{ fontFamily: 'var(--font-mono)', color: '#2A4050' }}
+                style={{ fontFamily: 'var(--font-mono)', color: '#7BA4B8' }}
               >
                 {shortAddress}
               </p>
@@ -300,7 +300,7 @@ export default function WithdrawPage() {
               </p>
               <p
                 className="text-sm break-all"
-                style={{ fontFamily: 'var(--font-mono)', color: '#2A4050' }}
+                style={{ fontFamily: 'var(--font-mono)', color: '#7BA4B8' }}
               >
                 {address}
               </p>

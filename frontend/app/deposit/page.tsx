@@ -208,7 +208,7 @@ export default function DepositPage() {
               </p>
               <p
                 className="text-sm text-ink"
-                style={{ fontFamily: 'var(--font-mono)', color: '#2A4050' }}
+                style={{ fontFamily: 'var(--font-mono)', color: '#7BA4B8' }}
               >
                 {shortAddress}
               </p>

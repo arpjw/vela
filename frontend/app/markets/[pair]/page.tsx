@@ -318,7 +318,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
     }
 
     ctx.font = '10px IBM Plex Mono, monospace'
-    ctx.fillStyle = 'rgba(42,64,80,0.7)'
+    ctx.fillStyle = 'rgba(123,164,184,0.7)'
     const labelY = h - 6
 
     if (bidPoints.length > 0) {
@@ -338,7 +338,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
     }
 
     ctx.font = '10px IBM Plex Mono, monospace'
-    ctx.fillStyle = 'rgba(42,64,80,0.5)'
+    ctx.fillStyle = 'rgba(123,164,184,0.5)'
     ctx.textAlign = 'right'
     ctx.fillText(maxDepth.toFixed(2), PAD_LEFT + chartW, PAD_TOP + 10)
   }, [bids, asks])
@@ -352,7 +352,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
             fontSize: '0.65rem',
             textTransform: 'uppercase',
             letterSpacing: '0.15em',
-            color: '#2A4050',
+            color: '#7BA4B8',
             marginBottom: '8px',
             display: 'block',
           }}

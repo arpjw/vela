@@ -24,7 +24,7 @@ const config: Config = {
         canvas: '#0D1218',
         vellum: '#131920',
         ink: '#E8F4F8',
-        brown: '#2A4050',
+        brown: '#7BA4B8',
         ochre: '#00D2D2',
         fresco: '#00B0B0',
         terra: '#CC3333',
