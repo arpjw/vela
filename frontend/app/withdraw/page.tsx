@@ -165,6 +165,20 @@ export default function WithdrawPage() {
           </p>
         </div>
 
+        <div
+          className="mb-6"
+          style={{
+            borderLeft: '3px solid rgba(123,164,184,0.4)',
+            background: 'rgba(123,164,184,0.04)',
+            padding: '12px 16px',
+          }}
+        >
+          <p className="text-[0.8rem] text-brown leading-relaxed">
+            On-chain withdrawals via smart contract coming in the next update.
+            Current withdrawals are processed manually within 24 hours.
+          </p>
+        </div>
+
         {success ? (
           <div
             className="bg-canvas border border-border p-8 flex flex-col items-center text-center"

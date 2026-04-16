@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { deposit, getBalances, type BalanceResponse } from '@/lib/api'
+import { depositETH, switchToSepolia } from '@/lib/contract'
 import { Spinner } from '@/components/ui/Spinner'
 
 const ASSETS = [
@@ -73,6 +74,7 @@ interface SuccessState {
   amount: string
   asset: string
   newBalance: string
+  txHash?: string
 }
 
 export default function DepositPage() {
@@ -102,24 +104,50 @@ export default function DepositPage() {
     setSubmitting(true)
     setError(null)
 
-    const res = await deposit(address, selectedAsset, amount)
-    setSubmitting(false)
+    try {
+      if (selectedAsset === 'ETH') {
+        await switchToSepolia()
+        const txHash = await depositETH(amount)
+        const res = await deposit(address, selectedAsset, amount)
+        setSubmitting(false)
 
-    if (!res.ok || !res.data) {
-      setError(res.error ?? 'Deposit failed')
-      return
+        const updated = res.ok && res.data ? res.data : balances
+        if (!res.ok) {
+          setError(res.error ?? 'Engine credit failed — on-chain tx sent: ' + txHash)
+        }
+        const newBal = updated.find(
+          (b) => b.asset.toUpperCase() === selectedAsset.toUpperCase(),
+        )
+        setSuccess({
+          amount,
+          asset: selectedAsset,
+          newBalance: String(Number(newBal?.available ?? '0') / 1_000_000),
+          txHash,
+        })
+      } else {
+        const res = await deposit(address, selectedAsset, amount)
+        setSubmitting(false)
+
+        if (!res.ok || !res.data) {
+          setError(res.error ?? 'Deposit failed')
+          return
+        }
+
+        const updated = res.data
+        setBalances(updated)
+        const newBal = updated.find(
+          (b) => b.asset.toUpperCase() === selectedAsset.toUpperCase(),
+        )
+        setSuccess({
+          amount,
+          asset: selectedAsset,
+          newBalance: String(Number(newBal?.available ?? '0') / 1_000_000),
+        })
+      }
+    } catch (err) {
+      setSubmitting(false)
+      setError(err instanceof Error ? err.message : 'Deposit failed')
     }
-
-    const updated = res.data
-    setBalances(updated)
-    const newBal = updated.find(
-      (b) => b.asset.toUpperCase() === selectedAsset.toUpperCase(),
-    )
-    setSuccess({
-      amount,
-      asset: selectedAsset,
-      newBalance: String(Number(newBal?.available ?? '0') / 1_000_000),
-    })
   }
 
   if (!isConnected) {
@@ -183,11 +211,23 @@ export default function DepositPage() {
               NEW BALANCE
             </p>
             <p
-              className="text-lg font-mono text-ink mb-7"
+              className="text-lg font-mono text-ink mb-5"
               style={{ fontFamily: 'var(--font-mono)' }}
             >
               {success.newBalance} {success.asset}
             </p>
+            {success.txHash && (
+              <a
+                href={`https://sepolia.etherscan.io/tx/${success.txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[0.7rem] font-medium uppercase tracking-[0.12em] mb-7"
+                style={{ color: '#00D2D2' }}
+              >
+                VIEW ON ETHERSCAN ↗
+              </a>
+            )}
+            {!success.txHash && <div className="mb-7" />}
             <Link
               href="/markets/ETH-USDC"
               className="w-full flex items-center justify-center h-10 text-[0.8rem] font-medium uppercase tracking-[0.08em] text-ink transition-colors duration-150"
@@ -214,7 +254,7 @@ export default function DepositPage() {
               </p>
             </div>
 
-            <div className="mb-5">
+            <div className="mb-2">
               <label className="block text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-2">
                 ASSET
               </label>
@@ -230,6 +270,23 @@ export default function DepositPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="mb-5">
+              {selectedAsset === 'ETH' ? (
+                <p className="text-[0.72rem] font-medium" style={{ color: '#00D2D2' }}>
+                  ● Ethereum Sepolia — on-chain settlement
+                </p>
+              ) : (
+                <p className="text-[0.72rem] font-medium text-brown">
+                  ● Trust-based beta deposit
+                </p>
+              )}
+              {selectedAsset !== 'ETH' && (
+                <p className="text-[0.7rem] text-brown mt-1">
+                  ERC20 on-chain deposits coming soon
+                </p>
+              )}
             </div>
 
             <div className="mb-5">
