@@ -118,7 +118,7 @@ export default function DepositPage() {
     setSuccess({
       amount,
       asset: selectedAsset,
-      newBalance: newBal?.available ?? '0',
+      newBalance: String(Number(newBal?.available ?? '0') / 1_000_000),
     })
   }
 
@@ -262,7 +262,7 @@ export default function DepositPage() {
                 className="text-sm text-ink"
                 style={{ fontFamily: 'var(--font-mono)' }}
               >
-                {currentBalance ? currentBalance.available : '0'}{' '}
+                {currentBalance ? String(Number(currentBalance.available) / 1_000_000) : '0'}{' '}
                 {selectedAsset}
               </p>
             </div>
