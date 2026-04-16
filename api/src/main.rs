@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use engine::MatchingEngine;
 use types::{
     AssetId, DepositRequest, FeeConfig, Market, MarketId, OrderSide, OrderType, PostOrderRequest,
@@ -159,6 +160,12 @@ async fn main() {
     seed_order_books(&mut engine);
 
     let state = api::AppState::new(engine);
+
+    let engine_arc = Arc::clone(&state.engine);
+    tokio::spawn(async move {
+        api::mm::run_mm_bot(engine_arc).await;
+    });
+
     let router = api::build_router(state);
 
     let addr = format!("0.0.0.0:{port}");
