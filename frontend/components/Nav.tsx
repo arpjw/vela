@@ -80,9 +80,9 @@ export default function Nav() {
             transition={{ delay: 0.2 + LINKS.length * 0.08, duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
           >
             <a
-              href="https://docs.vela.monolithsystematic.com"
+              href="https://monolithsystematicllc.mintlify.app"
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="px-4 py-[18px] text-[0.8rem] font-medium transition-colors duration-150 uppercase tracking-[0.1em] block text-brown hover:text-ink"
             >
               DOCS
