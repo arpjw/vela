@@ -1,70 +1,103 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
+import { createChart, CandlestickSeries } from 'lightweight-charts'
+import type {
+  IChartApi,
+  ISeriesApi,
+  CandlestickData,
+  Time,
+} from 'lightweight-charts'
 import {
   getBook,
+  getOrders,
+  getBalances,
   listMarkets,
   postOrder,
+  cancelOrder,
   type MarketResponse,
+  type Order,
+  type BalanceResponse,
   type PostOrderBody,
+  type CancelOrderBody,
 } from '@/lib/api'
-import { signOrder } from '@/lib/signing'
-import { getWsClient, type WsStatus } from '@/lib/ws'
+import { signOrder, signCancel } from '@/lib/signing'
 import { useAuth } from '@/lib/auth'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Spinner } from '@/components/ui/Spinner'
-import { Card } from '@/components/ui/Card'
-
-const MAX_BOOK_ROWS = 15
-const MAX_TRADES = 50
-const EASE = [0.25, 0.1, 0.25, 1] as const
-
-type RawLevel = [string, string]
-
-interface DepthLevel {
-  price: string
-  size: string
-  cumSize: number
-  depthPct: number
-}
-
-interface TradeEntry {
-  key: string
-  price: string
-  size: string
-  side: 'buy' | 'sell'
-  ts: number
-}
 
 type OrderSide = 'buy' | 'sell'
-type OrderType = 'limit' | 'market'
-type TIF = 'gtc' | 'ioc' | 'fok' | 'post_only'
+type OrderEntryType = 'limit' | 'market' | 'stop'
+type Timeframe = '1m' | '5m' | '15m' | '1H' | '4H' | '1D'
 
-function buildDepth(levels: RawLevel[], n: number): DepthLevel[] {
-  const rows = levels.slice(0, n)
-  let cum = 0
-  const withCum = rows.map(([price, size]) => {
-    cum += parseFloat(size)
-    return { price, size, cumSize: cum }
-  })
-  const maxCum = cum
-  return withCum.map((r) => ({
-    ...r,
-    depthPct: maxCum > 0 ? (r.cumSize / maxCum) * 100 : 0,
-  }))
+interface Toast {
+  id: number
+  message: string
+  variant: 'success' | 'error'
 }
 
-function fmt(n: string, dec = 2): string {
-  const v = parseFloat(n)
-  return isNaN(v) ? n : v.toFixed(dec)
+const TIMEFRAME_BARS: Record<Timeframe, { seconds: number; count: number }> = {
+  '1m':  { seconds: 60,      count: 120 },
+  '5m':  { seconds: 300,     count: 100 },
+  '15m': { seconds: 900,     count: 96  },
+  '1H':  { seconds: 3600,    count: 72  },
+  '4H':  { seconds: 14400,   count: 60  },
+  '1D':  { seconds: 86400,   count: 60  },
+}
+
+function generateOHLCV(
+  currentPrice: number,
+  timeframe: Timeframe,
+  bars: number,
+): CandlestickData<Time>[] {
+  const { seconds } = TIMEFRAME_BARS[timeframe]
+  const now = Math.floor(Date.now() / 1000)
+  const startTime = now - bars * seconds
+
+  const result: CandlestickData<Time>[] = []
+  let close = currentPrice * (1 + (Math.random() - 0.5) * 0.05)
+
+  for (let i = 0; i < bars; i++) {
+    const time = (startTime + i * seconds) as Time
+    const open = close * (1 + (Math.random() - 0.5) * 0.002)
+    const volatility = 0.003 + Math.random() * 0.012
+    const high = open * (1 + Math.random() * volatility)
+    const low = open * (1 - Math.random() * volatility)
+    close = low + Math.random() * (high - low)
+    result.push({
+      time,
+      open: +open.toFixed(4),
+      high: +high.toFixed(4),
+      low: +low.toFixed(4),
+      close: +close.toFixed(4),
+    })
+  }
+  return result
+}
+
+function fmtPrice(v: string | number | undefined, decimals = 2): string {
+  if (v === undefined || v === null || v === '') return '—'
+  const n = typeof v === 'string' ? parseFloat(v) : v
+  if (isNaN(n)) return '—'
+  return n.toFixed(decimals)
+}
+
+function fmtSize(v: string | number | undefined, base = 'BTC'): string {
+  if (v === undefined || v === null || v === '') return '—'
+  const n = typeof v === 'string' ? parseFloat(v) : v
+  if (isNaN(n)) return '—'
+  const highPrecision = ['BTC', 'ETH'].includes(base.toUpperCase())
+  return n.toFixed(highPrecision ? 4 : 2)
 }
 
 function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString('en-US', {
+  return new Date(ts * 1000).toLocaleTimeString('en-US', {
     hour12: false,
     hour: '2-digit',
     minute: '2-digit',
@@ -72,504 +105,807 @@ function fmtTime(ts: number): string {
   })
 }
 
-function calcSpread(
-  bids: RawLevel[],
-  asks: RawLevel[],
-): { abs: string; bps: string } | null {
-  if (!bids[0] || !asks[0]) return null
-  const bid = parseFloat(bids[0][0])
-  const ask = parseFloat(asks[0][0])
-  if (isNaN(bid) || isNaN(ask) || ask <= 0) return null
-  const abs = ask - bid
-  const bps = (abs / ask) * 10_000
-  return { abs: abs.toFixed(4), bps: bps.toFixed(2) }
+function fmtOrderTime(ts: number): string {
+  const d = new Date(ts < 1e12 ? ts * 1000 : ts)
+  return d.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
 }
 
-function WsStatusBadge({ status }: { status: WsStatus }) {
-  const map: Record<WsStatus, { label: string; variant: 'success' | 'warning' | 'error' }> = {
-    connected:    { label: 'Live',         variant: 'success' },
-    connecting:   { label: 'Connecting',   variant: 'warning' },
-    reconnecting: { label: 'Reconnecting', variant: 'warning' },
-    disconnected: { label: 'Offline',      variant: 'error'   },
-    polling:      { label: 'Polling',      variant: 'warning' },
-  }
-  const { label, variant } = map[status]
-  return <Badge variant={variant} dot size="sm">{label}</Badge>
+function useToasts() {
+  const [toasts, setToasts] = useState<Toast[]>([])
+  const idRef = useRef(0)
+
+  const addToast = useCallback((message: string, variant: 'success' | 'error') => {
+    const id = ++idRef.current
+    setToasts((prev) => [...prev, { id, message, variant }])
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id))
+    }, 3000)
+  }, [])
+
+  return { toasts, addToast }
 }
 
-function BookRowItem({
-  level,
-  side,
+function ToastContainer({ toasts }: { toasts: Toast[] }) {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        bottom: 24,
+        right: 24,
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        pointerEvents: 'none',
+      }}
+    >
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          style={{
+            background: '#111110',
+            border: '1px solid rgba(232,228,216,0.08)',
+            borderLeft: `3px solid ${t.variant === 'success' ? '#6B8A5A' : '#CC3333'}`,
+            padding: '10px 16px',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 12,
+            color: t.variant === 'success' ? '#6B8A5A' : '#CC3333',
+            animation: 'slideInRight 0.2s ease-out',
+          }}
+        >
+          {t.message}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function HeaderBar({
+  pair,
+  markets,
+  bids,
+  asks,
 }: {
-  level: DepthLevel
-  side: 'bid' | 'ask'
+  pair: string
+  markets: MarketResponse[]
+  bids: { price: string; quantity: string }[]
+  asks: { price: string; quantity: string }[]
 }) {
-  const prevPrice = useRef<string>(level.price)
-  const [flashClass, setFlashClass] = useState('')
+  const market = markets.find((m) => m.id === pair)
+  const [base, quote] = useMemo(() => {
+    const parts = pair.split('-')
+    return [parts[0] ?? '', parts[1] ?? '']
+  }, [pair])
 
-  useEffect(() => {
-    if (prevPrice.current === level.price) return
-    const prev = parseFloat(prevPrice.current)
-    const curr = parseFloat(level.price)
-    prevPrice.current = level.price
-    const cls = curr > prev ? 'flash-up' : 'flash-down'
-    setFlashClass(cls)
-    const t = setTimeout(() => setFlashClass(''), 400)
-    return () => clearTimeout(t)
-  }, [level.price])
+  const midPrice = useMemo(() => {
+    const bid = market?.best_bid ? parseFloat(market.best_bid) : bids[0] ? parseFloat(bids[0].price) : null
+    const ask = market?.best_ask ? parseFloat(market.best_ask) : asks[0] ? parseFloat(asks[0].price) : null
+    if (bid && ask) return ((bid + ask) / 2).toFixed(2)
+    if (bid) return bid.toFixed(2)
+    if (ask) return ask.toFixed(2)
+    return null
+  }, [market, bids, asks])
 
-  const barStyle = side === 'bid'
-    ? 'linear-gradient(to left, rgba(107,138,90,0.15), rgba(107,138,90,0.03))'
-    : 'linear-gradient(to left, rgba(204,51,51,0.15), rgba(204,51,51,0.03))'
-  const priceColor = side === 'bid' ? 'text-sage' : 'text-terra'
-  const hoverBg = 'hover:bg-[rgba(232,228,216,0.04)]'
+  const spread = useMemo(() => {
+    if (market?.spread) return parseFloat(market.spread).toFixed(4)
+    if (bids[0] && asks[0]) {
+      return (parseFloat(asks[0].price) - parseFloat(bids[0].price)).toFixed(4)
+    }
+    return null
+  }, [market, bids, asks])
 
   return (
     <div
-      className={`relative grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums ${hoverBg} transition-colors duration-75 cursor-default select-none ${flashClass}`}
+      style={{
+        height: 48,
+        flexShrink: 0,
+        background: '#0C0C0C',
+        borderBottom: '1px solid rgba(232,228,216,0.06)',
+        padding: '0 16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 24,
+      }}
+    >
+      <Link
+        href="/"
+        style={{
+          color: 'rgba(232,228,216,0.3)',
+          fontSize: 14,
+          textDecoration: 'none',
+          lineHeight: 1,
+        }}
+      >
+        ←
+      </Link>
+
+      <span
+        style={{
+          fontFamily: 'Inter, sans-serif',
+          fontWeight: 600,
+          fontSize: 14,
+          color: '#E8E4D8',
+          letterSpacing: '0.02em',
+        }}
+      >
+        {base} / {quote}
+      </span>
+
+      {midPrice && (
+        <span
+          style={{
+            fontFamily: "'Playfair Display', serif",
+            fontWeight: 700,
+            fontSize: 16,
+            color: '#E8E4D8',
+          }}
+        >
+          {midPrice}
+        </span>
+      )}
+
+      <span
+        style={{
+          fontFamily: 'Inter, sans-serif',
+          fontWeight: 500,
+          fontSize: 12,
+          color: '#6B8A5A',
+        }}
+      >
+        —
+      </span>
+
+      <div
+        style={{
+          width: 1,
+          height: 20,
+          background: 'rgba(232,228,216,0.06)',
+          flexShrink: 0,
+        }}
+      />
+
+      <StatItem label="24H VOL" value="—" />
+      <StatItem label="HIGH" value={market?.best_ask ? fmtPrice(market.best_ask) : '—'} />
+      <StatItem label="LOW" value={market?.best_bid ? fmtPrice(market.best_bid) : '—'} />
+
+      {spread && (
+        <>
+          <div style={{ width: 1, height: 20, background: 'rgba(232,228,216,0.06)', flexShrink: 0 }} />
+          <StatItem label="SPREAD" value={spread} />
+        </>
+      )}
+
+      <div style={{ marginLeft: 'auto' }}>
+        <span
+          style={{
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 9,
+            color: 'rgba(232,228,216,0.2)',
+            letterSpacing: '0.15em',
+            textTransform: 'uppercase',
+          }}
+        >
+          <span style={{ color: '#6B8A5A' }}>●</span> SEPOLIA TESTNET
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function StatItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <span
+        style={{
+          fontFamily: 'Inter, sans-serif',
+          fontSize: 9,
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+          color: 'rgba(232,228,216,0.3)',
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontFamily: 'Inter, sans-serif',
+          fontWeight: 500,
+          fontSize: 12,
+          color: '#E8E4D8',
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function MarketSelectorPanel({
+  markets,
+  currentPair,
+}: {
+  markets: MarketResponse[]
+  currentPair: string
+}) {
+  const router = useRouter()
+  const [search, setSearch] = useState('')
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return markets
+    return markets.filter((m) =>
+      m.id.toLowerCase().includes(search.toLowerCase()),
+    )
+  }, [markets, search])
+
+  return (
+    <div
+      style={{
+        width: 200,
+        background: '#0C0C0C',
+        borderRight: '1px solid rgba(232,228,216,0.06)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
     >
       <div
-        className="absolute inset-y-0 right-0"
-        style={{ width: `${level.depthPct}%`, background: barStyle, transition: 'width 300ms cubic-bezier(0.25, 0.1, 0.25, 1)' }}
-      />
-      <span className={`relative z-10 font-mono font-medium ${priceColor}`}>{fmt(level.price, 4)}</span>
-      <span className="relative z-10 font-mono text-ink text-right">{fmt(level.size, 4)}</span>
-      <span className="relative z-10 font-mono text-brown text-right">{fmt(level.cumSize.toString(), 4)}</span>
+        style={{
+          padding: '10px 12px',
+          fontFamily: 'Inter, sans-serif',
+          fontSize: 9,
+          letterSpacing: '0.2em',
+          textTransform: 'uppercase',
+          color: 'rgba(232,228,216,0.2)',
+          borderBottom: '1px solid rgba(232,228,216,0.04)',
+          flexShrink: 0,
+        }}
+      >
+        MARKETS
+      </div>
+
+      <div
+        style={{
+          padding: '8px 12px',
+          borderBottom: '1px solid rgba(232,228,216,0.04)',
+          flexShrink: 0,
+        }}
+      >
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search..."
+          style={{
+            width: '100%',
+            background: 'transparent',
+            border: '1px solid rgba(232,228,216,0.08)',
+            color: '#E8E4D8',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 11,
+            padding: '5px 8px',
+            borderRadius: 0,
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
+      </div>
+
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {filtered.map((m) => {
+          const isActive = m.id === currentPair
+          const bid = m.best_bid ? parseFloat(m.best_bid) : null
+          const ask = m.best_ask ? parseFloat(m.best_ask) : null
+          const price = bid && ask ? ((bid + ask) / 2).toFixed(2) : bid ? bid.toFixed(2) : ask ? ask.toFixed(2) : '—'
+
+          return (
+            <div
+              key={m.id}
+              onClick={() => router.push(`/markets/${m.id}`)}
+              style={{
+                padding: '8px 12px',
+                cursor: 'pointer',
+                borderBottom: '1px solid rgba(232,228,216,0.03)',
+                borderLeft: isActive ? '2px solid #E8E4D8' : '2px solid transparent',
+                background: isActive ? 'rgba(232,228,216,0.05)' : 'transparent',
+                paddingLeft: isActive ? 10 : 12,
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'rgba(232,228,216,0.03)'
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'transparent'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 11, color: '#E8E4D8' }}>
+                  {m.base}/{m.quote}
+                </span>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: 11, color: '#E8E4D8' }}>
+                  {price}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, color: 'rgba(232,228,216,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  SPOT
+                </span>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, color: '#6B8A5A' }}>
+                  —
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-function BookColumnHeader() {
-  return (
-    <div className="grid grid-cols-3 px-3 py-1.5 text-[0.65rem] font-medium text-brown uppercase tracking-[0.2em] border-b border-border bg-canvas sticky top-0">
-      <span>Price</span>
-      <span className="text-right">Size</span>
-      <span className="text-right">Total</span>
-    </div>
-  )
-}
-
-function BestPriceDisplay({ value, label, color }: { value: string | null; label: string; color: string }) {
-  return (
-    <div>
-      <span className="block text-[0.65rem] uppercase tracking-[0.2em] text-brown mb-1">{label}</span>
-      <AnimatePresence mode="wait">
-        <motion.span
-          key={value ?? 'empty'}
-          initial={{ scale: 1.08, opacity: 0.5 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.2 }}
-          className="tabular-nums leading-none font-mono font-semibold"
-          style={{ fontSize: '2.5rem', color, display: 'block' }}
-        >
-          {value ? fmt(value, 4) : '—'}
-        </motion.span>
-      </AnimatePresence>
-    </div>
-  )
-}
-
-function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+function ChartPanel({
+  pair,
+  midPrice,
+}: {
+  pair: string
+  midPrice: number | null
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
+  const seriesRef = useRef<ISeriesApi<'Candlestick', Time> | null>(null)
+  const [timeframe, setTimeframe] = useState<Timeframe>('1H')
+  const timeframeRef = useRef<Timeframe>('1H')
+  const midPriceRef = useRef<number | null>(null)
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    midPriceRef.current = midPrice
+  }, [midPrice])
 
-    const dpr = window.devicePixelRatio || 1
-    const cssW = canvas.offsetWidth
-    const cssH = 200
-    canvas.width = cssW * dpr
-    canvas.height = cssH * dpr
-    canvas.style.height = `${cssH}px`
-    ctx.scale(dpr, dpr)
+  useEffect(() => {
+    timeframeRef.current = timeframe
+  }, [timeframe])
 
-    const w = cssW
-    const h = cssH
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
 
-    ctx.clearRect(0, 0, w, h)
+    const chart = createChart(container, {
+      layout: {
+        background: { color: '#0C0C0C' },
+        textColor: 'rgba(232,228,216,0.4)',
+        fontFamily: 'Inter, sans-serif',
+        fontSize: 11,
+      },
+      grid: {
+        vertLines: { color: 'rgba(232,228,216,0.04)' },
+        horzLines: { color: 'rgba(232,228,216,0.04)' },
+      },
+      crosshair: {
+        vertLine: { color: 'rgba(232,228,216,0.2)', width: 1 },
+        horzLine: { color: 'rgba(232,228,216,0.2)', width: 1 },
+      },
+      rightPriceScale: {
+        borderColor: 'rgba(232,228,216,0.06)',
+      },
+      timeScale: {
+        borderColor: 'rgba(232,228,216,0.06)',
+        timeVisible: true,
+      },
+      width: container.offsetWidth,
+      height: container.offsetHeight,
+    })
 
-    const PAD_TOP = 8
-    const PAD_BOT = 28
-    const PAD_LEFT = 8
-    const PAD_RIGHT = 8
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: '#6B8A5A',
+      downColor: '#CC3333',
+      borderUpColor: '#6B8A5A',
+      borderDownColor: '#CC3333',
+      wickUpColor: '#6B8A5A',
+      wickDownColor: '#CC3333',
+    })
 
-    const chartH = h - PAD_TOP - PAD_BOT
-    const chartW = w - PAD_LEFT - PAD_RIGHT
+    chartRef.current = chart
+    seriesRef.current = series
 
-    type CumPoint = { price: number; cum: number }
-
-    const bidPoints: CumPoint[] = []
-    let bidAcc = 0
-    for (const [p, s] of bids) {
-      bidAcc += parseFloat(s)
-      bidPoints.push({ price: parseFloat(p), cum: bidAcc })
-    }
-
-    const askPoints: CumPoint[] = []
-    let askAcc = 0
-    for (const [p, s] of asks) {
-      askAcc += parseFloat(s)
-      askPoints.push({ price: parseFloat(p), cum: askAcc })
-    }
-
-    if (bidPoints.length === 0 && askPoints.length === 0) return
-
-    const maxDepth = Math.max(
-      bidPoints.length > 0 ? bidPoints[bidPoints.length - 1].cum : 0,
-      askPoints.length > 0 ? askPoints[askPoints.length - 1].cum : 0,
-      0.0001,
-    )
-
-    const minPrice = bidPoints.length > 0 ? bidPoints[bidPoints.length - 1].price : askPoints[0].price
-    const maxPrice = askPoints.length > 0 ? askPoints[askPoints.length - 1].price : bidPoints[0].price
-    const priceRange = maxPrice - minPrice || 1
-
-    const toX = (price: number) => PAD_LEFT + ((price - minPrice) / priceRange) * chartW
-    const toY = (cum: number) => PAD_TOP + chartH - (cum / maxDepth) * chartH
-
-    for (const frac of [0.25, 0.5, 0.75]) {
-      const y = PAD_TOP + chartH * (1 - frac)
-      ctx.beginPath()
-      ctx.moveTo(PAD_LEFT, y)
-      ctx.lineTo(PAD_LEFT + chartW, y)
-      ctx.strokeStyle = 'rgba(232,228,216,0.04)'
-      ctx.lineWidth = 0.5
-      ctx.setLineDash([])
-      ctx.stroke()
-    }
-
-    if (bidPoints.length > 0) {
-      ctx.beginPath()
-      const startX = toX(bidPoints[0].price)
-      const baseY = toY(0)
-      ctx.moveTo(startX, baseY)
-      ctx.lineTo(startX, toY(bidPoints[0].cum))
-      for (let i = 1; i < bidPoints.length; i++) {
-        const currX = toX(bidPoints[i].price)
-        ctx.lineTo(currX, toY(bidPoints[i - 1].cum))
-        ctx.lineTo(currX, toY(bidPoints[i].cum))
+    const ro = new ResizeObserver(() => {
+      if (container && chartRef.current) {
+        chartRef.current.resize(container.offsetWidth, container.offsetHeight)
       }
-      ctx.lineTo(PAD_LEFT, toY(bidPoints[bidPoints.length - 1].cum))
-      ctx.lineTo(PAD_LEFT, baseY)
-      ctx.closePath()
-      ctx.fillStyle = 'rgba(107,138,90,0.08)'
-      ctx.fill()
+    })
+    ro.observe(container)
 
-      ctx.beginPath()
-      ctx.moveTo(startX, toY(bidPoints[0].cum))
-      for (let i = 1; i < bidPoints.length; i++) {
-        const currX = toX(bidPoints[i].price)
-        ctx.lineTo(currX, toY(bidPoints[i - 1].cum))
-        ctx.lineTo(currX, toY(bidPoints[i].cum))
+    return () => {
+      ro.disconnect()
+      chart.remove()
+      chartRef.current = null
+      seriesRef.current = null
+    }
+  }, [])
+
+  const loadData = useCallback((tf: Timeframe, price: number) => {
+    if (!seriesRef.current) return
+    const { count } = TIMEFRAME_BARS[tf]
+    const data = generateOHLCV(price, tf, count)
+    seriesRef.current.setData(data)
+    chartRef.current?.timeScale().fitContent()
+  }, [])
+
+  useEffect(() => {
+    const price = midPriceRef.current ?? 100
+    loadData(timeframe, price)
+  }, [timeframe, pair, loadData])
+
+  useEffect(() => {
+    if (midPrice && seriesRef.current) {
+      const price = midPrice
+      const tf = timeframeRef.current
+      loadData(tf, price)
+    }
+  }, [midPrice, loadData])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const price = midPriceRef.current
+      if (!price || !seriesRef.current) return
+      const tf = timeframeRef.current
+      const { seconds } = TIMEFRAME_BARS[tf]
+      const nowSec = Math.floor(Date.now() / 1000)
+      const open = price * (1 + (Math.random() - 0.5) * 0.001)
+      const volatility = 0.002 + Math.random() * 0.008
+      const high = open * (1 + Math.random() * volatility)
+      const low = open * (1 - Math.random() * volatility)
+      const close = low + Math.random() * (high - low)
+      seriesRef.current.update({
+        time: (Math.floor(nowSec / seconds) * seconds) as Time,
+        open: +open.toFixed(4),
+        high: +high.toFixed(4),
+        low: +low.toFixed(4),
+        close: +close.toFixed(4),
+      })
+    }, 60_000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const timeframes: Timeframe[] = ['1m', '5m', '15m', '1H', '4H', '1D']
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 12px',
+          borderBottom: '1px solid rgba(232,228,216,0.06)',
+          flexShrink: 0,
+          height: 36,
+          gap: 2,
+        }}
+      >
+        {timeframes.map((tf) => (
+          <button
+            key={tf}
+            onClick={() => setTimeframe(tf)}
+            style={{
+              background: timeframe === tf ? 'rgba(232,228,216,0.08)' : 'transparent',
+              color: timeframe === tf ? '#E8E4D8' : 'rgba(232,228,216,0.3)',
+              border: 'none',
+              padding: '4px 10px',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 10,
+              letterSpacing: '0.1em',
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+              borderRadius: 0,
+            }}
+          >
+            {tf}
+          </button>
+        ))}
+      </div>
+      <div ref={containerRef} style={{ flex: 1 }} />
+    </div>
+  )
+}
+
+function OrderBookPanel({
+  bids,
+  asks,
+  pair,
+}: {
+  bids: { price: string; quantity: string }[]
+  asks: { price: string; quantity: string }[]
+  pair: string
+}) {
+  const [base] = useMemo(() => {
+    const parts = pair.split('-')
+    return [parts[0] ?? 'BASE']
+  }, [pair])
+
+  const topAsks = useMemo(() => asks.slice(0, 12).reverse(), [asks])
+  const topBids = useMemo(() => bids.slice(0, 12), [bids])
+
+  const maxAskSize = useMemo(() => {
+    if (asks.length === 0) return 1
+    return Math.max(...asks.slice(0, 12).map((a) => parseFloat(a.quantity)))
+  }, [asks])
+
+  const maxBidSize = useMemo(() => {
+    if (bids.length === 0) return 1
+    return Math.max(...bids.slice(0, 12).map((b) => parseFloat(b.quantity)))
+  }, [bids])
+
+  const spread = useMemo(() => {
+    if (!bids[0] || !asks[0]) return null
+    const s = parseFloat(asks[0].price) - parseFloat(bids[0].price)
+    return s > 0 ? s.toFixed(4) : null
+  }, [bids, asks])
+
+  const prevPricesRef = useRef<Map<string, string>>(new Map())
+  const [flashMap, setFlashMap] = useState<Map<string, 'up' | 'down'>>(new Map())
+
+  useEffect(() => {
+    const allLevels = [...bids.slice(0, 12), ...asks.slice(0, 12)]
+    const newFlashes = new Map<string, 'up' | 'down'>()
+    for (const lvl of allLevels) {
+      const prev = prevPricesRef.current.get(lvl.price)
+      if (prev !== undefined && prev !== lvl.quantity) {
+        const prevN = parseFloat(prev)
+        const currN = parseFloat(lvl.quantity)
+        newFlashes.set(lvl.price, currN > prevN ? 'up' : 'down')
       }
-      ctx.lineTo(PAD_LEFT, toY(bidPoints[bidPoints.length - 1].cum))
-      ctx.strokeStyle = '#6B8A5A'
-      ctx.lineWidth = 1.5
-      ctx.setLineDash([])
-      ctx.stroke()
+      prevPricesRef.current.set(lvl.price, lvl.quantity)
     }
-
-    if (askPoints.length > 0) {
-      ctx.beginPath()
-      const startX = toX(askPoints[0].price)
-      const baseY = toY(0)
-      ctx.moveTo(startX, baseY)
-      ctx.lineTo(startX, toY(askPoints[0].cum))
-      for (let i = 1; i < askPoints.length; i++) {
-        const currX = toX(askPoints[i].price)
-        ctx.lineTo(currX, toY(askPoints[i - 1].cum))
-        ctx.lineTo(currX, toY(askPoints[i].cum))
-      }
-      const lastX = toX(askPoints[askPoints.length - 1].price)
-      ctx.lineTo(lastX, baseY)
-      ctx.closePath()
-      ctx.fillStyle = 'rgba(204,51,51,0.08)'
-      ctx.fill()
-
-      ctx.beginPath()
-      ctx.moveTo(startX, toY(askPoints[0].cum))
-      for (let i = 1; i < askPoints.length; i++) {
-        const currX = toX(askPoints[i].price)
-        ctx.lineTo(currX, toY(askPoints[i - 1].cum))
-        ctx.lineTo(currX, toY(askPoints[i].cum))
-      }
-      ctx.lineTo(toX(askPoints[askPoints.length - 1].price), toY(askPoints[askPoints.length - 1].cum))
-      ctx.strokeStyle = '#CC3333'
-      ctx.lineWidth = 1.5
-      ctx.setLineDash([])
-      ctx.stroke()
+    if (newFlashes.size > 0) {
+      setFlashMap(newFlashes)
+      const t = setTimeout(() => setFlashMap(new Map()), 400)
+      return () => clearTimeout(t)
     }
-
-    if (bidPoints.length > 0 && askPoints.length > 0) {
-      const bestBidP = bidPoints[0].price
-      const bestAskP = askPoints[0].price
-      const mid = (bestBidP + bestAskP) / 2
-      const midX = toX(mid)
-      ctx.beginPath()
-      ctx.moveTo(midX, PAD_TOP)
-      ctx.lineTo(midX, PAD_TOP + chartH)
-      ctx.strokeStyle = 'rgba(232,228,216,0.15)'
-      ctx.lineWidth = 0.5
-      ctx.setLineDash([3, 3])
-      ctx.stroke()
-      ctx.setLineDash([])
-    }
-
-    ctx.font = '10px Courier New, monospace'
-    ctx.fillStyle = 'rgba(232,228,216,0.35)'
-    const labelY = h - 6
-
-    if (bidPoints.length > 0) {
-      ctx.textAlign = 'left'
-      ctx.fillText(minPrice.toFixed(2), PAD_LEFT, labelY)
-    }
-
-    if (bidPoints.length > 0 && askPoints.length > 0) {
-      const mid = (bidPoints[0].price + askPoints[0].price) / 2
-      ctx.textAlign = 'center'
-      ctx.fillText(mid.toFixed(2), toX(mid), labelY)
-    }
-
-    if (askPoints.length > 0) {
-      ctx.textAlign = 'right'
-      ctx.fillText(maxPrice.toFixed(2), PAD_LEFT + chartW, labelY)
-    }
-
-    ctx.font = '10px Courier New, monospace'
-    ctx.fillStyle = 'rgba(232,228,216,0.2)'
-    ctx.textAlign = 'right'
-    ctx.fillText(maxDepth.toFixed(2), PAD_LEFT + chartW, PAD_TOP + 10)
   }, [bids, asks])
 
   return (
-    <div className="border-t border-border">
-      <div className="px-3 py-2 border-b border-border">
-        <span
+    <div
+      style={{
+        width: 220,
+        borderRight: '1px solid rgba(232,228,216,0.06)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          padding: '8px 12px',
+          fontFamily: 'Inter, sans-serif',
+          fontSize: 9,
+          textTransform: 'uppercase',
+          letterSpacing: '0.2em',
+          color: 'rgba(232,228,216,0.2)',
+          borderBottom: '1px solid rgba(232,228,216,0.06)',
+          flexShrink: 0,
+        }}
+      >
+        ORDER BOOK
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr',
+          padding: '5px 12px',
+          fontFamily: 'Inter, sans-serif',
+          fontSize: 8,
+          textTransform: 'uppercase',
+          color: 'rgba(232,228,216,0.2)',
+          letterSpacing: '0.1em',
+          flexShrink: 0,
+        }}
+      >
+        <span>PRICE</span>
+        <span style={{ textAlign: 'right' }}>SIZE</span>
+        <span style={{ textAlign: 'right' }}>TOTAL</span>
+      </div>
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+          {topAsks.map((lvl) => {
+            const size = parseFloat(lvl.quantity)
+            const pct = maxAskSize > 0 ? (size / maxAskSize) * 100 : 0
+            const flash = flashMap.get(lvl.price)
+            return (
+              <BookRow
+                key={`ask-${lvl.price}`}
+                price={fmtPrice(lvl.price)}
+                size={fmtSize(lvl.quantity, base)}
+                total={fmtSize(lvl.quantity, base)}
+                side="ask"
+                depthPct={pct}
+                flash={flash}
+              />
+            )
+          })}
+        </div>
+
+        <div
           style={{
-            fontFamily: 'var(--font-inter-sans), Inter, sans-serif',
-            fontSize: '0.65rem',
-            textTransform: 'uppercase',
-            letterSpacing: '0.2em',
-            color: 'rgba(232,228,216,0.25)',
-            marginBottom: '8px',
-            display: 'block',
+            padding: '5px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderTop: '1px solid rgba(232,228,216,0.04)',
+            borderBottom: '1px solid rgba(232,228,216,0.04)',
+            flexShrink: 0,
           }}
         >
-          Depth — Live
-        </span>
+          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, color: 'rgba(232,228,216,0.4)' }}>
+            ◆ {spread ?? '—'}
+          </span>
+          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, color: 'rgba(107,138,90,0.6)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ color: '#6B8A5A', animation: 'pulse 2s infinite' }}>●</span> LIVE
+          </span>
+        </div>
+
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          {topBids.map((lvl) => {
+            const size = parseFloat(lvl.quantity)
+            const pct = maxBidSize > 0 ? (size / maxBidSize) * 100 : 0
+            const flash = flashMap.get(lvl.price)
+            return (
+              <BookRow
+                key={`bid-${lvl.price}`}
+                price={fmtPrice(lvl.price)}
+                size={fmtSize(lvl.quantity, base)}
+                total={fmtSize(lvl.quantity, base)}
+                side="bid"
+                depthPct={pct}
+                flash={flash}
+              />
+            )
+          })}
+        </div>
       </div>
-      <canvas ref={canvasRef} className="w-full block" style={{ background: 'transparent', height: '200px' }} />
     </div>
   )
 }
 
-function OrderBook({
+function BookRow({
+  price,
+  size,
+  total,
+  side,
+  depthPct,
+  flash,
+}: {
+  price: string
+  size: string
+  total: string
+  side: 'bid' | 'ask'
+  depthPct: number
+  flash?: 'up' | 'down'
+}) {
+  const color = side === 'bid' ? '#6B8A5A' : '#CC3333'
+  const barColor = side === 'bid' ? 'rgba(107,138,90,0.08)' : 'rgba(204,51,51,0.08)'
+  const bgFlash =
+    flash === 'up' ? 'rgba(107,138,90,0.12)' :
+    flash === 'down' ? 'rgba(204,51,51,0.12)' :
+    'transparent'
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        padding: '3px 12px',
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr 1fr',
+        background: bgFlash,
+        transition: 'background 0.4s ease',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: `${depthPct}%`,
+          background: barColor,
+        }}
+      />
+      <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10.5, color, position: 'relative', zIndex: 1 }}>
+        {price}
+      </span>
+      <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10.5, color: 'rgba(232,228,216,0.6)', textAlign: 'right', position: 'relative', zIndex: 1 }}>
+        {size}
+      </span>
+      <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10.5, color: 'rgba(232,228,216,0.4)', textAlign: 'right', position: 'relative', zIndex: 1 }}>
+        {total}
+      </span>
+    </div>
+  )
+}
+
+function OrderEntryPanel({
+  pair,
   bids,
   asks,
-  loading,
+  onToast,
 }: {
-  bids: RawLevel[]
-  asks: RawLevel[]
-  loading: boolean
+  pair: string
+  bids: { price: string; quantity: string }[]
+  asks: { price: string; quantity: string }[]
+  onToast: (msg: string, v: 'success' | 'error') => void
 }) {
-  const bidLevels = useMemo(() => buildDepth(bids, MAX_BOOK_ROWS), [bids])
-  const askLevels = useMemo(() => buildDepth(asks, MAX_BOOK_ROWS), [asks])
-  const spread = useMemo(() => calcSpread(bids, asks), [bids, asks])
-
-  return (
-    <div className="flex flex-col">
-      <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-        <span className="text-[0.65rem] font-medium uppercase tracking-[0.2em]" style={{ color: '#CC3333' }}>
-          Asks
-        </span>
-        {loading && <Spinner size="xs" className="text-brown" />}
-      </div>
-
-      <BookColumnHeader />
-
-      <div className="flex flex-col-reverse">
-        {askLevels.length === 0 && !loading ? (
-          <p className="px-3 py-4 text-[11px] text-brown text-center">No asks</p>
-        ) : (
-          askLevels.map((lvl) => (
-            <BookRowItem key={lvl.price} level={lvl} side="ask" />
-          ))
-        )}
-      </div>
-
-      <motion.div
-        animate={{ opacity: [0.7, 1, 0.7] }}
-        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        className="flex items-center justify-between px-3 py-1.5 bg-canvas border-y border-border"
-      >
-        <span className="text-[0.65rem] font-medium text-brown uppercase tracking-[0.2em]">
-          Spread
-        </span>
-        {spread ? (
-          <span className="text-[11px] tabular-nums font-mono font-medium" style={{ color: 'rgba(232,228,216,0.5)' }}>
-            {spread.abs}
-            <span className="ml-1.5 text-brown font-normal">{spread.bps} bps</span>
-          </span>
-        ) : (
-          <span className="text-[11px] text-brown">—</span>
-        )}
-      </motion.div>
-
-      <div className="px-3 py-1.5 border-b border-border">
-        <span className="text-[0.65rem] font-medium uppercase tracking-[0.2em]" style={{ color: '#6B8A5A' }}>
-          Bids
-        </span>
-      </div>
-
-      <div>
-        {bidLevels.length === 0 && !loading ? (
-          <p className="px-3 py-4 text-[11px] text-brown text-center">No bids</p>
-        ) : (
-          bidLevels.map((lvl) => (
-            <BookRowItem key={lvl.price} level={lvl} side="bid" />
-          ))
-        )}
-      </div>
-
-      <DepthCanvas bids={bids} asks={asks} />
-    </div>
-  )
-}
-
-function TradesFeed({ trades }: { trades: TradeEntry[] }) {
-  return (
-    <div className="flex flex-col">
-      <div className="px-3 py-2.5 border-b border-border">
-        <span className="text-[0.65rem] font-medium text-brown uppercase tracking-[0.15em]">
-          Recent Trades
-        </span>
-      </div>
-      <div className="grid grid-cols-3 px-3 py-1.5 text-[9px] font-medium text-brown uppercase tracking-[0.12em] border-b border-border">
-        <span>Price</span>
-        <span className="text-right">Size</span>
-        <span className="text-right">Time</span>
-      </div>
-      {trades.length === 0 ? (
-        <p className="px-3 py-8 text-[11px] text-brown text-center">
-          Waiting for trades…
-        </p>
-      ) : (
-        <AnimatePresence initial={false}>
-          {trades.map((t) => (
-            <motion.div
-              key={t.key}
-              initial={{ opacity: 0, x: -20, height: 0 }}
-              animate={{ opacity: 1, x: 0, height: 'auto' }}
-              transition={{ duration: 0.25 }}
-              className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-[rgba(232,228,216,0.04)] transition-colors duration-75 cursor-default select-none overflow-hidden"
-            >
-              <span
-                className={
-                  t.side === 'buy'
-                    ? 'font-mono font-medium text-sage'
-                    : 'font-mono font-medium text-terra'
-                }
-              >
-                {fmt(t.price, 4)}
-              </span>
-              <span className="font-mono text-ink text-right">{fmt(t.size, 4)}</span>
-              <span className="font-mono text-brown text-right text-[0.7rem]">{fmtTime(t.ts)}</span>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      )}
-    </div>
-  )
-}
-
-const TIF_OPTIONS: { value: TIF; label: string }[] = [
-  { value: 'gtc',       label: 'GTC'  },
-  { value: 'ioc',       label: 'IOC'  },
-  { value: 'fok',       label: 'FOK'  },
-  { value: 'post_only', label: 'Post' },
-]
-
-function OrderEntryForm({
-  marketId,
-  address,
-  isConnected,
-  bestBid,
-  bestAsk,
-}: {
-  marketId: string
-  address: string | null
-  isConnected: boolean
-  bestBid: string | null
-  bestAsk: string | null
-}) {
+  const { address, isConnected, connect } = useAuth()
+  const [orderType, setOrderType] = useState<OrderEntryType>('limit')
   const [side, setSide] = useState<OrderSide>('buy')
-  const [orderType, setOrderType] = useState<OrderType>('limit')
-  const [tif, setTif] = useState<TIF>('gtc')
   const [price, setPrice] = useState('')
   const [size, setSize] = useState('')
+  const [postOnly, setPostOnly] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-  const [submitOk, setSubmitOk] = useState(false)
+  const [balances, setBalances] = useState<{ base: string; quote: string }>({ base: '0', quote: '0' })
 
   const [base, quote] = useMemo(() => {
-    const parts = marketId.split('-')
+    const parts = pair.split('-')
     return [parts[0] ?? 'BASE', parts[1] ?? 'QUOTE']
-  }, [marketId])
+  }, [pair])
+
+  const bestBid = bids[0]?.price ?? null
+  const bestAsk = asks[0]?.price ?? null
+  const midPrice = bestBid && bestAsk
+    ? ((parseFloat(bestBid) + parseFloat(bestAsk)) / 2).toFixed(4)
+    : null
+
+  useEffect(() => {
+    if (!address) return
+    getBalances(address).then((res) => {
+      if (res.ok && res.data) {
+        const baseB = res.data.find((b) => b.asset.toUpperCase() === base.toUpperCase())
+        const quoteB = res.data.find((b) => b.asset.toUpperCase() === quote.toUpperCase())
+        setBalances({
+          base: baseB ? (parseFloat(baseB.available) / 1_000_000).toFixed(4) : '0',
+          quote: quoteB ? (parseFloat(quoteB.available) / 1_000_000).toFixed(2) : '0',
+        })
+      }
+    })
+  }, [address, base, quote])
 
   const total = useMemo(() => {
     const p = parseFloat(price)
     const s = parseFloat(size)
-    if (!isNaN(p) && p > 0 && !isNaN(s) && s > 0) {
-      return (p * s).toFixed(4)
-    }
+    if (!isNaN(p) && p > 0 && !isNaN(s) && s > 0) return (p * s).toFixed(4)
     return null
   }, [price, size])
 
-  const handleSide = useCallback((s: OrderSide) => {
-    setSide(s)
-    setSubmitError(null)
-    setSubmitOk(false)
-  }, [])
+  const availableBalance = side === 'buy' ? balances.quote : balances.base
+  const availableAsset = side === 'buy' ? quote : base
 
-  const handleType = useCallback(
-    (t: OrderType) => {
-      setOrderType(t)
-      if (t === 'market' && tif === 'post_only') setTif('gtc')
-      setSubmitError(null)
-      setSubmitOk(false)
-    },
-    [tif],
-  )
+  const handlePctClick = useCallback((pct: number) => {
+    const bal = parseFloat(availableBalance)
+    if (isNaN(bal) || bal <= 0) return
+    if (side === 'buy') {
+      const p = parseFloat(price) || parseFloat(midPrice ?? '0')
+      if (p > 0) setSize(((bal * pct) / p).toFixed(4))
+    } else {
+      setSize((bal * pct).toFixed(4))
+    }
+  }, [availableBalance, side, price, midPrice])
 
   const handleSubmit = useCallback(async () => {
     if (!address || !isConnected || !size) return
     if (orderType === 'limit' && !price) return
 
     setSubmitting(true)
-    setSubmitError(null)
-    setSubmitOk(false)
-
     const scaledPrice = orderType === 'limit' ? Math.round(parseFloat(price) * 1_000_000) : 0
     const scaledQty = Math.round(parseFloat(size) * 1_000_000)
     const nonce = Date.now()
 
     try {
-      const sig = await signOrder({
-        market: marketId,
-        side,
-        price: scaledPrice,
-        quantity: scaledQty,
-        nonce,
-        address,
-      })
-
+      const sig = await signOrder({ market: pair, side, price: scaledPrice, quantity: scaledQty, nonce, address })
       const body: PostOrderBody = {
-        market: marketId,
+        market: pair,
         side,
-        order_type: orderType,
+        order_type: orderType === 'stop' ? 'limit' : orderType,
         price: scaledPrice,
         quantity: scaledQty,
         nonce,
@@ -578,377 +914,600 @@ function OrderEntryForm({
       }
       const res = await postOrder(body)
       if (res.ok) {
-        setSubmitOk(true)
+        onToast('Order placed', 'success')
         setSize('')
-        setPrice('')
-        setTimeout(() => setSubmitOk(false), 2500)
+        if (orderType === 'limit') setPrice('')
       } else {
-        setSubmitError(res.error ?? 'Order failed')
+        onToast(res.error ?? 'Order failed', 'error')
       }
     } catch (err) {
       if (err instanceof Error && (err.message.includes('rejected') || err.message.includes('denied') || err.message.includes('cancelled'))) {
-        setSubmitError('Signature rejected')
-      } else if (err instanceof Error) {
-        setSubmitError(err.message || 'Signing failed')
+        onToast('Signature rejected', 'error')
       } else {
-        setSubmitError('Network error')
+        onToast(err instanceof Error ? err.message : 'Signing failed', 'error')
       }
     } finally {
       setSubmitting(false)
     }
-  }, [address, isConnected, marketId, orderType, price, side, size])
+  }, [address, isConnected, pair, orderType, price, size, side, onToast])
 
-  const canSubmit =
-    isConnected &&
-    size !== '' &&
-    parseFloat(size) > 0 &&
-    (orderType === 'market' || (price !== '' && parseFloat(price) > 0)) &&
-    !submitting
+  const tabs: OrderEntryType[] = ['limit', 'market', 'stop']
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex border border-border bg-parchment">
-        {(['buy', 'sell'] as OrderSide[]).map((s) => (
-          <motion.button
-            key={s}
-            type="button"
-            onClick={() => handleSide(s)}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-            transition={{ duration: 0.15 }}
-            className={[
-              'flex-1 py-2.5 text-xs font-semibold transition-all duration-150 uppercase tracking-[0.12em]',
-              side === s
-                ? s === 'buy'
-                  ? 'bg-sage text-parchment'
-                  : 'bg-terra text-parchment'
-                : 'text-brown hover:text-ink',
-            ].join(' ')}
-          >
-            {s}
-          </motion.button>
-        ))}
-      </div>
-
-      <div className="flex gap-px bg-border">
-        {(['limit', 'market'] as OrderType[]).map((t) => (
+    <div
+      style={{
+        width: 260,
+        background: '#0C0C0C',
+        borderLeft: '1px solid rgba(232,228,216,0.06)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          borderBottom: '1px solid rgba(232,228,216,0.06)',
+          flexShrink: 0,
+        }}
+      >
+        {tabs.map((t) => (
           <button
             key={t}
-            type="button"
-            onClick={() => handleType(t)}
-            className={[
-              'flex-1 py-1.5 text-[10px] font-medium transition-all duration-150 uppercase tracking-[0.12em]',
-              orderType === t
-                ? 'bg-[#E8E4D8] text-[#0C0C0C]'
-                : 'bg-canvas text-brown hover:text-ink',
-            ].join(' ')}
+            onClick={() => setOrderType(t)}
+            style={{
+              flex: 1,
+              padding: '10px 0',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: orderType === t ? '2px solid #E8E4D8' : '2px solid transparent',
+              color: orderType === t ? '#E8E4D8' : 'rgba(232,228,216,0.3)',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 10,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              borderRadius: 0,
+            }}
           >
             {t}
           </button>
         ))}
       </div>
 
-      {orderType === 'limit' && (
-        <Input
-          label="Price"
-          type="number"
-          min="0"
-          step="0.0001"
-          placeholder={
-            side === 'buy' ? (bestAsk ?? '0.0000') : (bestBid ?? '0.0000')
-          }
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          endAdornment={quote}
-        />
-      )}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 1,
+          margin: '12px 12px 0',
+          flexShrink: 0,
+        }}
+      >
+        {(['buy', 'sell'] as OrderSide[]).map((s) => (
+          <button
+            key={s}
+            onClick={() => setSide(s)}
+            style={{
+              padding: '9px',
+              fontFamily: 'Inter, sans-serif',
+              fontWeight: 600,
+              fontSize: 11,
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              cursor: 'pointer',
+              borderRadius: 0,
+              border: side === s
+                ? s === 'buy'
+                  ? '1px solid rgba(107,138,90,0.3)'
+                  : '1px solid rgba(204,51,51,0.3)'
+                : '1px solid rgba(232,228,216,0.06)',
+              background: side === s
+                ? s === 'buy'
+                  ? 'rgba(107,138,90,0.2)'
+                  : 'rgba(204,51,51,0.2)'
+                : 'transparent',
+              color: side === s
+                ? s === 'buy' ? '#6B8A5A' : '#CC3333'
+                : 'rgba(232,228,216,0.2)',
+            }}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
 
-      <Input
-        label="Size"
-        type="number"
-        min="0"
-        step="0.0001"
-        placeholder="0.0000"
-        value={size}
-        onChange={(e) => setSize(e.target.value)}
-        endAdornment={base}
-      />
-
-      {total !== null && (
-        <div className="bg-canvas border border-border px-4 py-3">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-brown uppercase tracking-[0.12em]">Total</span>
-            <span className="tabular-nums font-mono font-medium text-ink">
-              {total} {quote}
-            </span>
-          </div>
+      <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 0, flex: 1, overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.3)' }}>
+            AVAILABLE
+          </span>
+          <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: 11, color: '#E8E4D8' }}>
+            {availableBalance} {availableAsset}
+          </span>
         </div>
-      )}
 
-      {orderType === 'limit' && (
-        <div className="flex gap-px bg-border">
-          {TIF_OPTIONS.map(({ value, label }) => (
+        {orderType === 'limit' && (
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.3)', display: 'block', marginBottom: 5 }}>
+              PRICE ({quote})
+            </label>
+            <input
+              type="number"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="0.00"
+              style={{
+                width: '100%',
+                background: '#111110',
+                border: '1px solid rgba(232,228,216,0.08)',
+                color: '#E8E4D8',
+                fontFamily: 'Courier New, monospace',
+                fontSize: 12,
+                padding: '8px 10px',
+                borderRadius: 0,
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+              {[
+                { label: 'BID', val: bestBid },
+                { label: 'MID', val: midPrice },
+                { label: 'ASK', val: bestAsk },
+              ].map(({ label, val }) => (
+                <button
+                  key={label}
+                  onClick={() => val && setPrice(parseFloat(val).toFixed(4))}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: 8,
+                    color: 'rgba(232,228,216,0.3)',
+                    cursor: 'pointer',
+                    padding: '2px 4px',
+                    borderRadius: 0,
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#E8E4D8' }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(232,228,216,0.3)' }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginBottom: 10 }}>
+          <label style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.3)', display: 'block', marginBottom: 5 }}>
+            SIZE ({base})
+          </label>
+          <input
+            type="number"
+            value={size}
+            onChange={(e) => setSize(e.target.value)}
+            placeholder="0.00"
+            style={{
+              width: '100%',
+              background: '#111110',
+              border: '1px solid rgba(232,228,216,0.08)',
+              color: '#E8E4D8',
+              fontFamily: 'Courier New, monospace',
+              fontSize: 12,
+              padding: '8px 10px',
+              borderRadius: 0,
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+          {[0.25, 0.5, 0.75, 1].map((pct) => (
             <button
-              key={value}
-              type="button"
-              onClick={() => setTif(value)}
-              className={[
-                'flex-1 py-1 text-[9px] font-medium transition-all duration-150 uppercase tracking-[0.12em]',
-                tif === value
-                  ? 'bg-[#E8E4D8] text-[#0C0C0C]'
-                  : 'bg-canvas border border-border text-brown hover:text-ink',
-              ].join(' ')}
+              key={pct}
+              onClick={() => handlePctClick(pct)}
+              style={{
+                flex: 1,
+                padding: '5px 0',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: 9,
+                textAlign: 'center',
+                border: '1px solid rgba(232,228,216,0.08)',
+                color: 'rgba(232,228,216,0.3)',
+                background: 'transparent',
+                cursor: 'pointer',
+                borderRadius: 0,
+              }}
+              onMouseEnter={(e) => {
+                const el = e.currentTarget as HTMLButtonElement
+                el.style.borderColor = 'rgba(232,228,216,0.2)'
+                el.style.color = '#E8E4D8'
+              }}
+              onMouseLeave={(e) => {
+                const el = e.currentTarget as HTMLButtonElement
+                el.style.borderColor = 'rgba(232,228,216,0.08)'
+                el.style.color = 'rgba(232,228,216,0.3)'
+              }}
             >
-              {label}
+              {Math.round(pct * 100)}%
             </button>
           ))}
         </div>
-      )}
 
-      {submitError && (
-        <p className="text-xs text-terra font-mono">{submitError}</p>
-      )}
-      {submitOk && (
-        <p className="text-xs font-medium text-sage font-mono">Order placed</p>
-      )}
-
-      {isConnected ? (
-        <motion.button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.97 }}
-          transition={{ duration: 0.15 }}
-          className={[
-            'w-full h-12 font-sans font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 disabled:opacity-50',
-            side === 'buy'
-              ? 'bg-sage text-[#0C0C0C] hover:bg-[#5A7A4A]'
-              : 'bg-terra text-[#0C0C0C] hover:bg-[#AA2222]',
-            submitting ? 'opacity-70' : '',
-          ].join(' ')}
-        >
-          {submitting ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="inline-block w-4 h-4 rounded-full border-2 border-parchment border-t-transparent animate-spin" />
-              Place Order
+        {orderType === 'limit' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer' }}>
+            <div
+              onClick={() => setPostOnly(!postOnly)}
+              style={{
+                width: 16,
+                height: 16,
+                border: '1px solid rgba(232,228,216,0.2)',
+                background: postOnly ? 'rgba(232,228,216,0.1)' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              {postOnly && <span style={{ color: '#E8E4D8', fontSize: 10, lineHeight: 1 }}>✓</span>}
+            </div>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'rgba(232,228,216,0.4)' }}>
+              Post-only
             </span>
-          ) : (
-            'Place Order'
-          )}
-        </motion.button>
-      ) : (
-        <Button variant="secondary" size="lg" className="w-full tracking-wide" disabled>
-          Connect Wallet to Trade
-        </Button>
-      )}
+          </label>
+        )}
+
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: '1px solid rgba(232,228,216,0.06)',
+          }}
+        >
+          {[
+            { label: 'TOTAL', value: total ? `${total} ${quote}` : '—' },
+            { label: 'FEE', value: '0.00 USDC' },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.3)' }}>
+                {label}
+              </span>
+              <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: 11, color: '#E8E4D8' }}>
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={isConnected ? handleSubmit : connect}
+          disabled={isConnected && submitting}
+          style={{
+            marginTop: 12,
+            width: '100%',
+            padding: '12px',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 600,
+            fontSize: 11,
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
+            borderRadius: 0,
+            border: 'none',
+            cursor: 'pointer',
+            background: !isConnected
+              ? 'rgba(232,228,216,0.1)'
+              : side === 'buy'
+              ? 'rgba(107,138,90,0.9)'
+              : 'rgba(204,51,51,0.9)',
+            color: !isConnected ? 'rgba(232,228,216,0.4)' : 'white',
+            opacity: isConnected && submitting ? 0.6 : 1,
+          }}
+        >
+          {!isConnected
+            ? 'CONNECT WALLET'
+            : submitting
+            ? '...'
+            : side === 'buy'
+            ? `BUY ${base}`
+            : `SELL ${base}`}
+        </button>
+      </div>
     </div>
   )
 }
 
-function MarketSelector({
-  markets,
-  currentPair,
-  loading,
+function OpenOrdersPanel({
+  pair,
+  onToast,
 }: {
-  markets: MarketResponse[]
-  currentPair: string
-  loading: boolean
+  pair: string
+  onToast: (msg: string, v: 'success' | 'error') => void
 }) {
-  if (loading) return <Spinner size="xs" className="text-brown" />
-  if (markets.length === 0) return null
+  const { address, isConnected } = useAuth()
+  const [tab, setTab] = useState<'open' | 'history'>('open')
+  const [orders, setOrders] = useState<Order[]>([])
+
+  const fetchOrders = useCallback(() => {
+    if (!address) return
+    getOrders(address).then((res) => {
+      if (res.ok && res.data) setOrders(res.data)
+    })
+  }, [address])
+
+  useEffect(() => {
+    fetchOrders()
+    const interval = setInterval(fetchOrders, 5000)
+    return () => clearInterval(interval)
+  }, [fetchOrders])
+
+  const openOrders = useMemo(
+    () => orders.filter((o) => o.status === 'open' || o.status === 'partial'),
+    [orders],
+  )
+
+  const handleCancel = useCallback(async (order: Order) => {
+    if (!address) return
+    const nonce = Date.now()
+    try {
+      const sig = await signCancel({ order_id: order.id, nonce, address })
+      const body: CancelOrderBody = { order_id: order.id, nonce, address, signature: sig }
+      const res = await cancelOrder(body)
+      if (res.ok) {
+        onToast('Order cancelled', 'success')
+        fetchOrders()
+      } else {
+        onToast(res.error ?? 'Cancel failed', 'error')
+      }
+    } catch (err) {
+      if (err instanceof Error && (err.message.includes('rejected') || err.message.includes('denied') || err.message.includes('cancelled'))) {
+        onToast('Signature rejected', 'error')
+      } else {
+        onToast(err instanceof Error ? err.message : 'Cancel failed', 'error')
+      }
+    }
+  }, [address, onToast, fetchOrders])
+
+  const displayOrders = tab === 'open' ? openOrders : orders
+
+  const cols = [
+    { key: 'time', label: 'TIME', width: 80 },
+    { key: 'pair', label: 'PAIR', width: 80 },
+    { key: 'side', label: 'SIDE', width: 50 },
+    { key: 'type', label: 'TYPE', width: 60 },
+    { key: 'price', label: 'PRICE', width: 80 },
+    { key: 'size', label: 'SIZE', width: 70 },
+    { key: 'filled', label: 'FILLED', width: 60 },
+    { key: 'action', label: '', width: 60 },
+  ]
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {markets.map((m) => (
-        <Link
-          key={m.id}
-          href={`/markets/${encodeURIComponent(m.id)}`}
-          className={[
-            'px-2.5 py-1 text-[10px] font-medium transition-colors duration-150 uppercase tracking-[0.1em]',
-            m.id === currentPair
-              ? 'bg-[#E8E4D8] text-[#0C0C0C]'
-              : 'bg-canvas text-brown border border-border hover:border-[rgba(232,228,216,0.2)] hover:text-ink',
-          ].join(' ')}
-        >
-          {m.base}/{m.quote}
-        </Link>
-      ))}
+    <div
+      style={{
+        height: 180,
+        flexShrink: 0,
+        background: '#0C0C0C',
+        borderTop: '1px solid rgba(232,228,216,0.06)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          borderBottom: '1px solid rgba(232,228,216,0.06)',
+          flexShrink: 0,
+        }}
+      >
+        {[
+          { key: 'open' as const, label: `OPEN ORDERS (${openOrders.length})` },
+          { key: 'history' as const, label: 'ORDER HISTORY' },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            style={{
+              padding: '10px 16px',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: tab === key ? '1px solid #E8E4D8' : '1px solid transparent',
+              color: tab === key ? '#E8E4D8' : 'rgba(232,228,216,0.3)',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 9,
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              cursor: 'pointer',
+              borderRadius: 0,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: cols.map((c) => `${c.width}px`).join(' ') + ' 1fr',
+          padding: '6px 16px',
+          fontFamily: 'Inter, sans-serif',
+          fontSize: 8,
+          textTransform: 'uppercase',
+          color: 'rgba(232,228,216,0.2)',
+          letterSpacing: '0.1em',
+          flexShrink: 0,
+          borderBottom: '1px solid rgba(232,228,216,0.04)',
+        }}
+      >
+        {cols.map((c) => <span key={c.key}>{c.label}</span>)}
+        <span />
+      </div>
+
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {!isConnected ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontFamily: 'Inter, sans-serif', fontSize: 12, color: 'rgba(232,228,216,0.2)' }}>
+            Connect wallet to view orders
+          </div>
+        ) : displayOrders.length === 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontFamily: 'Inter, sans-serif', fontSize: 12, color: 'rgba(232,228,216,0.2)' }}>
+            No open orders
+          </div>
+        ) : (
+          displayOrders.map((order) => {
+            const filled = parseFloat(order.filled_quantity)
+            const qty = parseFloat(order.quantity)
+            const filledPct = qty > 0 ? Math.round((filled / qty) * 100) : 0
+            const price = (parseFloat(order.price) / 1_000_000).toFixed(2)
+            const quantity = (parseFloat(order.quantity) / 1_000_000).toFixed(4)
+            return (
+              <div
+                key={order.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: cols.map((c) => `${c.width}px`).join(' ') + ' 1fr',
+                  padding: '4px 16px',
+                  fontFamily: 'Inter, sans-serif',
+                  fontSize: 11,
+                  alignItems: 'center',
+                  borderBottom: '1px solid rgba(232,228,216,0.02)',
+                }}
+              >
+                <span style={{ color: 'rgba(232,228,216,0.3)', fontSize: 10 }}>
+                  {fmtOrderTime(order.timestamp)}
+                </span>
+                <span style={{ color: '#E8E4D8' }}>{order.market}</span>
+                <span style={{ color: order.side === 'buy' ? '#6B8A5A' : '#CC3333', textTransform: 'uppercase' }}>
+                  {order.side}
+                </span>
+                <span style={{ color: 'rgba(232,228,216,0.4)', textTransform: 'uppercase' }}>
+                  {order.order_type}
+                </span>
+                <span style={{ fontFamily: 'Courier New, monospace', color: '#E8E4D8' }}>{price}</span>
+                <span style={{ fontFamily: 'Courier New, monospace', color: 'rgba(232,228,216,0.6)' }}>{quantity}</span>
+                <span style={{ color: 'rgba(232,228,216,0.4)' }}>{filledPct}%</span>
+                <span />
+                {(order.status === 'open' || order.status === 'partial') && (
+                  <button
+                    onClick={() => handleCancel(order)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 9,
+                      color: 'rgba(232,228,216,0.3)',
+                      cursor: 'pointer',
+                      padding: 0,
+                      borderRadius: 0,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#CC3333' }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(232,228,216,0.3)' }}
+                  >
+                    CANCEL
+                  </button>
+                )}
+              </div>
+            )
+          })
+        )}
+      </div>
     </div>
   )
 }
 
-export default function MarketPage({ params }: { params: { pair: string } }) {
-  const marketId = decodeURIComponent(params.pair)
+export default function TradingPage({ params }: { params: { pair: string } }) {
+  const pair = decodeURIComponent(params.pair)
+  const { toasts, addToast } = useToasts()
 
-  const { address, isConnected } = useAuth()
-
-  const [bids, setBids] = useState<RawLevel[]>([])
-  const [asks, setAsks] = useState<RawLevel[]>([])
-  const [bookLoading, setBookLoading] = useState(true)
-  const [trades, setTrades] = useState<TradeEntry[]>([])
-  const [wsStatus, setWsStatus] = useState<WsStatus>('disconnected')
+  const [bids, setBids] = useState<{ price: string; quantity: string }[]>([])
+  const [asks, setAsks] = useState<{ price: string; quantity: string }[]>([])
   const [markets, setMarkets] = useState<MarketResponse[]>([])
-  const [marketsLoading, setMarketsLoading] = useState(true)
 
-  const wsRef = useRef(getWsClient())
-
-  const bestBid = bids[0]?.[0] ?? null
-  const bestAsk = asks[0]?.[0] ?? null
-  const spread = useMemo(() => calcSpread(bids, asks), [bids, asks])
+  const midPrice = useMemo(() => {
+    const bid = bids[0] ? parseFloat(bids[0].price) : null
+    const ask = asks[0] ? parseFloat(asks[0].price) : null
+    if (bid && ask) return (bid + ask) / 2
+    return bid ?? ask ?? null
+  }, [bids, asks])
 
   useEffect(() => {
-    setBookLoading(true)
-    setBids([])
-    setAsks([])
-    setTrades([])
-    getBook(marketId)
-      .then((res) => {
+    const fetchBook = () => {
+      getBook(pair).then((res) => {
         if (res.ok && res.data) {
-          setBids(res.data.bids.map((l) => [l.price, l.quantity] as RawLevel))
-          setAsks(res.data.asks.map((l) => [l.price, l.quantity] as RawLevel))
+          setBids(res.data.bids)
+          setAsks(res.data.asks)
         }
       })
-      .finally(() => setBookLoading(false))
-  }, [marketId])
+    }
+    fetchBook()
+    const interval = setInterval(fetchBook, 2000)
+    return () => clearInterval(interval)
+  }, [pair])
 
   useEffect(() => {
-    listMarkets()
-      .then((res) => {
+    const fetchMarkets = () => {
+      listMarkets().then((res) => {
         if (res.ok && res.data) setMarkets(res.data)
       })
-      .finally(() => setMarketsLoading(false))
+    }
+    fetchMarkets()
+    const interval = setInterval(fetchMarkets, 10_000)
+    return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => {
-    const ws = wsRef.current
-    const channels = [`book:${marketId}`, `trades:${marketId}`]
-
-    const unsubStatus = ws.onStatus((s) => {
-      setWsStatus(s)
-      if (s === 'connected' || s === 'polling') ws.subscribe(channels)
-    })
-
-    const unsubMsg = ws.onMessage((msg) => {
-      if (msg.type === 'book_snapshot' && msg.market === marketId) {
-        setBids(msg.bids as RawLevel[])
-        setAsks(msg.asks as RawLevel[])
-        setBookLoading(false)
-      }
-      if (msg.type === 'trade' && msg.market === marketId) {
-        const entry: TradeEntry = {
-          key: `${msg.timestamp}-${msg.price}-${crypto.getRandomValues(new Uint32Array(1))[0]}`,
-          price: msg.price as string,
-          size: msg.quantity as string,
-          side: msg.side as OrderSide,
-          ts: msg.timestamp,
-        }
-        setTrades((prev) => [entry, ...prev].slice(0, MAX_TRADES))
-      }
-    })
-
-    ws.connect()
-    if (ws.status === 'connected') ws.subscribe(channels)
-
-    return () => {
-      unsubStatus()
-      unsubMsg()
-      ws.unsubscribe(channels)
-    }
-  }, [marketId])
-
   return (
-    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4">
-      <div className="flex flex-wrap items-start gap-x-8 gap-y-4 mb-6 pb-5 border-b border-border">
-        <div className="flex items-start gap-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, ease: EASE }}
-            className="w-10 h-10 bg-[rgba(107,138,90,0.1)] flex items-center justify-center text-xs font-bold font-mono shrink-0" style={{ color: '#6B8A5A' }}
-          >
-            {marketId.split('-')[0]?.slice(0, 2)}
-          </motion.div>
-          <div>
-            <div className="flex items-center gap-3 mb-3">
-              <motion.h1
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, ease: EASE }}
-                className="text-[1.5rem] font-bold text-ink tracking-wide uppercase"
-              >
-                {marketId}
-              </motion.h1>
-              <WsStatusBadge status={wsStatus} />
-            </div>
-            <div className="flex items-end gap-5">
-              <BestPriceDisplay value={bestBid} label="Best Bid" color="#6B8A5A" />
-              <div className="pb-0.5 text-center">
-                <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">Spread</span>
-                <motion.span
-                  key={spread?.abs ?? 'empty'}
-                  initial={{ scale: 1.06, opacity: 0.5 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: 0.2 }}
-                  className="text-[1.1rem] font-mono font-medium tabular-nums leading-none block"
-                  style={{ color: 'rgba(232,228,216,0.5)' }}
-                >
-                  {spread?.abs ?? '—'}
-                  {spread && (
-                    <span className="text-xs font-normal text-brown ml-1">{spread.bps} bps</span>
-                  )}
-                </motion.span>
-              </div>
-              <BestPriceDisplay value={bestAsk} label="Best Ask" color="#CC3333" />
-            </div>
-          </div>
+    <>
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(40px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+        * { box-sizing: border-box; }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+        input[type=number] { -moz-appearance: textfield; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(232,228,216,0.1); }
+      `}</style>
+
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: 'calc(100vh - 96px)',
+          background: '#0C0C0C',
+          overflow: 'hidden',
+        }}
+      >
+        <HeaderBar pair={pair} markets={markets} bids={bids} asks={asks} />
+
+        <div
+          style={{
+            flex: 1,
+            display: 'grid',
+            gridTemplateColumns: '200px 1fr 220px 260px',
+            overflow: 'hidden',
+          }}
+        >
+          <MarketSelectorPanel markets={markets} currentPair={pair} />
+          <ChartPanel pair={pair} midPrice={midPrice} />
+          <OrderBookPanel bids={bids} asks={asks} pair={pair} />
+          <OrderEntryPanel pair={pair} bids={bids} asks={asks} onToast={addToast} />
         </div>
 
-        <div className="ml-auto">
-          <MarketSelector
-            markets={markets}
-            currentPair={marketId}
-            loading={marketsLoading}
-          />
-        </div>
+        <OpenOrdersPanel pair={pair} onToast={addToast} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,280px)_1fr_minmax(280px,320px)] gap-4 items-start">
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: EASE, delay: 0.1 }}
-        >
-          <Card padding="none" className="overflow-hidden">
-            <OrderBook bids={bids} asks={asks} loading={bookLoading} />
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: EASE, delay: 0.2 }}
-        >
-          <Card padding="none" className="overflow-hidden">
-            <TradesFeed trades={trades} />
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: EASE, delay: 0.3 }}
-          className="bg-canvas border border-border p-6"
-        >
-          <OrderEntryForm
-            marketId={marketId}
-            address={address}
-            isConnected={isConnected}
-            bestBid={bestBid}
-            bestAsk={bestAsk}
-          />
-        </motion.div>
-      </div>
-    </div>
+      <ToastContainer toasts={toasts} />
+    </>
   )
 }
