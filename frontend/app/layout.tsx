@@ -25,9 +25,11 @@ function BetaBanner() {
         alignItems: 'center',
         justifyContent: 'center',
         gap: 12,
-        position: 'sticky',
+        position: 'fixed',
         top: 0,
-        zIndex: 50,
+        left: 0,
+        right: 0,
+        zIndex: 100,
         fontFamily: 'var(--font-inter)',
         fontSize: '0.72rem',
         letterSpacing: '0.08em',
@@ -75,7 +77,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-parchment text-ink font-sans">
         <AuthProvider>
-          <div className="relative z-10">
+          <div className="relative z-10" style={{ paddingTop: '36px' }}>
             <BetaBanner />
             <Nav />
             <main className="min-h-[calc(100vh-60px)]">
