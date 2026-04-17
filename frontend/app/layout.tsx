@@ -18,7 +18,7 @@ function BetaBanner() {
   return (
     <div
       style={{
-        background: 'rgba(0, 210, 210, 0.08)',
+        background: '#080C10',
         borderBottom: '1px solid rgba(0, 210, 210, 0.2)',
         padding: '8px 24px',
         display: 'flex',
