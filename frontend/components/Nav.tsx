@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth'
 import { Spinner } from '@/components/ui/Spinner'
 
 const LINKS = [
-  { href: '/markets',    label: 'Markets'   },
+  { href: '/markets/ETH-USDC', label: 'Markets' },
   { href: '/dashboard',  label: 'Dashboard' },
   { href: '/analytics',  label: 'Analytics' },
   { href: '/history',    label: 'History'   },
