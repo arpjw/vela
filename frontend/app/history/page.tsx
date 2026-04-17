@@ -232,16 +232,16 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
 
   return (
     <Card className="text-center py-10">
-      <div className="w-14 h-14 bg-ochre/10 flex items-center justify-center mx-auto mb-4">
+      <div className="w-14 h-14 bg-[rgba(107,138,90,0.1)] flex items-center justify-center mx-auto mb-4">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
           <rect
             x="2" y="7" width="20" height="14"
-            stroke="#00D2D2" strokeWidth="1.5"
+            stroke="#6B8A5A" strokeWidth="1.5"
           />
-          <circle cx="14" cy="14" r="2" fill="#00D2D2" />
+          <circle cx="14" cy="14" r="2" fill="#6B8A5A" />
           <path
             d="M17 7V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2"
-            stroke="#00D2D2" strokeWidth="1.5" strokeLinecap="round"
+            stroke="#6B8A5A" strokeWidth="1.5" strokeLinecap="round"
           />
         </svg>
       </div>
@@ -308,7 +308,7 @@ function Filters({
               value: e.target.value,
             })
           }
-          className="h-10 px-3 pr-8 bg-parchment border border-border text-sm text-ink outline-none focus:border-ochre cursor-pointer appearance-none min-w-[140px]"
+          className="h-10 px-3 pr-8 bg-canvas border border-border text-sm text-ink outline-none focus:border-ink cursor-pointer appearance-none min-w-[140px]"
         >
           <option value="">All markets</option>
           {markets.map((m) => (
@@ -434,7 +434,7 @@ function FillHistoryTable({
                   <tr
                     key={f.key}
                     className={[
-                      'hover:bg-[rgba(0,210,210,0.08)] transition-colors duration-75 border-b border-border last:border-0',
+                      'hover:bg-[rgba(232,228,216,0.04)] transition-colors duration-75 border-b border-border last:border-0',
                       idx % 2 === 0 ? 'bg-parchment' : 'bg-canvas',
                     ].join(' ')}
                   >
@@ -515,7 +515,7 @@ function PublicFeed({
               className={[
                 'px-2.5 py-1 text-xs font-medium transition-colors duration-150 uppercase tracking-[0.08em]',
                 publicMarket === m.id
-                  ? 'bg-ochre text-ink'
+                  ? 'bg-[#E8E4D8] text-[#0C0C0C]'
                   : 'border border-border text-brown hover:bg-canvas',
               ].join(' ')}
             >
@@ -546,7 +546,7 @@ function PublicFeed({
               {trades.map((t) => (
                 <tr
                   key={t.key}
-                  className="hover:bg-[rgba(0,210,210,0.08)] transition-colors duration-75 border-b border-border last:border-0"
+                  className="hover:bg-[rgba(232,228,216,0.04)] transition-colors duration-75 border-b border-border last:border-0"
                 >
                   <td className="px-5 py-[3px] text-[11px] tabular-nums text-brown font-mono">
                     {fmtTime(t.ts)}

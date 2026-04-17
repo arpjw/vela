@@ -217,20 +217,20 @@ function ConnectGate({ onConnect }: { onConnect: () => Promise<void> }) {
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm text-center bg-canvas border border-border shadow-[0_4px_24px_rgba(14,26,32,0.08)] p-8">
-        <div className="w-16 h-16 bg-ochre/10 flex items-center justify-center mx-auto mb-5">
+      <div className="w-full max-w-sm text-center bg-canvas border border-border p-8">
+        <div className="w-16 h-16 bg-[rgba(107,138,90,0.1)] flex items-center justify-center mx-auto mb-5">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path
               d="M21 7H3C2.44772 7 2 7.44772 2 8V20C2 20.5523 2.44772 21 3 21H21C21.5523 21 22 20.5523 22 20V8C22 7.44772 21.5523 7 21 7Z"
-              stroke="#00D2D2"
+              stroke="#6B8A5A"
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            <circle cx="14" cy="14" r="2" fill="#00D2D2" />
+            <circle cx="14" cy="14" r="2" fill="#6B8A5A" />
             <path
               d="M17 7V5C17 3.89543 16.1046 3 15 3H9C7.89543 3 7 3.89543 7 5V7"
-              stroke="#00D2D2"
+              stroke="#6B8A5A"
               strokeWidth="1.5"
               strokeLinecap="round"
             />
@@ -271,13 +271,13 @@ function CreditGauge({
   const dashOffset = circumference - (clamped / 100) * circumference
   const isDanger = clamped >= 95
   const isWarning = clamped >= 80
-  const arcColor = isDanger ? '#991111' : isWarning ? '#00D2D2' : '#00D2D2'
-  const textFill = '#E8F4F8'
+  const arcColor = isDanger ? '#CC3333' : '#6B8A5A'
+  const textFill = '#E8E4D8'
 
   return (
     <div className="flex flex-col items-center gap-5">
       <svg width="128" height="128" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r={R} stroke="rgba(14,26,32,0.1)" strokeWidth="10" fill="none" />
+        <circle cx="50" cy="50" r={R} stroke="rgba(232,228,216,0.06)" strokeWidth="10" fill="none" />
         <circle
           cx="50"
           cy="50"
@@ -297,7 +297,7 @@ function CreditGauge({
           textAnchor="middle"
           fontSize="15"
           fontWeight="700"
-          fontFamily="IBM Plex Mono, monospace"
+          fontFamily="Courier New, monospace"
           fill={textFill}
         >
           {clamped.toFixed(0)}%
@@ -307,8 +307,8 @@ function CreditGauge({
           y="61"
           textAnchor="middle"
           fontSize="8"
-          fill="#1A3040"
-          fontFamily="IBM Plex Mono, monospace"
+          fill="rgba(232,228,216,0.25)"
+          fontFamily="Courier New, monospace"
         >
           utilized
         </text>
@@ -417,7 +417,7 @@ function OpenOrdersTable({
                     key={order.id}
                     className={[
                       'transition-opacity duration-150 border-b border-border last:border-0',
-                      isCanceling ? 'opacity-35' : 'hover:bg-[rgba(0,210,210,0.08)]',
+                      isCanceling ? 'opacity-35' : 'hover:bg-[rgba(232,228,216,0.04)]',
                     ].join(' ')}
                   >
                     <td className="px-4 py-3">
@@ -504,7 +504,7 @@ function PnlTracker({
     <Card padding="none">
       <button
         type="button"
-        className="w-full px-6 py-4 border-b border-border flex items-center justify-between hover:bg-[rgba(0,210,210,0.05)] transition-colors"
+        className="w-full px-6 py-4 border-b border-border flex items-center justify-between hover:bg-[rgba(232,228,216,0.03)] transition-colors"
         onClick={() => setExpanded((e) => !e)}
       >
         <div className="flex items-center gap-3">
@@ -562,7 +562,7 @@ function PnlTracker({
                 return (
                   <div
                     key={mkt}
-                    className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-[rgba(0,210,210,0.05)] transition-colors border-b border-border last:border-0"
+                    className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-[rgba(232,228,216,0.03)] transition-colors border-b border-border last:border-0"
                   >
                     <span className="font-medium text-ink">{mkt}</span>
                     <span className="text-right tabular-nums text-brown font-mono">
@@ -624,18 +624,18 @@ function MarketSummaryTable({ summaries }: { summaries: MarketSummaryRow[] }) {
               {summaries.map((row) => (
                 <tr
                   key={row.market}
-                  className="hover:bg-[rgba(0,210,210,0.08)] transition-colors duration-100 border-b border-border last:border-0"
+                  className="hover:bg-[rgba(232,228,216,0.04)] transition-colors duration-100 border-b border-border last:border-0"
                 >
                   <td className="px-4 py-3 font-medium text-ink">
                     {row.market}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-ochre text-xs font-mono">
+                  <td className="px-4 py-3 text-right tabular-nums text-sage text-xs font-mono">
                     {row.bestBid ?? '—'}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-fresco text-xs font-mono">
+                  <td className="px-4 py-3 text-right tabular-nums text-terra text-xs font-mono">
                     {row.bestAsk ?? '—'}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-violet text-xs font-mono">
+                  <td className="px-4 py-3 text-right tabular-nums text-brown text-xs font-mono">
                     {row.spread ?? '—'}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-xs text-ink font-mono">
@@ -871,6 +871,7 @@ export default function DashboardPage() {
               suffix: 'USD' as string | undefined,
               pnl: false,
               positive: false,
+              fontPF: true,
             },
             {
               label: 'Open Orders',
@@ -878,6 +879,7 @@ export default function DashboardPage() {
               suffix: undefined,
               pnl: false,
               positive: false,
+              fontPF: false,
             },
             {
               label: 'Active Markets',
@@ -885,6 +887,7 @@ export default function DashboardPage() {
               suffix: undefined,
               pnl: false,
               positive: false,
+              fontPF: false,
             },
             {
               label: 'Realized P&L',
@@ -892,6 +895,7 @@ export default function DashboardPage() {
               suffix: undefined,
               pnl: true,
               positive: totalPnl >= 0,
+              fontPF: false,
             },
           ] satisfies {
             label: string
@@ -899,18 +903,17 @@ export default function DashboardPage() {
             suffix: string | undefined
             pnl: boolean
             positive: boolean
+            fontPF: boolean
           }[]
-        ).map(({ label, value, suffix, pnl, positive }) => (
+        ).map(({ label, value, suffix, pnl, positive, fontPF }) => (
           <Card key={label}>
             <div
               className={[
-                'text-2xl font-mono font-bold tabular-nums',
-                pnl
-                  ? positive
-                    ? 'text-sage'
-                    : 'text-terra'
-                  : 'text-ochre',
+                'font-bold tabular-nums',
+                fontPF ? 'text-[2rem]' : 'text-2xl font-mono',
+                pnl ? (positive ? 'text-sage' : 'text-terra') : 'text-ink',
               ].join(' ')}
+              style={fontPF ? { fontFamily: "var(--font-playfair), 'Playfair Display', serif", fontWeight: 700 } : undefined}
             >
               {value}
               {suffix && (

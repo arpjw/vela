@@ -237,17 +237,17 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y1={PAD.top + innerH * f}
           x2={PAD.left + innerW}
           y2={PAD.top + innerH * f}
-          stroke="rgba(14,26,32,0.08)"
+          stroke="rgba(232,228,216,0.04)"
           strokeWidth="0.5"
           strokeDasharray="3 3"
         />
       ))}
 
-      <polygon points={fillPoints} fill="#00B0B0" fillOpacity="0.08" />
+      <polygon points={fillPoints} fill="#6B8A5A" fillOpacity="0.08" />
       <polyline
         points={linePoints}
         fill="none"
-        stroke="#00B0B0"
+        stroke="#6B8A5A"
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -257,7 +257,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         cx={toX(lastPt.ts)}
         cy={toY(lastPt.bps)}
         r="3"
-        fill="#00B0B0"
+        fill="#6B8A5A"
       />
 
       {minuteMarks.map(({ ts, label }) => (
@@ -267,8 +267,8 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y={H - 6}
           textAnchor="middle"
           fontSize="9"
-          fill="#1A3040"
-          fontFamily="IBM Plex Mono, monospace"
+          fill="rgba(232,228,216,0.35)"
+          fontFamily="Courier New, monospace"
         >
           {label}
         </text>
@@ -281,8 +281,8 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
           y={toY(v) + 3}
           textAnchor="end"
           fontSize="9"
-          fill="#1A3040"
-          fontFamily="IBM Plex Mono, monospace"
+          fill="rgba(232,228,216,0.35)"
+          fontFamily="Courier New, monospace"
         >
           {v.toFixed(1)}
         </text>
@@ -293,7 +293,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         y1={PAD.top}
         x2={PAD.left}
         y2={bottomY}
-        stroke="rgba(14,26,32,0.08)"
+        stroke="rgba(232,228,216,0.06)"
         strokeWidth="0.5"
       />
       <line
@@ -301,7 +301,7 @@ function SpreadChart({ history }: { history: SpreadPoint[] }) {
         y1={bottomY}
         x2={PAD.left + innerW}
         y2={bottomY}
-        stroke="rgba(14,26,32,0.08)"
+        stroke="rgba(232,228,216,0.06)"
         strokeWidth="0.5"
       />
     </svg>
@@ -329,17 +329,17 @@ function OFIBar({ ofi }: { ofi: number }) {
         <span>Bid pressure</span>
       </div>
 
-      <div className="relative h-7 bg-canvas overflow-hidden">
-        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(14,26,32,0.3)] z-10" />
+      <div className="relative h-7 bg-[rgba(232,228,216,0.04)] overflow-hidden">
+        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(232,228,216,0.15)] z-10" />
 
         {isBidHeavy ? (
           <div
-            className="absolute top-0 bottom-0 bg-ochre transition-[width] duration-300"
+            className="absolute top-0 bottom-0 bg-sage transition-[width] duration-300"
             style={{ left: '50%', width: `${bidPct}%` }}
           />
         ) : (
           <div
-            className="absolute top-0 bottom-0 bg-fresco transition-[width] duration-300"
+            className="absolute top-0 bottom-0 bg-terra transition-[width] duration-300"
             style={{ right: '50%', width: `${askPct}%` }}
           />
         )}
@@ -445,7 +445,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y1={PAD.top + innerH * f}
           x2={PAD.left + innerW}
           y2={PAD.top + innerH * f}
-          stroke="rgba(14,26,32,0.07)"
+          stroke="rgba(232,228,216,0.04)"
           strokeWidth="0.5"
           strokeDasharray="3 3"
         />
@@ -453,11 +453,11 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
 
       {bidPath && (
         <>
-          <path d={bidPath} fill="rgba(0,210,210,0.12)" />
+          <path d={bidPath} fill="rgba(107,138,90,0.08)" />
           <path
             d={bidPath}
             fill="none"
-            stroke="#00D2D2"
+            stroke="#6B8A5A"
             strokeWidth="1.5"
             strokeLinejoin="round"
           />
@@ -466,11 +466,11 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
 
       {askPath && (
         <>
-          <path d={askPath} fill="rgba(0,176,176,0.12)" />
+          <path d={askPath} fill="rgba(204,51,51,0.08)" />
           <path
             d={askPath}
             fill="none"
-            stroke="#00B0B0"
+            stroke="#CC3333"
             strokeWidth="1.5"
             strokeLinejoin="round"
           />
@@ -483,7 +483,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y1={PAD.top}
           x2={toX(midPrice)}
           y2={bottomY}
-          stroke="#00B0B0"
+          stroke="rgba(232,228,216,0.2)"
           strokeWidth="1"
           strokeDasharray="4 3"
         />
@@ -496,8 +496,8 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y={H - 6}
           textAnchor="middle"
           fontSize="8.5"
-          fill="#1A3040"
-          fontFamily="IBM Plex Mono, monospace"
+          fill="rgba(232,228,216,0.35)"
+          fontFamily="Courier New, monospace"
         >
           {p.toFixed(2)}
         </text>
@@ -510,8 +510,8 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
           y={toY(c) + 3}
           textAnchor="end"
           fontSize="8.5"
-          fill="#1A3040"
-          fontFamily="IBM Plex Mono, monospace"
+          fill="rgba(232,228,216,0.35)"
+          fontFamily="Courier New, monospace"
         >
           {c.toFixed(2)}
         </text>
@@ -522,7 +522,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
         y1={PAD.top}
         x2={PAD.left}
         y2={bottomY}
-        stroke="rgba(14,26,32,0.08)"
+        stroke="rgba(232,228,216,0.06)"
         strokeWidth="0.5"
       />
       <line
@@ -530,7 +530,7 @@ function DepthChart({ depth }: { depth: DepthState | null }) {
         y1={bottomY}
         x2={PAD.left + innerW}
         y2={bottomY}
-        stroke="rgba(14,26,32,0.08)"
+        stroke="rgba(232,228,216,0.06)"
         strokeWidth="0.5"
       />
     </svg>
@@ -643,7 +643,7 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                 <tr
                   key={row.market}
                   className={[
-                    'hover:bg-[rgba(0,210,210,0.08)] transition-colors duration-100 border-b border-border last:border-0',
+                    'hover:bg-[rgba(232,228,216,0.04)] transition-colors duration-100 border-b border-border last:border-0',
                     idx % 2 === 0 ? 'bg-parchment' : 'bg-canvas',
                   ].join(' ')}
                 >
@@ -677,11 +677,11 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                   <td className="px-5 py-3 min-w-[180px]">
                     {row.ofi !== null ? (
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-canvas overflow-hidden relative">
-                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(14,26,32,0.3)]" />
+                        <div className="flex-1 h-1.5 bg-[rgba(232,228,216,0.04)] overflow-hidden relative">
+                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[rgba(232,228,216,0.15)]" />
                           {row.ofi >= 0 ? (
                             <div
-                              className="absolute top-0 bottom-0 bg-ochre transition-[width] duration-300"
+                              className="absolute top-0 bottom-0 bg-sage transition-[width] duration-300"
                               style={{
                                 left: '50%',
                                 width: `${Math.abs(row.ofi) * 50}%`,
@@ -689,7 +689,7 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                             />
                           ) : (
                             <div
-                              className="absolute top-0 bottom-0 bg-fresco transition-[width] duration-300"
+                              className="absolute top-0 bottom-0 bg-terra transition-[width] duration-300"
                               style={{
                                 right: '50%',
                                 width: `${Math.abs(row.ofi) * 50}%`,
@@ -700,7 +700,7 @@ function FillRateTable({ rows }: { rows: FillRateRow[] }) {
                         <span
                           className={[
                             'text-[11px] font-medium tabular-nums w-12 text-right font-mono',
-                            row.ofi >= 0 ? 'text-ochre' : 'text-fresco',
+                            row.ofi >= 0 ? 'text-sage' : 'text-terra',
                           ].join(' ')}
                         >
                           {row.ofi >= 0 ? '+' : ''}
@@ -899,7 +899,7 @@ export default function AnalyticsPage() {
               className={[
                 'px-3 py-1.5 text-sm font-medium transition-colors duration-150 uppercase tracking-[0.08em]',
                 state.selectedMarket === m.id
-                  ? 'bg-ochre text-ink'
+                  ? 'bg-[#E8E4D8] text-[#0C0C0C]'
                   : 'border border-border text-brown bg-transparent hover:bg-canvas',
               ].join(' ')}
             >
@@ -969,11 +969,11 @@ export default function AnalyticsPage() {
               </span>
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1.5 text-[10px] text-brown">
-                  <span className="w-3 h-0.5 bg-ochre inline-block" />
+                  <span className="w-3 h-0.5 bg-sage inline-block" />
                   Bids
                 </span>
                 <span className="flex items-center gap-1.5 text-[10px] text-brown">
-                  <span className="w-3 h-0.5 bg-fresco inline-block" />
+                  <span className="w-3 h-0.5 bg-terra inline-block" />
                   Asks
                 </span>
               </div>

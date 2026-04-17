@@ -33,8 +33,8 @@ const config: Config = {
         border: 'rgba(232,228,216,0.08)',
       },
       fontFamily: {
-        sans: ['"IBM Plex Mono"', 'monospace'],
-        mono: ['"IBM Plex Mono"', 'monospace'],
+        sans: ['var(--font-inter-sans)', 'Inter', 'sans-serif'],
+        mono: ['"Courier New"', 'monospace'],
       },
       boxShadow: {
         card: 'none',

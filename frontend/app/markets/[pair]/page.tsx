@@ -119,10 +119,10 @@ function BookRowItem({
   }, [level.price])
 
   const barStyle = side === 'bid'
-    ? 'linear-gradient(to left, rgba(0,210,210,0.25), rgba(0,210,210,0.05))'
-    : 'linear-gradient(to left, rgba(0,176,176,0.25), rgba(0,176,176,0.05))'
-  const priceColor = side === 'bid' ? 'text-ochre' : 'text-fresco'
-  const hoverBg = side === 'bid' ? 'hover:bg-[rgba(0,210,210,0.08)]' : 'hover:bg-[rgba(0,176,176,0.08)]'
+    ? 'linear-gradient(to left, rgba(107,138,90,0.15), rgba(107,138,90,0.03))'
+    : 'linear-gradient(to left, rgba(204,51,51,0.15), rgba(204,51,51,0.03))'
+  const priceColor = side === 'bid' ? 'text-sage' : 'text-terra'
+  const hoverBg = 'hover:bg-[rgba(232,228,216,0.04)]'
 
   return (
     <div
@@ -235,7 +235,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       ctx.beginPath()
       ctx.moveTo(PAD_LEFT, y)
       ctx.lineTo(PAD_LEFT + chartW, y)
-      ctx.strokeStyle = 'rgba(14,26,32,0.07)'
+      ctx.strokeStyle = 'rgba(232,228,216,0.04)'
       ctx.lineWidth = 0.5
       ctx.setLineDash([])
       ctx.stroke()
@@ -255,7 +255,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       ctx.lineTo(PAD_LEFT, toY(bidPoints[bidPoints.length - 1].cum))
       ctx.lineTo(PAD_LEFT, baseY)
       ctx.closePath()
-      ctx.fillStyle = 'rgba(0,210,210,0.10)'
+      ctx.fillStyle = 'rgba(107,138,90,0.08)'
       ctx.fill()
 
       ctx.beginPath()
@@ -266,7 +266,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
         ctx.lineTo(currX, toY(bidPoints[i].cum))
       }
       ctx.lineTo(PAD_LEFT, toY(bidPoints[bidPoints.length - 1].cum))
-      ctx.strokeStyle = '#00D2D2'
+      ctx.strokeStyle = '#6B8A5A'
       ctx.lineWidth = 1.5
       ctx.setLineDash([])
       ctx.stroke()
@@ -286,7 +286,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       const lastX = toX(askPoints[askPoints.length - 1].price)
       ctx.lineTo(lastX, baseY)
       ctx.closePath()
-      ctx.fillStyle = 'rgba(0,176,176,0.15)'
+      ctx.fillStyle = 'rgba(204,51,51,0.08)'
       ctx.fill()
 
       ctx.beginPath()
@@ -297,7 +297,7 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
         ctx.lineTo(currX, toY(askPoints[i].cum))
       }
       ctx.lineTo(toX(askPoints[askPoints.length - 1].price), toY(askPoints[askPoints.length - 1].cum))
-      ctx.strokeStyle = '#00B0B0'
+      ctx.strokeStyle = '#CC3333'
       ctx.lineWidth = 1.5
       ctx.setLineDash([])
       ctx.stroke()
@@ -311,15 +311,15 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       ctx.beginPath()
       ctx.moveTo(midX, PAD_TOP)
       ctx.lineTo(midX, PAD_TOP + chartH)
-      ctx.strokeStyle = 'rgba(14,26,32,0.15)'
+      ctx.strokeStyle = 'rgba(232,228,216,0.15)'
       ctx.lineWidth = 0.5
       ctx.setLineDash([3, 3])
       ctx.stroke()
       ctx.setLineDash([])
     }
 
-    ctx.font = '10px IBM Plex Mono, monospace'
-    ctx.fillStyle = 'rgba(123,164,184,0.7)'
+    ctx.font = '10px Courier New, monospace'
+    ctx.fillStyle = 'rgba(232,228,216,0.35)'
     const labelY = h - 6
 
     if (bidPoints.length > 0) {
@@ -338,8 +338,8 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       ctx.fillText(maxPrice.toFixed(2), PAD_LEFT + chartW, labelY)
     }
 
-    ctx.font = '10px IBM Plex Mono, monospace'
-    ctx.fillStyle = 'rgba(123,164,184,0.5)'
+    ctx.font = '10px Courier New, monospace'
+    ctx.fillStyle = 'rgba(232,228,216,0.2)'
     ctx.textAlign = 'right'
     ctx.fillText(maxDepth.toFixed(2), PAD_LEFT + chartW, PAD_TOP + 10)
   }, [bids, asks])
@@ -349,11 +349,11 @@ function DepthCanvas({ bids, asks }: { bids: RawLevel[]; asks: RawLevel[] }) {
       <div className="px-3 py-2 border-b border-border">
         <span
           style={{
-            fontFamily: 'IBM Plex Mono, monospace',
+            fontFamily: 'var(--font-inter-sans), Inter, sans-serif',
             fontSize: '0.65rem',
             textTransform: 'uppercase',
-            letterSpacing: '0.15em',
-            color: '#7BA4B8',
+            letterSpacing: '0.2em',
+            color: 'rgba(232,228,216,0.25)',
             marginBottom: '8px',
             display: 'block',
           }}
@@ -382,7 +382,7 @@ function OrderBook({
   return (
     <div className="flex flex-col">
       <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-        <span className="text-[0.65rem] font-medium text-fresco uppercase tracking-[0.2em]">
+        <span className="text-[0.65rem] font-medium uppercase tracking-[0.2em]" style={{ color: '#CC3333' }}>
           Asks
         </span>
         {loading && <Spinner size="xs" className="text-brown" />}
@@ -409,7 +409,7 @@ function OrderBook({
           Spread
         </span>
         {spread ? (
-          <span className="text-[11px] tabular-nums font-mono font-medium text-ochre">
+          <span className="text-[11px] tabular-nums font-mono font-medium" style={{ color: 'rgba(232,228,216,0.5)' }}>
             {spread.abs}
             <span className="ml-1.5 text-brown font-normal">{spread.bps} bps</span>
           </span>
@@ -419,7 +419,7 @@ function OrderBook({
       </motion.div>
 
       <div className="px-3 py-1.5 border-b border-border">
-        <span className="text-[0.65rem] font-medium text-ochre uppercase tracking-[0.2em]">
+        <span className="text-[0.65rem] font-medium uppercase tracking-[0.2em]" style={{ color: '#6B8A5A' }}>
           Bids
         </span>
       </div>
@@ -464,7 +464,7 @@ function TradesFeed({ trades }: { trades: TradeEntry[] }) {
               initial={{ opacity: 0, x: -20, height: 0 }}
               animate={{ opacity: 1, x: 0, height: 'auto' }}
               transition={{ duration: 0.25 }}
-              className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-[rgba(0,210,210,0.08)] transition-colors duration-75 cursor-default select-none overflow-hidden"
+              className="grid grid-cols-3 px-3 py-[3px] text-[11px] tabular-nums hover:bg-[rgba(232,228,216,0.04)] transition-colors duration-75 cursor-default select-none overflow-hidden"
             >
               <span
                 className={
@@ -639,8 +639,8 @@ function OrderEntryForm({
             className={[
               'flex-1 py-1.5 text-[10px] font-medium transition-all duration-150 uppercase tracking-[0.12em]',
               orderType === t
-                ? 'bg-violet text-parchment'
-                : 'bg-parchment text-brown hover:text-ink',
+                ? 'bg-[#E8E4D8] text-[#0C0C0C]'
+                : 'bg-canvas text-brown hover:text-ink',
             ].join(' ')}
           >
             {t}
@@ -675,10 +675,10 @@ function OrderEntryForm({
       />
 
       {total !== null && (
-        <div className="bg-parchment border border-border px-4 py-3">
+        <div className="bg-canvas border border-border px-4 py-3">
           <div className="flex items-center justify-between text-xs">
             <span className="text-brown uppercase tracking-[0.12em]">Total</span>
-            <span className="tabular-nums font-mono font-medium text-ochre">
+            <span className="tabular-nums font-mono font-medium text-ink">
               {total} {quote}
             </span>
           </div>
@@ -695,8 +695,8 @@ function OrderEntryForm({
               className={[
                 'flex-1 py-1 text-[9px] font-medium transition-all duration-150 uppercase tracking-[0.12em]',
                 tif === value
-                  ? 'bg-violet text-parchment'
-                  : 'bg-parchment border border-border text-brown hover:text-ink',
+                  ? 'bg-[#E8E4D8] text-[#0C0C0C]'
+                  : 'bg-canvas border border-border text-brown hover:text-ink',
               ].join(' ')}
             >
               {label}
@@ -723,8 +723,8 @@ function OrderEntryForm({
           className={[
             'w-full h-12 font-sans font-semibold text-sm uppercase tracking-[0.1em] transition-all duration-150 disabled:opacity-50',
             side === 'buy'
-              ? 'bg-sage text-parchment hover:bg-[#007A70]'
-              : 'bg-terra text-parchment hover:bg-[#AA2222]',
+              ? 'bg-sage text-[#0C0C0C] hover:bg-[#5A7A4A]'
+              : 'bg-terra text-[#0C0C0C] hover:bg-[#AA2222]',
             submitting ? 'opacity-70' : '',
           ].join(' ')}
         >
@@ -767,8 +767,8 @@ function MarketSelector({
           className={[
             'px-2.5 py-1 text-[10px] font-medium transition-colors duration-150 uppercase tracking-[0.1em]',
             m.id === currentPair
-              ? 'bg-ochre text-ink'
-              : 'bg-canvas text-brown border border-border hover:border-ochre/40 hover:text-ink',
+              ? 'bg-[#E8E4D8] text-[#0C0C0C]'
+              : 'bg-canvas text-brown border border-border hover:border-[rgba(232,228,216,0.2)] hover:text-ink',
           ].join(' ')}
         >
           {m.base}/{m.quote}
@@ -865,7 +865,7 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.4, ease: EASE }}
-            className="w-10 h-10 bg-ochre/10 flex items-center justify-center text-xs font-bold text-ochre font-mono shrink-0"
+            className="w-10 h-10 bg-[rgba(107,138,90,0.1)] flex items-center justify-center text-xs font-bold font-mono shrink-0" style={{ color: '#6B8A5A' }}
           >
             {marketId.split('-')[0]?.slice(0, 2)}
           </motion.div>
@@ -882,7 +882,7 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
               <WsStatusBadge status={wsStatus} />
             </div>
             <div className="flex items-end gap-5">
-              <BestPriceDisplay value={bestBid} label="Best Bid" color="#00D2D2" />
+              <BestPriceDisplay value={bestBid} label="Best Bid" color="#6B8A5A" />
               <div className="pb-0.5 text-center">
                 <span className="block text-[9px] uppercase tracking-[0.18em] text-brown mb-0.5">Spread</span>
                 <motion.span
@@ -890,7 +890,8 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
                   initial={{ scale: 1.06, opacity: 0.5 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.2 }}
-                  className="text-[1.1rem] font-mono font-medium text-fresco tabular-nums leading-none block"
+                  className="text-[1.1rem] font-mono font-medium tabular-nums leading-none block"
+                  style={{ color: 'rgba(232,228,216,0.5)' }}
                 >
                   {spread?.abs ?? '—'}
                   {spread && (
@@ -898,7 +899,7 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
                   )}
                 </motion.span>
               </div>
-              <BestPriceDisplay value={bestAsk} label="Best Ask" color="#00B0B0" />
+              <BestPriceDisplay value={bestAsk} label="Best Ask" color="#CC3333" />
             </div>
           </div>
         </div>
@@ -937,7 +938,7 @@ export default function MarketPage({ params }: { params: { pair: string } }) {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: EASE, delay: 0.3 }}
-          className="bg-canvas border border-border shadow-card p-6 shadow-[0_4px_24px_rgba(14,26,32,0.08)]"
+          className="bg-canvas border border-border p-6"
         >
           <OrderEntryForm
             marketId={marketId}
