@@ -8,23 +8,28 @@ import {
   getMarketInfo,
   pairChange,
   sparklineBars,
-  getPriceDecimals,
 } from '@/lib/markets'
 
 const PF = "'Playfair Display', serif"
 const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
 
-function fmtBookPrice(v: string, decimals: number): string {
-  const n = parseFloat(v)
-  return isNaN(n) ? '—' : n.toFixed(decimals)
+function formatPrice(price: number): string {
+  if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  if (price >= 1) return price.toFixed(2)
+  return price.toFixed(4)
 }
 
-function fmtBidPrice(v: string | undefined, decimals: number): string {
+function fmtBookPrice(v: string): string {
+  const n = parseFloat(v)
+  return isNaN(n) ? '—' : formatPrice(n)
+}
+
+function fmtBidPrice(v: string | undefined): string {
   if (!v) return '—'
   const n = parseFloat(v)
   if (isNaN(n)) return '—'
-  return n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+  return formatPrice(n)
 }
 
 function MarketCard({
@@ -40,7 +45,6 @@ function MarketCard({
 }) {
   const [hovered, setHovered] = useState(false)
   const info = getMarketInfo(pair)
-  const decimals = getPriceDecimals(pair)
   const change = pairChange(pair)
   const changeStr = (change >= 0 ? '+' : '') + change.toFixed(2) + '%'
   const isPositive = change >= 0
@@ -48,6 +52,8 @@ function MarketCard({
 
   const topBids = book?.bids.slice(0, 3) ?? []
   const topAsks = book?.asks.slice(0, 3) ?? []
+  const priceValue = market?.best_bid ? parseFloat(market.best_bid) : 0
+  const priceFontSize = priceValue > 10000 ? 24 : 28
 
   return (
     <div
@@ -69,13 +75,13 @@ function MarketCard({
         <span style={{ fontFamily: IN, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(232,228,216,0.3)' }}>
           {info.ticker} / USDC
         </span>
-        <span style={{ fontFamily: IN, fontSize: 7.5, letterSpacing: '0.1em', textTransform: 'uppercase', border: '1px solid rgba(232,228,216,0.07)', padding: '2px 6px', color: 'rgba(232,228,216,0.15)' }}>
+        <span style={{ fontFamily: IN, fontSize: 7.5, letterSpacing: '0.1em', textTransform: 'uppercase', border: '1px solid rgba(232,228,216,0.12)', padding: '2px 6px', color: 'rgba(232,228,216,0.3)' }}>
           SPOT
         </span>
       </div>
 
-      <div style={{ fontFamily: PF, fontWeight: 900, fontSize: 28, color: '#E8E4D8', lineHeight: 1, marginBottom: 4 }}>
-        {fmtBidPrice(market?.best_bid, decimals)}
+      <div style={{ fontFamily: PF, fontWeight: 900, fontSize: priceFontSize, color: '#E8E4D8', lineHeight: 1, marginBottom: 4 }}>
+        {fmtBidPrice(market?.best_bid)}
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
@@ -89,31 +95,31 @@ function MarketCard({
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <div>
-          <div style={{ fontFamily: IN, fontSize: 7.5, textTransform: 'uppercase', color: 'rgba(107,138,90,0.45)', letterSpacing: '0.1em', marginBottom: 4 }}>
+          <div style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', color: 'rgba(107,138,90,0.7)', letterSpacing: '0.12em', marginBottom: 4 }}>
             BIDS
           </div>
           {topBids.length === 0 ? (
-            <span style={{ fontFamily: CN, fontSize: 9, color: 'rgba(107,138,90,0.3)' }}>—</span>
+            <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(107,138,90,0.3)' }}>—</span>
           ) : (
             topBids.map((lvl, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: CN, fontSize: 9, color: '#6B8A5A' }}>{fmtBookPrice(lvl.price, decimals)}</span>
-                <span style={{ fontFamily: CN, fontSize: 9, color: 'rgba(232,228,216,0.2)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
+                <span style={{ fontFamily: CN, fontSize: 11, color: '#6B8A5A' }}>{fmtBookPrice(lvl.price)}</span>
+                <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,228,216,0.35)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
               </div>
             ))
           )}
         </div>
         <div>
-          <div style={{ fontFamily: IN, fontSize: 7.5, textTransform: 'uppercase', color: 'rgba(204,51,51,0.45)', letterSpacing: '0.1em', marginBottom: 4 }}>
+          <div style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', color: 'rgba(204,51,51,0.7)', letterSpacing: '0.12em', marginBottom: 4 }}>
             ASKS
           </div>
           {topAsks.length === 0 ? (
-            <span style={{ fontFamily: CN, fontSize: 9, color: 'rgba(204,51,51,0.3)' }}>—</span>
+            <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(204,51,51,0.3)' }}>—</span>
           ) : (
             topAsks.map((lvl, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: CN, fontSize: 9, color: '#CC3333' }}>{fmtBookPrice(lvl.price, decimals)}</span>
-                <span style={{ fontFamily: CN, fontSize: 9, color: 'rgba(232,228,216,0.2)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
+                <span style={{ fontFamily: CN, fontSize: 11, color: '#CC3333' }}>{fmtBookPrice(lvl.price)}</span>
+                <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,228,216,0.35)' }}>{parseFloat(lvl.quantity).toFixed(2)}</span>
               </div>
             ))
           )}
