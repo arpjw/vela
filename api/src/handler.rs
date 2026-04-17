@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use axum::{
     extract::{Path, State, WebSocketUpgrade},
-    http::{HeaderValue, Method, StatusCode},
+    http::{HeaderMap, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Json, Response},
     routing::{get, post},
     Router,
@@ -133,6 +133,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/withdrawal-signature", post(withdrawal_signature_handler))
         .route("/deposit", post(deposit_handler))
         .route("/ws", get(ws_handler))
+        .route("/admin/state", get(admin_state_handler))
         .with_state(state)
         .layer(cors)
 }
@@ -531,6 +532,65 @@ async fn withdrawal_signature_handler(
         amount_wei: amount_wei_str,
         nonce,
     }))).into_response()
+}
+
+async fn admin_state_handler(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let expected = std::env::var("ADMIN_TOKEN").unwrap_or_else(|_| "vela-admin-2026".to_string());
+    let provided = headers
+        .get("x-admin-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if provided != expected {
+        return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("unauthorized"))).into_response();
+    }
+
+    let engine = state.engine.lock().await;
+
+    let markets: Vec<serde_json::Value> = engine.markets.values().map(|m| {
+        let book = engine.order_books.get(&m.id);
+        serde_json::json!({
+            "id": m.id.0,
+            "base": m.base.0,
+            "quote": m.quote.0,
+            "best_bid": book.and_then(|b| b.best_bid()).map(|p| format_amount(p, PRICE_DECIMALS)),
+            "best_ask": book.and_then(|b| b.best_ask()).map(|p| format_amount(p, PRICE_DECIMALS)),
+        })
+    }).collect();
+
+    let total_users = engine.metadata.len();
+
+    let total_deposits: Vec<serde_json::Value> = engine.balances.iter().map(|((user, asset), bal)| {
+        serde_json::json!({
+            "user": format!("0x{}", hex::encode(user.0)),
+            "asset": asset.0,
+            "amount": format_amount(bal.total(), 8),
+        })
+    }).collect();
+
+    let total_open_orders: usize = engine.metadata.values()
+        .map(|m| m.open_order_ids.len())
+        .sum();
+
+    let snapshot_path = {
+        let dir = std::env::var("SNAPSHOT_DIR").unwrap_or_else(|_| "/data".to_string());
+        format!("{dir}/engine_snapshot.json")
+    };
+    let snapshot_exists = std::path::Path::new(&snapshot_path).exists();
+
+    let uptime_secs = state.start_time.elapsed().as_secs();
+
+    (StatusCode::OK, Json(ApiResponse::ok(serde_json::json!({
+        "markets": markets,
+        "total_users": total_users,
+        "total_deposits": total_deposits,
+        "total_open_orders": total_open_orders,
+        "snapshot_exists": snapshot_exists,
+        "uptime_secs": uptime_secs,
+    })))).into_response()
 }
 
 fn parse_decimal_amount(s: &str) -> Option<u64> {

@@ -19,6 +19,7 @@ pub struct AppState {
     pub order_limiter: Arc<RateLimiter>,
     pub deposit_limiter: Arc<RateLimiter>,
     pub general_limiter: Arc<RateLimiter>,
+    pub start_time: std::time::Instant,
 }
 
 impl AppState {
@@ -29,6 +30,7 @@ impl AppState {
             order_limiter: Arc::new(RateLimiter::new(20, 60)),
             deposit_limiter: Arc::new(RateLimiter::new(5, 60)),
             general_limiter: Arc::new(RateLimiter::new(100, 60)),
+            start_time: std::time::Instant::now(),
         })
     }
 }

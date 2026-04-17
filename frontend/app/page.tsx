@@ -675,6 +675,124 @@ function MarketRow({ market: m, idx, livePrices }: { market: MarketResponse; idx
   )
 }
 
+function EmailCapture() {
+  const [email, setEmail] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState('')
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email.includes('@') || !email.includes('.')) {
+      setError('Please enter a valid email address.')
+      return
+    }
+    localStorage.setItem('vela_beta_email', email)
+    setSubmitted(true)
+    setError('')
+  }
+
+  return (
+    <section
+      style={{
+        width: '100%',
+        background: 'rgba(0,210,210,0.04)',
+        borderTop: '1px solid rgba(0,210,210,0.1)',
+        borderBottom: '1px solid rgba(0,210,210,0.1)',
+        padding: '40px 6vw',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '5vw',
+        boxSizing: 'border-box',
+      }}
+    >
+      <div style={{ flex: '0 0 60%' }}>
+        <div style={galleryLabel}>Join the Beta</div>
+        <div
+          style={{
+            fontFamily: 'var(--font-inter)',
+            fontWeight: 600,
+            fontSize: '1.3rem',
+            color: '#E8F4F8',
+            marginTop: 8,
+          }}
+        >
+          Be among the first to trade on Vela.
+        </div>
+        <div
+          style={{
+            fontSize: '0.85rem',
+            color: '#7BA4B8',
+            marginTop: 8,
+          }}
+        >
+          Get early access updates, trading incentives, and the mainnet announcement.
+        </div>
+      </div>
+      <div style={{ flex: '0 0 40%' }}>
+        {submitted ? (
+          <div
+            style={{
+              fontFamily: 'var(--font-inter)',
+              fontSize: '0.9rem',
+              color: '#00D2D2',
+            }}
+          >
+            You&apos;re on the list. We&apos;ll be in touch.
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} style={{ display: 'flex' }}>
+            <input
+              type="text"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setError('') }}
+              placeholder="your@email.com"
+              style={{
+                flex: 1,
+                fontFamily: 'var(--font-inter)',
+                background: 'transparent',
+                border: '1px solid rgba(0,210,210,0.3)',
+                borderRight: 'none',
+                color: '#E8F4F8',
+                padding: '10px 16px',
+                fontSize: '0.85rem',
+                outline: 'none',
+                borderRadius: 0,
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = '#00D2D2')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(0,210,210,0.3)')}
+            />
+            <button
+              type="submit"
+              style={{
+                fontFamily: 'var(--font-inter)',
+                fontWeight: 600,
+                background: '#00D2D2',
+                color: '#080C10',
+                padding: '10px 20px',
+                border: 'none',
+                cursor: 'pointer',
+                borderRadius: 0,
+                fontSize: '0.85rem',
+                letterSpacing: '0.05em',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#00B0B0')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#00D2D2')}
+            >
+              JOIN →
+            </button>
+          </form>
+        )}
+        {error && (
+          <div style={{ fontFamily: 'var(--font-inter)', fontSize: '0.75rem', color: '#cc5555', marginTop: 6 }}>
+            {error}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function MarketsRoom({ markets, livePrices }: { markets: MarketResponse[]; livePrices: LivePrices }) {
   const COLS = ['Pair', 'Last Price', '24H Change', 'Bid', 'Ask', 'Spread', '']
 
@@ -950,6 +1068,7 @@ export default function HomePage() {
         <TextOverlay />
       </section>
 
+      <EmailCapture />
       <MarketsRoom markets={markets} livePrices={livePrices} />
       <PerformanceRoom />
       <EnterSection markets={markets} />

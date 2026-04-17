@@ -10,9 +10,54 @@ import { usePathname } from 'next/navigation'
 const ibmPlexMono = IBM_Plex_Mono({
   subsets: ['latin'],
   variable: '--font-inter',
-  weight: ['400', '700'],
+  weight: ['400', '600', '700'],
   display: 'swap',
 })
+
+function BetaBanner() {
+  return (
+    <div
+      style={{
+        background: 'rgba(0, 210, 210, 0.08)',
+        borderBottom: '1px solid rgba(0, 210, 210, 0.2)',
+        padding: '8px 24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        fontFamily: 'var(--font-inter)',
+        fontSize: '0.72rem',
+        letterSpacing: '0.08em',
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#00D2D2' }}>
+        <motion.span
+          animate={{ opacity: [1, 0.15, 1] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          ●
+        </motion.span>
+        PUBLIC BETA
+      </span>
+      <span style={{ color: '#7BA4B8' }}>
+        Ethereum Sepolia Testnet — Do not use real funds
+      </span>
+      <a
+        href="https://monolithsystematicllc.mintlify.app/introduction/what-is-vela"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: '#00D2D2', textDecoration: 'none' }}
+        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+      >
+        Learn more →
+      </a>
+    </div>
+  )
+}
 
 export default function RootLayout({
   children,
@@ -31,6 +76,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-parchment text-ink font-sans">
         <AuthProvider>
           <div className="relative z-10">
+            <BetaBanner />
             <Nav />
             <main className="min-h-[calc(100vh-60px)]">
               <AnimatePresence mode="wait">
