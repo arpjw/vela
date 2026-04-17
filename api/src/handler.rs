@@ -11,7 +11,7 @@ use sha3::{Digest, Keccak256};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use types::{
     AssetId, CancelOrderRequest, DepositRequest, MarketId, PostOrderRequest,
-    Request, UserId, WithdrawalRequest, PRICE_DECIMALS, QUANTITY_DECIMALS,
+    Request, Response as EngineResponse, UserId, WithdrawalRequest, PRICE_DECIMALS, QUANTITY_DECIMALS,
 };
 use crate::{
     AppState,
@@ -244,10 +244,31 @@ async fn post_order(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PostOrderBody>,
 ) -> impl IntoResponse {
+    if !state.order_limiter.check(&body.address) {
+        return (StatusCode::TOO_MANY_REQUESTS, Json(ApiResponse::<()>::err("Rate limit exceeded. Please slow down."))).into_response();
+    }
+
+    if !body.address.starts_with("0x") || body.address.len() != 42 {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Invalid wallet address format"))).into_response();
+    }
+
     let user = match UserId::from_hex(&body.address) {
         Ok(u) => u,
-        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid address"))).into_response(),
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Invalid wallet address format"))).into_response(),
     };
+
+    if body.price == 0 {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Price must be greater than 0"))).into_response();
+    }
+    if body.quantity == 0 {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Quantity must be greater than 0"))).into_response();
+    }
+    if body.price >= u64::MAX / 2 {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Price exceeds maximum allowed value"))).into_response();
+    }
+    if body.quantity >= u64::MAX / 2 {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Quantity exceeds maximum allowed value"))).into_response();
+    }
 
     let side_str = format!("{:?}", body.side).to_lowercase();
     let msg = order_signing_message(&body.market, &side_str, body.price, body.quantity, body.nonce);
@@ -272,12 +293,20 @@ async fn post_order(
         .unwrap_or_default()
         .as_micros() as u64;
 
+    let market_id = req.market.clone();
     let responses = {
         let mut engine = state.engine.lock().await;
+        if !engine.markets.contains_key(&market_id) {
+            return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Market not found."))).into_response();
+        }
         engine.process(Request::PostOrder(req), ts)
     };
 
     state.feeds.lock().await.dispatch_response_batch(&user, &responses);
+
+    if let Some(msg) = first_engine_error(&responses) {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(msg))).into_response();
+    }
 
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
 }
@@ -286,6 +315,10 @@ async fn cancel_order(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CancelOrderBody>,
 ) -> impl IntoResponse {
+    if !state.order_limiter.check(&body.address) {
+        return (StatusCode::TOO_MANY_REQUESTS, Json(ApiResponse::<()>::err("Rate limit exceeded. Please slow down."))).into_response();
+    }
+
     let user = match UserId::from_hex(&body.address) {
         Ok(u) => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid address"))).into_response(),
@@ -319,6 +352,10 @@ async fn cancel_order(
     };
 
     state.feeds.lock().await.dispatch_response_batch(&user, &responses);
+
+    if let Some(msg) = first_engine_error(&responses) {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(msg))).into_response();
+    }
 
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
 }
@@ -357,6 +394,10 @@ async fn initiate_withdrawal(
 
     state.feeds.lock().await.dispatch_response_batch(&user, &responses);
 
+    if let Some(msg) = first_engine_error(&responses) {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(msg))).into_response();
+    }
+
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
 }
 
@@ -364,15 +405,35 @@ async fn deposit_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<DepositBody>,
 ) -> impl IntoResponse {
+    if !state.deposit_limiter.check(&body.user) {
+        return (StatusCode::TOO_MANY_REQUESTS, Json(ApiResponse::<()>::err("Rate limit exceeded. Please slow down."))).into_response();
+    }
+
+    if !body.user.starts_with("0x") || body.user.len() != 42 {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Invalid wallet address format"))).into_response();
+    }
+
     let user = match UserId::from_hex(&body.user) {
         Ok(u) => u,
-        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid address"))).into_response(),
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Invalid wallet address format"))).into_response(),
     };
+
+    if !KNOWN_ASSETS.iter().any(|&a| a.eq_ignore_ascii_case(&body.asset)) {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Invalid asset. Supported: ETH, USDC, BTC, SOL, AVAX, MATIC, LINK, UNI, ARB, OP, AAVE, DOGE"))).into_response();
+    }
 
     let amount = match parse_decimal_amount(&body.amount) {
         Some(a) => a,
         None => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid amount"))).into_response(),
     };
+
+    if amount == 0 {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Amount must be greater than 0"))).into_response();
+    }
+
+    if amount > 1_000_000_000_000u64 {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Amount exceeds maximum deposit limit of 1,000,000"))).into_response();
+    }
 
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -401,6 +462,10 @@ async fn deposit_handler(
 
     state.feeds.lock().await.dispatch_response_batch(&user, &responses);
 
+    if let Some(msg) = first_engine_error(&responses) {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(msg))).into_response();
+    }
+
     let engine = state.engine.lock().await;
     let balances: Vec<BalanceResponse> = engine.balances.iter()
         .filter(|((u, _), _)| u == &user)
@@ -416,8 +481,13 @@ async fn deposit_handler(
 }
 
 async fn withdrawal_signature_handler(
+    State(state): State<Arc<AppState>>,
     Json(body): Json<WithdrawalSignatureRequest>,
 ) -> impl IntoResponse {
+    if !state.deposit_limiter.check(&body.user) {
+        return (StatusCode::TOO_MANY_REQUESTS, Json(ApiResponse::<()>::err("Rate limit exceeded. Please slow down."))).into_response();
+    }
+
     let operator_key = match std::env::var("OPERATOR_PRIVATE_KEY") {
         Ok(k) => k,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::<()>::err("Operator key not configured"))).into_response(),
@@ -476,4 +546,34 @@ fn parse_decimal_amount(s: &str) -> Option<u64> {
     }
     let frac_val: u64 = frac_str[..6].parse().ok()?;
     integer_val.checked_mul(1_000_000)?.checked_add(frac_val)
+}
+
+const KNOWN_ASSETS: &[&str] = &["ETH", "USDC", "BTC", "SOL", "AVAX", "MATIC", "LINK", "UNI", "ARB", "OP", "AAVE", "DOGE"];
+
+fn engine_error_to_message(err: &str) -> String {
+    if err.contains("insufficient") || err.contains("balance") {
+        "Insufficient balance. Please deposit funds before trading.".to_string()
+    } else if err.contains("nonce") {
+        "Duplicate order. Please try again.".to_string()
+    } else if err.contains("signature") || err.contains("verify") {
+        "Invalid signature. Please reconnect your wallet and try again.".to_string()
+    } else if err.contains("market") || err.contains("not found") {
+        "Market not found.".to_string()
+    } else if err.contains("credit") {
+        "Credit limit exceeded. Reduce your open orders or deposit more funds.".to_string()
+    } else if err.contains("post_only") || err.contains("would match") {
+        "Post-only order would have matched immediately. Order rejected.".to_string()
+    } else {
+        "Order rejected. Please check your parameters and try again.".to_string()
+    }
+}
+
+fn first_engine_error(responses: &[EngineResponse]) -> Option<String> {
+    responses.iter().find_map(|r| {
+        if let EngineResponse::Error(e) = r {
+            Some(engine_error_to_message(&e.message))
+        } else {
+            None
+        }
+    })
 }
