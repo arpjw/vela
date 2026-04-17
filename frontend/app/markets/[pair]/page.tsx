@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { createChart, CandlestickSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts'
 import {
@@ -18,34 +19,7 @@ import {
 } from '@/lib/api'
 import { signOrder, signCancel } from '@/lib/signing'
 import { useAuth } from '@/lib/auth'
-
-const MARKET_NAMES: Record<string, { base: string; quote: string; baseTicker: string }> = {
-  'BTC-USDC':  { base: 'Bitcoin',   quote: 'USDC', baseTicker: 'BTC'  },
-  'ETH-USDC':  { base: 'Ethereum',  quote: 'USDC', baseTicker: 'ETH'  },
-  'SOL-USDC':  { base: 'Solana',    quote: 'USDC', baseTicker: 'SOL'  },
-  'AVAX-USDC': { base: 'Avalanche', quote: 'USDC', baseTicker: 'AVAX' },
-  'LINK-USDC': { base: 'Chainlink', quote: 'USDC', baseTicker: 'LINK' },
-  'UNI-USDC':  { base: 'Uniswap',   quote: 'USDC', baseTicker: 'UNI'  },
-  'ARB-USDC':  { base: 'Arbitrum',  quote: 'USDC', baseTicker: 'ARB'  },
-  'OP-USDC':   { base: 'Optimism',  quote: 'USDC', baseTicker: 'OP'   },
-  'AAVE-USDC': { base: 'Aave',      quote: 'USDC', baseTicker: 'AAVE' },
-  'MATIC-USDC':{ base: 'Polygon',   quote: 'USDC', baseTicker: 'MATIC'},
-  'DOGE-USDC': { base: 'Dogecoin',  quote: 'USDC', baseTicker: 'DOGE' },
-}
-
-const STATIC_CHANGE: Record<string, string> = {
-  'BTC-USDC':  '+2.14%',
-  'ETH-USDC':  '+1.87%',
-  'SOL-USDC':  '+3.42%',
-  'AVAX-USDC': '+1.23%',
-  'LINK-USDC': '+2.76%',
-  'UNI-USDC':  '+1.55%',
-  'ARB-USDC':  '+2.91%',
-  'OP-USDC':   '+3.18%',
-  'AAVE-USDC': '+1.64%',
-  'MATIC-USDC':'+2.33%',
-  'DOGE-USDC': '+1.97%',
-}
+import { ORDERED_PAIRS, getMarketInfo, pairChange, getPriceDecimals } from '@/lib/markets'
 
 type OrderSide = 'buy' | 'sell'
 type OrderEntryType = 'limit' | 'market' | 'stop'
@@ -61,6 +35,10 @@ const TIMEFRAME_SECONDS: Record<Timeframe, number> = {
   '1m': 60, '5m': 300, '15m': 900, '1H': 3600, '4H': 14400, '1D': 86400,
 }
 
+const IN = 'Inter, sans-serif'
+const CN = "'Courier New', monospace"
+const PF = "'Playfair Display', serif"
+
 function generateCandles(midPrice: number, timeframe: Timeframe, count = 80): CandlestickData<Time>[] {
   const tfSeconds = TIMEFRAME_SECONDS[timeframe]
   const now = Math.floor(Date.now() / 1000)
@@ -72,10 +50,8 @@ function generateCandles(midPrice: number, timeframe: Timeframe, count = 80): Ca
     const change = (Math.random() - 0.48) * volatility
     const open = price
     const close = price * (1 + change)
-    const highExtra = Math.random() * volatility * 0.5
-    const lowExtra = Math.random() * volatility * 0.5
-    const high = Math.max(open, close) * (1 + highExtra)
-    const low = Math.min(open, close) * (1 - lowExtra)
+    const high = Math.max(open, close) * (1 + Math.random() * volatility * 0.5)
+    const low = Math.min(open, close) * (1 - Math.random() * volatility * 0.5)
     candles.push({
       time,
       open: +open.toFixed(4),
@@ -94,11 +70,11 @@ function fmtPrice(v: string | number | undefined, decimals = 2): string {
   return isNaN(n) ? '—' : n.toFixed(decimals)
 }
 
-function fmtSize(v: string | number | undefined, baseTicker = 'BTC'): string {
+function fmtSize(v: string | number | undefined, ticker = 'BTC'): string {
   if (v == null || v === '') return '—'
   const n = typeof v === 'string' ? parseFloat(v) : v
   if (isNaN(n)) return '—'
-  return ['BTC', 'ETH'].includes(baseTicker.toUpperCase()) ? n.toFixed(4) : n.toFixed(2)
+  return ['BTC', 'ETH'].includes(ticker.toUpperCase()) ? n.toFixed(4) : n.toFixed(2)
 }
 
 function fmtOrderTime(ts: number): string {
@@ -128,7 +104,7 @@ function ToastContainer({ toasts }: { toasts: Toast[] }) {
             border: '1px solid rgba(232,228,216,0.08)',
             borderLeft: `3px solid ${t.variant === 'success' ? '#6B8A5A' : '#CC3333'}`,
             padding: '10px 16px',
-            fontFamily: 'Inter, sans-serif',
+            fontFamily: IN,
             fontSize: 11,
             color: 'rgba(232,228,216,0.7)',
             minWidth: 220,
@@ -145,10 +121,10 @@ function ToastContainer({ toasts }: { toasts: Toast[] }) {
 function StatGroup({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,228,216,0.2)' }}>
+      <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,228,216,0.2)' }}>
         {label}
       </span>
-      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: 11, color: 'rgba(232,228,216,0.55)' }}>
+      <span style={{ fontFamily: IN, fontWeight: 500, fontSize: 11, color: 'rgba(232,228,216,0.55)' }}>
         {value}
       </span>
     </div>
@@ -156,21 +132,18 @@ function StatGroup({ label, value }: { label: string; value: string }) {
 }
 
 function TopBar({ pair, market }: { pair: string; market: MarketResponse | undefined }) {
-  const info = MARKET_NAMES[pair] ?? {
-    base: pair.split('-')[0] ?? pair,
-    quote: pair.split('-')[1] ?? '',
-    baseTicker: pair.split('-')[0] ?? pair,
-  }
-  const change = STATIC_CHANGE[pair] ?? '+1.50%'
-  const isPositive = change.startsWith('+')
+  const info = getMarketInfo(pair)
+  const change = pairChange(pair)
+  const changeStr = (change >= 0 ? '+' : '') + change.toFixed(2) + '%'
+  const isPositive = change >= 0
 
   const bid = market?.best_bid ? parseFloat(market.best_bid) : null
   const ask = market?.best_ask ? parseFloat(market.best_ask) : null
   const mid = bid && ask ? (bid + ask) / 2 : bid ?? ask ?? null
 
   const midStr = mid ? mid.toFixed(2) : '—'
-  const high = mid ? (mid * 1.018).toFixed(2) : '—'
-  const low = mid ? (mid * 0.982).toFixed(2) : '—'
+  const high = mid ? (mid * 1.02).toFixed(2) : '—'
+  const low = mid ? (mid * 0.98).toFixed(2) : '—'
   const volMultiplier = pair.startsWith('BTC') ? 1800 : pair.startsWith('ETH') ? 8500 : 45000
   const vol = mid ? `${((mid * volMultiplier) / 1_000_000).toFixed(2)}M` : '—'
 
@@ -181,23 +154,23 @@ function TopBar({ pair, market }: { pair: string; market: MarketResponse | undef
       borderBottom: '1px solid rgba(232,228,216,0.07)',
       display: 'flex',
       alignItems: 'center',
-      padding: '0 28px',
-      gap: 20,
+      padding: '0 16px',
+      gap: 16,
     }}>
-      <Link href="/" style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'rgba(232,228,216,0.3)', letterSpacing: '0.05em', textDecoration: 'none' }}>
+      <Link href="/markets" style={{ fontFamily: IN, fontSize: 11, color: 'rgba(232,228,216,0.28)', letterSpacing: '0.05em', textDecoration: 'none' }}>
         ←
       </Link>
 
-      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13, color: '#E8E4D8' }}>
-        {info.baseTicker} / {info.quote}
+      <span style={{ fontFamily: IN, fontWeight: 600, fontSize: 13, color: '#E8E4D8' }}>
+        {info.ticker} / USDC
       </span>
 
-      <span style={{ fontFamily: 'Courier New, monospace', fontWeight: 700, fontSize: 14, color: '#E8E4D8' }}>
+      <span style={{ fontFamily: CN, fontWeight: 700, fontSize: 14, color: '#E8E4D8' }}>
         {midStr}
       </span>
 
-      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: 11, color: isPositive ? '#6B8A5A' : '#CC3333' }}>
-        {change}
+      <span style={{ fontFamily: IN, fontWeight: 500, fontSize: 11, color: isPositive ? '#6B8A5A' : '#CC3333' }}>
+        {changeStr}
       </span>
 
       <div style={{ width: 1, height: 18, background: 'rgba(232,228,216,0.07)', flexShrink: 0 }} />
@@ -208,8 +181,8 @@ function TopBar({ pair, market }: { pair: string; market: MarketResponse | undef
 
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
         <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#6B8A5A', flexShrink: 0 }} />
-        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, letterSpacing: '0.15em', color: 'rgba(232,228,216,0.18)', textTransform: 'uppercase' }}>
-          SEPOLIA TESTNET
+        <span style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.14em', color: 'rgba(232,228,216,0.18)', textTransform: 'uppercase' }}>
+          SEPOLIA
         </span>
       </div>
     </div>
@@ -220,7 +193,7 @@ const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1H', '4H', '1D']
 
 function TimeframeRow({ timeframe, onChange }: { timeframe: Timeframe; onChange: (tf: Timeframe) => void }) {
   return (
-    <div style={{ display: 'flex', padding: '12px 28px 0', borderBottom: '1px solid rgba(232,228,216,0.06)', flexShrink: 0 }}>
+    <div style={{ display: 'flex', padding: '8px 16px 0', borderBottom: '1px solid rgba(232,228,216,0.06)', flexShrink: 0 }}>
       {TIMEFRAMES.map((tf) => (
         <button
           key={tf}
@@ -229,11 +202,11 @@ function TimeframeRow({ timeframe, onChange }: { timeframe: Timeframe; onChange:
             background: 'transparent',
             border: 'none',
             borderBottom: timeframe === tf ? '2px solid #E8E4D8' : '2px solid transparent',
-            color: timeframe === tf ? '#E8E4D8' : 'rgba(232,228,216,0.3)',
-            fontFamily: 'Inter, sans-serif',
+            color: timeframe === tf ? '#E8E4D8' : 'rgba(232,228,216,0.28)',
+            fontFamily: IN,
             fontSize: 10,
-            letterSpacing: '0.08em',
-            padding: '7px 12px',
+            letterSpacing: '0.07em',
+            padding: '6px 10px',
             cursor: 'pointer',
             borderRadius: 0,
             textTransform: 'uppercase',
@@ -246,15 +219,7 @@ function TimeframeRow({ timeframe, onChange }: { timeframe: Timeframe; onChange:
   )
 }
 
-function ChartArea({
-  pair,
-  midPrice,
-  timeframe,
-}: {
-  pair: string
-  midPrice: number | null
-  timeframe: Timeframe
-}) {
+function ChartArea({ pair, midPrice, timeframe }: { pair: string; midPrice: number | null; timeframe: Timeframe }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick', Time> | null>(null)
@@ -272,7 +237,7 @@ function ChartArea({
       layout: {
         background: { color: '#0C0C0C' },
         textColor: 'rgba(232,228,216,0.3)',
-        fontFamily: 'Inter, sans-serif',
+        fontFamily: IN,
         fontSize: 10,
       },
       grid: {
@@ -360,20 +325,16 @@ function ChartArea({
   )
 }
 
-function OpenOrdersPanel({
-  onToast,
-}: {
-  pair: string
-  onToast: (msg: string, v: 'success' | 'error') => void
-}) {
+function OpenOrdersPanel({ pair, onToast }: { pair: string; onToast: (msg: string, v: 'success' | 'error') => void }) {
   const { address, isConnected } = useAuth()
   const [orders, setOrders] = useState<Order[]>([])
+  const info = getMarketInfo(pair)
 
   const fetchOrders = useCallback(() => {
     if (!address) return
     getOrders(address).then((res) => {
       if (res.ok && res.data) setOrders(res.data)
-    })
+    }).catch(() => {})
   }, [address])
 
   useEffect(() => {
@@ -413,58 +374,46 @@ function OpenOrdersPanel({
   const emptyMsg = !isConnected ? 'Connect wallet to view orders' : 'No open orders'
 
   return (
-    <div style={{ height: 160, flexShrink: 0, borderTop: '1px solid rgba(232,228,216,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ padding: '8px 28px', borderBottom: '1px solid rgba(232,228,216,0.05)', flexShrink: 0 }}>
-        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,228,216,0.22)' }}>
-          OPEN ORDERS ({openOrders.length})
+    <div style={{ height: 150, flexShrink: 0, borderTop: '1px solid rgba(232,228,216,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '8px 16px', borderBottom: '1px solid rgba(232,228,216,0.05)', flexShrink: 0 }}>
+        <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.2)' }}>
+          OPEN ORDERS{isConnected ? ` (${openOrders.length})` : ''}
         </span>
       </div>
 
       {showEmpty ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'rgba(232,228,216,0.18)', fontWeight: 300 }}>
+          <span style={{ fontFamily: IN, fontSize: 11, color: 'rgba(232,228,216,0.18)', fontWeight: 300 }}>
             {emptyMsg}
           </span>
         </div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '100px 60px 50px 80px 80px 80px 1fr', padding: '5px 28px', flexShrink: 0 }}>
-            {['TIME', 'PAIR', 'SIDE', 'TYPE', 'PRICE', 'SIZE', 'ACTION'].map((h) => (
-              <span key={h} style={{ fontFamily: 'Inter, sans-serif', fontSize: 7.5, textTransform: 'uppercase', color: 'rgba(232,228,216,0.22)', letterSpacing: '0.1em' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '90px 55px 45px 75px 75px 1fr', padding: '5px 16px', flexShrink: 0 }}>
+            {['TIME', 'PAIR', 'SIDE', 'PRICE', 'SIZE', 'ACTION'].map((h) => (
+              <span key={h} style={{ fontFamily: IN, fontSize: 7.5, textTransform: 'uppercase', color: 'rgba(232,228,216,0.18)', letterSpacing: '0.1em' }}>
                 {h}
               </span>
             ))}
           </div>
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {openOrders.map((order) => (
-              <div
-                key={order.id}
-                style={{ display: 'grid', gridTemplateColumns: '100px 60px 50px 80px 80px 80px 1fr', padding: '5px 28px', alignItems: 'center' }}
-              >
-                <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: 'rgba(232,228,216,0.3)' }}>
-                  {fmtOrderTime(order.timestamp)}
-                </span>
-                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, color: '#E8E4D8' }}>{order.market}</span>
-                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, color: order.side === 'buy' ? '#6B8A5A' : '#CC3333', textTransform: 'uppercase' }}>
-                  {order.side}
-                </span>
-                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, color: 'rgba(232,228,216,0.4)', textTransform: 'uppercase' }}>
-                  {order.order_type}
-                </span>
-                <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#E8E4D8' }}>{fmtPrice(order.price)}</span>
-                <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#E8E4D8' }}>{fmtSize(order.quantity)}</span>
-                {order.status === 'open' || order.status === 'partial' ? (
+              <div key={order.id} style={{ display: 'grid', gridTemplateColumns: '90px 55px 45px 75px 75px 1fr', padding: '4px 16px', alignItems: 'center' }}>
+                <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,228,216,0.3)' }}>{fmtOrderTime(order.timestamp)}</span>
+                <span style={{ fontFamily: IN, fontSize: 10, color: '#E8E4D8' }}>{order.market}</span>
+                <span style={{ fontFamily: IN, fontSize: 10, textTransform: 'uppercase', color: order.side === 'buy' ? '#6B8A5A' : '#CC3333' }}>{order.side}</span>
+                <span style={{ fontFamily: CN, fontSize: 10, color: '#E8E4D8' }}>{fmtPrice(order.price)}</span>
+                <span style={{ fontFamily: CN, fontSize: 10, color: '#E8E4D8' }}>{fmtSize(order.quantity, info.ticker)}</span>
+                {(order.status === 'open' || order.status === 'partial') ? (
                   <button
                     onClick={() => handleCancel(order)}
-                    style={{ background: 'transparent', border: 'none', fontFamily: 'Inter, sans-serif', fontSize: 9, color: 'rgba(232,228,216,0.3)', cursor: 'pointer', padding: 0, borderRadius: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                    style={{ background: 'transparent', border: 'none', fontFamily: IN, fontSize: 9, color: 'rgba(232,228,216,0.28)', cursor: 'pointer', padding: 0, borderRadius: 0, textAlign: 'left' }}
                     onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#CC3333' }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(232,228,216,0.3)' }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(232,228,216,0.28)' }}
                   >
                     Cancel
                   </button>
-                ) : (
-                  <span />
-                )}
+                ) : <span />}
               </div>
             ))}
           </div>
@@ -474,38 +423,11 @@ function OpenOrdersPanel({
   )
 }
 
-function ChartColumn({
-  pair,
-  midPrice,
-  onToast,
-}: {
-  pair: string
-  midPrice: number | null
-  onToast: (msg: string, v: 'success' | 'error') => void
-}) {
-  const info = MARKET_NAMES[pair] ?? {
-    base: pair.split('-')[0] ?? pair,
-    quote: pair.split('-')[1] ?? '',
-    baseTicker: pair.split('-')[0] ?? pair,
-  }
+function ChartColumn({ pair, midPrice, onToast }: { pair: string; midPrice: number | null; onToast: (msg: string, v: 'success' | 'error') => void }) {
   const [timeframe, setTimeframe] = useState<Timeframe>('1H')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(232,228,216,0.07)', overflow: 'hidden' }}>
-      <div style={{ padding: '22px 28px 0', flexShrink: 0 }}>
-        <div style={{ lineHeight: 1 }}>
-          <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 38, fontWeight: 900, color: '#E8E4D8' }}>
-            {info.base}
-          </span>
-          <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 38, fontWeight: 400, fontStyle: 'italic', color: 'rgba(232,228,216,0.3)' }}>
-            {' / '}{info.quote}
-          </span>
-        </div>
-        <div style={{ fontFamily: 'Inter, sans-serif', fontWeight: 300, fontSize: 10, color: 'rgba(232,228,216,0.22)', letterSpacing: '0.08em', marginTop: 5 }}>
-          Central limit order book · Ethereum Sepolia · Live
-        </div>
-      </div>
-
       <TimeframeRow timeframe={timeframe} onChange={setTimeframe} />
       <ChartArea pair={pair} midPrice={midPrice} timeframe={timeframe} />
       <OpenOrdersPanel pair={pair} onToast={onToast} />
@@ -522,7 +444,8 @@ function OrderBookPanel({
   asks: { price: string; quantity: string }[]
   pair: string
 }) {
-  const baseTicker = MARKET_NAMES[pair]?.baseTicker ?? pair.split('-')[0] ?? 'BASE'
+  const info = getMarketInfo(pair)
+  const decimals = getPriceDecimals(pair)
 
   const topAsks = useMemo(() => asks.slice(0, 10).reverse(), [asks])
   const topBids = useMemo(() => bids.slice(0, 10), [bids])
@@ -544,14 +467,14 @@ function OrderBookPanel({
   return (
     <div style={{ width: 200, borderRight: '1px solid rgba(232,228,216,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(232,228,216,0.05)', flexShrink: 0 }}>
-        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.2)' }}>
+        <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.2)' }}>
           ORDER BOOK
         </span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '5px 12px', flexShrink: 0 }}>
         {['PRICE', 'SIZE'].map((h) => (
-          <span key={h} style={{ fontFamily: 'Inter, sans-serif', fontSize: 7, textTransform: 'uppercase', color: 'rgba(232,228,216,0.18)', letterSpacing: '0.1em' }}>
+          <span key={h} style={{ fontFamily: IN, fontSize: 7, textTransform: 'uppercase', color: 'rgba(232,228,216,0.18)', letterSpacing: '0.1em' }}>
             {h}
           </span>
         ))}
@@ -563,24 +486,18 @@ function OrderBookPanel({
           return (
             <div key={`ask-${lvl.price}`} style={{ position: 'relative', padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
               <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(204,51,51,0.08)' }} />
-              <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#CC3333', position: 'relative', zIndex: 1 }}>
-                {fmtPrice(lvl.price)}
-              </span>
-              <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#CC3333', textAlign: 'right', position: 'relative', zIndex: 1 }}>
-                {fmtSize(lvl.quantity, baseTicker)}
-              </span>
+              <span style={{ fontFamily: CN, fontSize: 10.5, color: '#CC3333', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
+              <span style={{ fontFamily: CN, fontSize: 10.5, color: '#CC3333', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
             </div>
           )
         })}
       </div>
 
       <div style={{ padding: '5px 12px', borderTop: '1px solid rgba(232,228,216,0.04)', borderBottom: '1px solid rgba(232,228,216,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, color: 'rgba(232,228,216,0.3)' }}>
-          ◆ {spread ?? '—'}
-        </span>
+        <span style={{ fontFamily: IN, fontSize: 8, color: 'rgba(232,228,216,0.3)' }}>◆ {spread ?? '—'}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#6B8A5A', display: 'inline-block', flexShrink: 0 }} />
-          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 7, color: 'rgba(107,138,90,0.6)', letterSpacing: '0.12em' }}>LIVE</span>
+          <span style={{ fontFamily: IN, fontSize: 7, color: 'rgba(107,138,90,0.6)', letterSpacing: '0.12em' }}>LIVE</span>
         </div>
       </div>
 
@@ -590,12 +507,65 @@ function OrderBookPanel({
           return (
             <div key={`bid-${lvl.price}`} style={{ position: 'relative', padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
               <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(107,138,90,0.08)' }} />
-              <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#6B8A5A', position: 'relative', zIndex: 1 }}>
-                {fmtPrice(lvl.price)}
-              </span>
-              <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#6B8A5A', textAlign: 'right', position: 'relative', zIndex: 1 }}>
-                {fmtSize(lvl.quantity, baseTicker)}
-              </span>
+              <span style={{ fontFamily: CN, fontSize: 10.5, color: '#6B8A5A', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
+              <span style={{ fontFamily: CN, fontSize: 10.5, color: '#6B8A5A', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function MarketSelectorColumn({ currentPair, markets }: { currentPair: string; markets: MarketResponse[] }) {
+  const router = useRouter()
+
+  const marketsById = useMemo(() => Object.fromEntries(markets.map((m) => [m.id, m])), [markets])
+
+  return (
+    <div style={{ width: 180, borderRight: '1px solid rgba(232,228,216,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(232,228,216,0.05)', flexShrink: 0 }}>
+        <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.2)' }}>
+          MARKETS
+        </span>
+      </div>
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {ORDERED_PAIRS.map((pair) => {
+          const market = marketsById[pair]
+          const info = getMarketInfo(pair)
+          const change = pairChange(pair)
+          const changeStr = (change >= 0 ? '+' : '') + change.toFixed(2) + '%'
+          const isPositive = change >= 0
+          const isActive = pair === currentPair
+          const bid = market?.best_bid ? parseFloat(market.best_bid) : null
+          const decimals = getPriceDecimals(pair)
+
+          return (
+            <div
+              key={pair}
+              onClick={() => router.push(`/markets/${pair}`)}
+              style={{
+                padding: '9px 12px',
+                borderBottom: '1px solid rgba(232,228,216,0.03)',
+                borderLeft: isActive ? '2px solid #E8E4D8' : '2px solid transparent',
+                background: isActive ? 'rgba(232,228,216,0.04)' : 'transparent',
+                cursor: 'pointer',
+                transition: 'background 0.1s',
+                paddingLeft: isActive ? 10 : 12,
+              }}
+              onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'rgba(232,228,216,0.025)' }}
+              onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: 11, color: '#E8E4D8' }}>{info.ticker}</span>
+                <span style={{ fontFamily: CN, fontSize: 10, color: '#E8E4D8' }}>
+                  {bid ? bid.toFixed(decimals) : '—'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: IN, fontSize: 8, color: 'rgba(232,228,216,0.2)' }}>USDC</span>
+                <span style={{ fontFamily: IN, fontSize: 9, color: isPositive ? '#6B8A5A' : '#CC3333' }}>{changeStr}</span>
+              </div>
             </div>
           )
         })}
@@ -624,11 +594,7 @@ function OrderEntryPanel({
   const [submitting, setSubmitting] = useState(false)
   const [balances, setBalances] = useState<{ base: string; quote: string }>({ base: '0', quote: '0' })
 
-  const info = MARKET_NAMES[pair] ?? {
-    base: pair.split('-')[0] ?? pair,
-    quote: pair.split('-')[1] ?? '',
-    baseTicker: pair.split('-')[0] ?? pair,
-  }
+  const info = getMarketInfo(pair)
 
   const bestBid = bids[0]?.price ?? null
   const bestAsk = asks[0]?.price ?? null
@@ -638,25 +604,25 @@ function OrderEntryPanel({
 
   useEffect(() => {
     if (!address) return
-    const fetch = () => {
+    const doFetch = () => {
       getBalances(address).then((res) => {
         if (res.ok && res.data) {
-          const baseB = res.data.find((b) => b.asset.toUpperCase() === info.baseTicker.toUpperCase())
-          const quoteB = res.data.find((b) => b.asset.toUpperCase() === info.quote.toUpperCase())
+          const baseB = res.data.find((b) => b.asset.toUpperCase() === info.ticker.toUpperCase())
+          const quoteB = res.data.find((b) => b.asset.toUpperCase() === info.quoteTicker.toUpperCase())
           setBalances({
             base: baseB ? parseFloat(baseB.available).toFixed(4) : '0',
             quote: quoteB ? parseFloat(quoteB.available).toFixed(2) : '0',
           })
         }
-      })
+      }).catch(() => {})
     }
-    fetch()
-    const interval = setInterval(fetch, 10_000)
+    doFetch()
+    const interval = setInterval(doFetch, 10_000)
     return () => clearInterval(interval)
-  }, [address, info.baseTicker, info.quote])
+  }, [address, info.ticker, info.quoteTicker])
 
   const availableBalance = side === 'buy' ? balances.quote : balances.base
-  const availableAsset = side === 'buy' ? info.quote : info.baseTicker
+  const availableAsset = side === 'buy' ? info.quoteTicker : info.ticker
 
   const total = useMemo(() => {
     const p = parseFloat(price)
@@ -727,7 +693,7 @@ function OrderEntryPanel({
               border: 'none',
               borderBottom: orderType === t ? '2px solid #E8E4D8' : '2px solid transparent',
               color: orderType === t ? '#E8E4D8' : 'rgba(232,228,216,0.25)',
-              fontFamily: 'Inter, sans-serif',
+              fontFamily: IN,
               fontSize: 9,
               textTransform: 'uppercase',
               letterSpacing: '0.1em',
@@ -749,7 +715,7 @@ function OrderEntryPanel({
             style={{
               padding: 9,
               textAlign: 'center',
-              fontFamily: 'Inter, sans-serif',
+              fontFamily: IN,
               fontWeight: 600,
               fontSize: 10,
               textTransform: 'uppercase',
@@ -774,19 +740,15 @@ function OrderEntryPanel({
 
       <div style={{ padding: 12, flex: 1, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 8, borderBottom: '1px solid rgba(232,228,216,0.05)' }}>
-          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,228,216,0.2)' }}>
-            AVAILABLE
-          </span>
-          <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: 'rgba(232,228,216,0.5)' }}>
-            {availableBalance} {availableAsset}
-          </span>
+          <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.18em', color: 'rgba(232,228,216,0.2)' }}>AVAILABLE</span>
+          <span style={{ fontFamily: CN, fontSize: 10, color: 'rgba(232,228,216,0.5)' }}>{availableBalance} {availableAsset}</span>
         </div>
 
         {(orderType === 'limit' || orderType === 'stop') && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)' }}>
-                PRICE ({info.quote})
+            <div style={{ marginBottom: 4 }}>
+              <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)' }}>
+                PRICE (USDC)
               </span>
             </div>
             <input
@@ -794,8 +756,8 @@ function OrderEntryPanel({
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="0.00"
-              style={{ width: '100%', background: '#111110', border: '1px solid rgba(232,228,216,0.08)', color: '#E8E4D8', fontFamily: 'Courier New, monospace', fontSize: 12, padding: '8px 10px', borderRadius: 0, outline: 'none', boxSizing: 'border-box' }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = 'rgba(232,228,216,0.18)' }}
+              style={{ width: '100%', background: '#111110', border: '1px solid rgba(232,228,216,0.08)', color: '#E8E4D8', fontFamily: CN, fontSize: 12, padding: '8px 10px', borderRadius: 0, outline: 'none', boxSizing: 'border-box' }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'rgba(232,228,216,0.2)' }}
               onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(232,228,216,0.08)' }}
             />
             <div style={{ display: 'flex', gap: 3, marginTop: 4 }}>
@@ -807,7 +769,7 @@ function OrderEntryPanel({
                 <button
                   key={label}
                   onClick={() => val && setPrice(parseFloat(val).toFixed(4))}
-                  style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, color: 'rgba(232,228,216,0.25)', padding: '2px 7px', border: '1px solid rgba(232,228,216,0.06)', background: 'transparent', cursor: 'pointer', borderRadius: 0 }}
+                  style={{ fontFamily: IN, fontSize: 8, color: 'rgba(232,228,216,0.25)', padding: '2px 7px', border: '1px solid rgba(232,228,216,0.06)', background: 'transparent', cursor: 'pointer', borderRadius: 0 }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = '#E8E4D8'; e.currentTarget.style.borderColor = 'rgba(232,228,216,0.15)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(232,228,216,0.25)'; e.currentTarget.style.borderColor = 'rgba(232,228,216,0.06)' }}
                 >
@@ -819,16 +781,16 @@ function OrderEntryPanel({
         )}
 
         <div>
-          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', display: 'block', marginBottom: 4 }}>
-            SIZE ({info.baseTicker})
+          <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', display: 'block', marginBottom: 4 }}>
+            SIZE ({info.ticker})
           </span>
           <input
             type="number"
             value={size}
             onChange={(e) => setSize(e.target.value)}
             placeholder="0.0000"
-            style={{ width: '100%', background: '#111110', border: '1px solid rgba(232,228,216,0.08)', color: '#E8E4D8', fontFamily: 'Courier New, monospace', fontSize: 12, padding: '8px 10px', borderRadius: 0, outline: 'none', boxSizing: 'border-box' }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = 'rgba(232,228,216,0.18)' }}
+            style={{ width: '100%', background: '#111110', border: '1px solid rgba(232,228,216,0.08)', color: '#E8E4D8', fontFamily: CN, fontSize: 12, padding: '8px 10px', borderRadius: 0, outline: 'none', boxSizing: 'border-box' }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = 'rgba(232,228,216,0.2)' }}
             onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(232,228,216,0.08)' }}
           />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 3, marginTop: 4 }}>
@@ -836,7 +798,7 @@ function OrderEntryPanel({
               <button
                 key={label}
                 onClick={() => handlePctClick(pct)}
-                style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, padding: 4, border: '1px solid rgba(232,228,216,0.06)', color: 'rgba(232,228,216,0.25)', background: 'transparent', textAlign: 'center', cursor: 'pointer', borderRadius: 0 }}
+                style={{ fontFamily: IN, fontSize: 8, padding: 4, border: '1px solid rgba(232,228,216,0.06)', color: 'rgba(232,228,216,0.25)', background: 'transparent', textAlign: 'center', cursor: 'pointer', borderRadius: 0 }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = '#E8E4D8'; e.currentTarget.style.borderColor = 'rgba(232,228,216,0.15)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(232,228,216,0.25)'; e.currentTarget.style.borderColor = 'rgba(232,228,216,0.06)' }}
               >
@@ -854,18 +816,18 @@ function OrderEntryPanel({
             >
               {postOnly && <span style={{ color: '#E8E4D8', fontSize: 10, lineHeight: 1 }}>✓</span>}
             </div>
-            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'rgba(232,228,216,0.35)' }}>Post-only</span>
+            <span style={{ fontFamily: IN, fontSize: 11, color: 'rgba(232,228,216,0.35)' }}>Post-only</span>
           </div>
         )}
 
         <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid rgba(232,228,216,0.06)', display: 'flex', flexDirection: 'column', gap: 5 }}>
           {[
-            { label: 'TOTAL', value: total ? `${total} ${info.quote}` : '—' },
+            { label: 'TOTAL', value: total ? `${total} ${info.quoteTicker}` : '—' },
             { label: 'FEE', value: '0.00 USDC' },
           ].map(({ label, value }) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)' }}>{label}</span>
-              <span style={{ fontFamily: 'Courier New, monospace', fontSize: 10, color: '#E8E4D8' }}>{value}</span>
+              <span style={{ fontFamily: IN, fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)' }}>{label}</span>
+              <span style={{ fontFamily: CN, fontSize: 10, color: '#E8E4D8' }}>{value}</span>
             </div>
           ))}
         </div>
@@ -877,7 +839,7 @@ function OrderEntryPanel({
         style={{
           margin: '0 12px 12px',
           padding: 12,
-          fontFamily: 'Inter, sans-serif',
+          fontFamily: IN,
           fontWeight: 600,
           fontSize: 10,
           textTransform: 'uppercase',
@@ -895,13 +857,7 @@ function OrderEntryPanel({
           opacity: isConnected && submitting ? 0.6 : 1,
         }}
       >
-        {!isConnected
-          ? 'CONNECT WALLET'
-          : submitting
-          ? '...'
-          : side === 'buy'
-          ? `BUY ${info.baseTicker}`
-          : `SELL ${info.baseTicker}`}
+        {!isConnected ? 'CONNECT WALLET' : submitting ? '...' : side === 'buy' ? `BUY ${info.ticker}` : `SELL ${info.ticker}`}
       </button>
     </div>
   )
@@ -931,7 +887,7 @@ export default function TradingPage({ params }: { params: { pair: string } }) {
           setBids(res.data.bids)
           setAsks(res.data.asks)
         }
-      })
+      }).catch(() => {})
     }
     fetchBook()
     const interval = setInterval(fetchBook, 2000)
@@ -942,19 +898,19 @@ export default function TradingPage({ params }: { params: { pair: string } }) {
     const fetchMarkets = () => {
       listMarkets().then((res) => {
         if (res.ok && res.data) setMarkets(res.data)
-      })
+      }).catch(() => {})
     }
     fetchMarkets()
-    const interval = setInterval(fetchMarkets, 5000)
+    const interval = setInterval(fetchMarkets, 10_000)
     return () => clearInterval(interval)
   }, [])
 
   return (
     <>
       <style>{`
-        @keyframes slideInRight { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         * { box-sizing: border-box; }
-        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
         input[type=number] { -moz-appearance: textfield; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -964,7 +920,8 @@ export default function TradingPage({ params }: { params: { pair: string } }) {
       <div style={{ height: 'calc(100vh - 96px)', display: 'flex', flexDirection: 'column', background: '#0C0C0C', overflow: 'hidden' }}>
         <TopBar pair={pair} market={market} />
 
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 200px 240px', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '180px 1fr 200px 240px', overflow: 'hidden' }}>
+          <MarketSelectorColumn currentPair={pair} markets={markets} />
           <ChartColumn pair={pair} midPrice={midPrice} onToast={addToast} />
           <OrderBookPanel bids={bids} asks={asks} pair={pair} />
           <OrderEntryPanel pair={pair} bids={bids} asks={asks} onToast={addToast} />
