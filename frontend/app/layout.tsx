@@ -1,6 +1,6 @@
 'use client'
 
-import { IBM_Plex_Mono } from 'next/font/google'
+import { IBM_Plex_Mono, Playfair_Display, Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth'
 import Nav from '@/components/Nav'
@@ -9,8 +9,23 @@ import { usePathname } from 'next/navigation'
 
 const ibmPlexMono = IBM_Plex_Mono({
   subsets: ['latin'],
-  variable: '--font-inter',
+  variable: '--font-mono',
   weight: ['400', '600', '700'],
+  display: 'swap',
+})
+
+const playfairDisplay = Playfair_Display({
+  subsets: ['latin'],
+  weight: ['400', '700', '900'],
+  style: ['normal', 'italic'],
+  variable: '--font-playfair',
+  display: 'swap',
+})
+
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600'],
+  variable: '--font-inter-sans',
   display: 'swap',
 })
 
@@ -18,8 +33,8 @@ function BetaBanner() {
   return (
     <div
       style={{
-        background: '#080C10',
-        borderBottom: '1px solid rgba(0, 210, 210, 0.2)',
+        background: '#0C0C0C',
+        borderBottom: '1px solid rgba(232,228,216,0.08)',
         padding: '8px 24px',
         display: 'flex',
         alignItems: 'center',
@@ -31,12 +46,12 @@ function BetaBanner() {
         right: 0,
         height: '36px',
         zIndex: 200,
-        fontFamily: 'var(--font-inter)',
+        fontFamily: 'var(--font-inter-sans), sans-serif',
         fontSize: '0.72rem',
         letterSpacing: '0.08em',
       }}
     >
-      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#00D2D2' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'rgba(232,228,216,0.5)' }}>
         <motion.span
           animate={{ opacity: [1, 0.15, 1] }}
           transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
@@ -45,16 +60,16 @@ function BetaBanner() {
         </motion.span>
         PUBLIC BETA
       </span>
-      <span style={{ color: '#7BA4B8' }}>
+      <span style={{ color: 'rgba(232,228,216,0.25)' }}>
         Ethereum Sepolia Testnet — Do not use real funds
       </span>
       <a
         href="https://monolithsystematicllc.mintlify.app/introduction/what-is-vela"
         target="_blank"
         rel="noopener noreferrer"
-        style={{ color: '#00D2D2', textDecoration: 'none' }}
-        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+        style={{ color: 'rgba(232,228,216,0.4)', textDecoration: 'none' }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = '#E8E4D8')}
+        onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.4)')}
       >
         Learn more →
       </a>
@@ -70,7 +85,7 @@ export default function RootLayout({
   const pathname = usePathname()
 
   return (
-    <html lang="en" className={ibmPlexMono.variable}>
+    <html lang="en" className={`${ibmPlexMono.variable} ${playfairDisplay.variable} ${inter.variable}`}>
       <head>
         <title>Vela Exchange</title>
         <meta name="description" content="High-performance verifiable spot DEX" />

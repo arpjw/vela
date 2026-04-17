@@ -1,1077 +1,752 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
-import Link from 'next/link'
-import { motion } from 'framer-motion'
-import { listMarkets, type MarketResponse } from '@/lib/api'
-import { fetchLivePrices, type LivePrices } from '@/lib/prices'
-import { getWsClient, type WsServerMessage } from '@/lib/ws'
-import { Button } from '@/components/ui/Button'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
-const EASE = [0.25, 0.1, 0.25, 1] as const
-const LEVELS = 15
+const GENESIS_HEX = `00000000 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3B A3 ED FD 7A 7B 12 B2 7A C7 2C 3E 67 76 8F 61 7F C8 1B C3 88 8A 51 32 3A 9F B8 AA 4B 1E 5E 4A 29 AB 5F 49 FF FF 00 1D 1D AC 2B 7C 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FF FF FF FF 4D 04 FF FF 00 1D 01 04 45 54 68 65 20 54 69 6D 65 73 20 30 33 2F 4A 61 6E 2F 32 30 30 39 20 43 68 61 6E 63 65 6C 6C 6F 72 20 6F 6E 20 62 72 69 6E 6B 20 6F 66 20 73 65 63 6F 6E 64 20 62 61 69 6C 6F 75 74 20 66 6F 72 20 62 61 6E 6B 73 FF FF FF FF 01 00 F2 05 2A 01 00 00 00 43 41 04 67 8A FD B0 FE 55 48 27 19 67 F1 A6 71 30 B7 10 5C D6 A8 28 E0 39 09 A6 79 62 E0 EA 1F 61 DE B6 49 F6 BC 3F 4C EF 38 C4 F3 55 04 E5 1E C1 12 DE 5C 38 4D F7 BA 0B 8D 57 8A 4C 70 2B 6B F1 1D 5F AC 00 00 00 00`
 
-interface BookRow {
-  price: string
-  quantity: string
-}
+const REPEATED_HEX = Array(30).fill(GENESIS_HEX).join(' ')
 
-interface OrderBook {
-  bids: BookRow[]
-  asks: BookRow[]
-}
+const RAIN_BYTES = '00 01 3B A3 ED FD 7A 7B 12 B2 7A C7 2C 3E 67 76 8F 61 7F C8 1B C3 88 8A 51 32 3A 9F B8 AA 4B 1E 5E 4A 29 AB 5F 49 FF FF 00 1D AC 2B 7C FF FF FF FF 4D 04 FF FF 00 1D 01 04 45 54 68 65 20 54 69 6D 65 73 20 30 33 2F 4A 61 6E 2F 32 30 30 39 20 43 68 61 6E 63 65 6C 6C 6F 72 20 6F 6E 20 62 72 69 6E 6B 20 6F 66 20 73 65 63 6F 6E 64 20 62 61 69 6C 6F 75 74 20 66 6F 72 20 62 61 6E 6B 73 FF FF FF FF 01 00 F2 05 2A 01 43 41 04 67 8A FD B0 FE 55 48 27 19 67 F1 A6 71 30 B7 10 5C D6 A8 28 E0 39 09 A6 79 62 E0 EA 1F 61 DE B6 49 F6 BC 3F 4C EF 38 C4 F3 55 04 E5 1E C1 12 DE 5C 38 4D F7 BA 0B 8D 57 8A 4C 70 2B 6B F1 1D 5F AC 00 00 00 00'
 
-const MOCK_BIDS: BookRow[] = [
-  { price: '42150.00', quantity: '2.4500' },
-  { price: '42103.00', quantity: '0.8200' },
-  { price: '42056.00', quantity: '3.1000' },
-  { price: '42009.00', quantity: '1.5600' },
-  { price: '41962.00', quantity: '4.2300' },
-  { price: '41915.00', quantity: '0.3800' },
-  { price: '41868.00', quantity: '2.9100' },
-  { price: '41821.00', quantity: '1.1400' },
-  { price: '41774.00', quantity: '3.7600' },
-  { price: '41727.00', quantity: '0.6700' },
-  { price: '41680.00', quantity: '2.1800' },
-  { price: '41633.00', quantity: '4.5200' },
-  { price: '41586.00', quantity: '1.3300' },
-  { price: '41539.00', quantity: '0.9100' },
-  { price: '41492.00', quantity: '3.4700' },
+const RAIN_COL_CONTENT = Array(10).fill(RAIN_BYTES).join(' ')
+
+const RAIN_COLUMNS = [
+  { left: '3%' },
+  { left: '9%' },
+  { left: '15%' },
+  { left: '21%' },
+  { left: '27%' },
+  { left: '73%' },
+  { left: '79%' },
+  { left: '85%' },
+  { left: '91%' },
+  { left: '97%' },
 ]
 
-const MOCK_ASKS: BookRow[] = [
-  { price: '42200.00', quantity: '1.8300' },
-  { price: '42251.00', quantity: '3.2100' },
-  { price: '42302.00', quantity: '0.7400' },
-  { price: '42353.00', quantity: '2.5600' },
-  { price: '42404.00', quantity: '4.1200' },
-  { price: '42455.00', quantity: '0.4900' },
-  { price: '42506.00', quantity: '1.6800' },
-  { price: '42557.00', quantity: '3.9300' },
-  { price: '42608.00', quantity: '0.2300' },
-  { price: '42659.00', quantity: '2.8700' },
-  { price: '42710.00', quantity: '1.4200' },
-  { price: '42761.00', quantity: '4.7800' },
-  { price: '42812.00', quantity: '0.5600' },
-  { price: '42863.00', quantity: '2.1900' },
-  { price: '42914.00', quantity: '3.6400' },
-]
+const PF = "var(--font-playfair), 'Playfair Display', serif"
+const IN = "var(--font-inter-sans), 'Inter', sans-serif"
 
-const MOCK_BOOK: OrderBook = { bids: MOCK_BIDS, asks: MOCK_ASKS }
-
-type FlashDir = 'up' | 'down' | null
-
-function stepBook(book: OrderBook): OrderBook {
-  const midShift = Math.random() * 0.0004 - 0.0002
-
-  const bids: BookRow[] = book.bids.map((row, i) => ({
-    price: (parseFloat(row.price) * (1 + midShift)).toFixed(2),
-    quantity: Math.max(0.01, parseFloat(row.quantity) * (1 + (i % 2 === 0 ? 1 : -1) * Math.random() * 0.1)).toFixed(4),
-  }))
-
-  const asks: BookRow[] = book.asks.map((row, i) => ({
-    price: (parseFloat(row.price) * (1 + midShift)).toFixed(2),
-    quantity: Math.max(0.01, parseFloat(row.quantity) * (1 + (i % 2 === 0 ? 1 : -1) * Math.random() * 0.1)).toFixed(4),
-  }))
-
-  const numReplace = Math.random() < 0.5 ? 1 : 2
-  for (let r = 0; r < numReplace; r++) {
-    if (Math.random() < 0.5 && bids.length > 2) {
-      const idx = 1 + Math.floor(Math.random() * (bids.length - 1))
-      const base = parseFloat(bids[0].price)
-      bids[idx] = {
-        price: (base - (idx + Math.random()) * 47).toFixed(2),
-        quantity: (0.1 + Math.random() * 4).toFixed(4),
-      }
-    } else if (asks.length > 2) {
-      const idx = 1 + Math.floor(Math.random() * (asks.length - 1))
-      const base = parseFloat(asks[0].price)
-      asks[idx] = {
-        price: (base + (idx + Math.random()) * 51).toFixed(2),
-        quantity: (0.1 + Math.random() * 4).toFixed(4),
-      }
-    }
-  }
-
-  return { bids, asks }
-}
-
-function tradeBook(book: OrderBook): OrderBook {
-  const isBidTrade = Math.random() < 0.5
-
-  if (isBidTrade && book.bids.length > 1) {
-    const newBids = book.bids.slice(1)
-    const base = parseFloat(newBids[newBids.length - 1].price)
-    newBids.push({
-      price: (base - 47 - Math.random() * 50).toFixed(2),
-      quantity: (0.1 + Math.random() * 2).toFixed(4),
-    })
-    return { bids: newBids, asks: book.asks }
-  } else if (book.asks.length > 1) {
-    const newAsks = book.asks.slice(1)
-    const base = parseFloat(newAsks[newAsks.length - 1].price)
-    newAsks.push({
-      price: (base + 51 + Math.random() * 50).toFixed(2),
-      quantity: (0.1 + Math.random() * 2).toFixed(4),
-    })
-    return { bids: book.bids, asks: newAsks }
-  }
-
-  return book
-}
-
-const HEADLINE: { text: string; color: string }[] = [
-  { text: 'Trade with', color: '#E8F4F8' },
-  { text: 'provable', color: '#00D2D2' },
-  { text: 'fairness.', color: '#00B0B0' },
-]
-
-const OVERLAY_STATS: { num: string; label: string; color: string }[] = [
-  { num: '1.08 μs', label: 'MATCH LATENCY', color: '#00B0B0' },
-  { num: '57.3k',   label: 'OPS / SEC',     color: '#00D2D2' },
-  { num: '4.7×',    label: 'FASTER THAN PULSE', color: '#00B0B0' },
-]
-
-const PERF_BLOCKS: { num: string; unit: string; label: string; sub: string; color: string }[] = [
-  { num: '1.08', unit: 'μs', label: 'MATCH LATENCY', sub: 'p50, release build, Apple Silicon M2', color: '#00B0B0' },
-  { num: '57.3k', unit: '', label: 'OPS / SECOND', sub: 'realistic MM workload, 98% cancel/2% fill', color: '#00D2D2' },
-  { num: '4.7×', unit: '', label: 'FASTER THAN PULSE', sub: 'the leading open-source DEX engine', color: '#00B0B0' },
-  { num: '73', unit: '', label: 'TESTS PASSING', sub: 'engine, state, API, committer, zkVM', color: '#00D2D2' },
-]
-
-const galleryLabel: CSSProperties = {
-  fontFamily: 'var(--font-inter)',
-  fontWeight: 500,
-  textTransform: 'uppercase',
-  letterSpacing: '0.25em',
-  fontSize: '0.65rem',
-  color: '#1A3040',
-}
-
-function OrderBookViz({ book, flashDir }: { book: OrderBook; flashDir: FlashDir }) {
-  const displayBids = useMemo(
-    () => [...book.bids].slice(0, LEVELS).reverse(),
-    [book.bids],
-  )
-  const displayAsks = useMemo(
-    () => book.asks.slice(0, LEVELS),
-    [book.asks],
-  )
-
-  const maxBidQty = useMemo(
-    () => Math.max(...displayBids.map((b) => parseFloat(b.quantity)), 0.01),
-    [displayBids],
-  )
-  const maxAskQty = useMemo(
-    () => Math.max(...displayAsks.map((a) => parseFloat(a.quantity)), 0.01),
-    [displayAsks],
-  )
-
-  const bestBid = parseFloat(book.bids[0]?.price ?? '0')
-  const bestAsk = parseFloat(book.asks[0]?.price ?? '0')
-  const mid = (bestBid + bestAsk) / 2
-  const spreadBps = mid > 0 ? ((bestAsk - bestBid) / mid * 10000).toFixed(1) : '—'
-  const rowH = `${100 / LEVELS}%`
-
+function HexTexture() {
   return (
     <div
       style={{
         position: 'absolute',
         inset: 0,
-        zIndex: 10,
-        display: 'flex',
+        fontFamily: "'Courier New', monospace",
+        fontSize: '10.5px',
+        lineHeight: 1.6,
+        letterSpacing: '0.05em',
+        wordBreak: 'break-all',
+        color: 'rgba(232,228,216,0.09)',
+        padding: '16px 20px',
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        zIndex: 0,
       }}
     >
-      <div
-        style={{
-          width: 'calc(50% - 4vw)',
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        {displayBids.map((bid, i) => {
-          const pct = (parseFloat(bid.quantity) / maxBidQty) * 100
-          return (
-            <div
-              key={`bid-${i}`}
-              style={{
-                height: rowH,
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-end',
-              }}
-            >
-              <div
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: 0,
-                  height: '100%',
-                  width: `${pct}%`,
-                  background: 'linear-gradient(to left, rgba(0,210,210,0.12), transparent)',
-                  transition: 'width 400ms cubic-bezier(0.25,0.1,0.25,1)',
-                }}
-              />
-              <div
-                style={{
-                  position: 'relative',
-                  zIndex: 1,
-                  textAlign: 'right',
-                  paddingRight: 10,
-                  lineHeight: 1.2,
-                }}
-              >
-                <div
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'clamp(0.65rem,1vw,0.85rem)',
-                    color: '#00D2D2',
-                    opacity: 0.9,
-                  }}
-                >
-                  {bid.price}
-                </div>
-                <div
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '0.65rem',
-                    color: 'rgba(0,210,210,0.6)',
-                  }}
-                >
-                  {bid.quantity}
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      {REPEATED_HEX}
+    </div>
+  )
+}
 
-      <div
-        style={{
-          width: '8vw',
-          height: '100%',
-          position: 'relative',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+function HexRainColumns() {
+  return (
+    <>
+      {RAIN_COLUMNS.map((pos, i) => (
         <div
+          key={i}
           style={{
             position: 'absolute',
             top: 0,
-            bottom: 0,
-            left: '50%',
-            width: 1,
-            background: 'rgba(14,26,32,0.08)',
-            transform: 'translateX(-50%)',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 6,
+            left: pos.left,
+            writingMode: 'vertical-rl',
+            fontFamily: "'Courier New', monospace",
+            fontSize: '8.5px',
+            lineHeight: 1.55,
+            color: 'rgba(232,228,216,0.07)',
+            letterSpacing: '0.06em',
+            pointerEvents: 'none',
+            height: '100%',
+            overflow: 'hidden',
           }}
         >
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              background:
-                flashDir === 'up'
-                  ? '#00F0F0'
-                  : flashDir === 'down'
-                    ? '#00B0B0'
-                    : '#00D2D2',
-              transform: 'rotate(45deg)',
-              flexShrink: 0,
-              transition: 'background 300ms ease',
-            }}
-          />
-          <div
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.7rem',
-              color: '#00B0B0',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {spreadBps} bps
-          </div>
+          {RAIN_COL_CONTENT}
         </div>
-      </div>
+      ))}
+    </>
+  )
+}
 
-      <div
+const STATS = [
+  {
+    num: '1.08 μs',
+    label: 'MATCH LATENCY',
+    sub: 'p50, Apple Silicon, release build',
+  },
+  {
+    num: '57.3k',
+    label: 'OPERATIONS / SECOND',
+    sub: 'Realistic MM workload, 98% cancel / 2% fill',
+  },
+  {
+    num: '4.7×',
+    label: 'FASTER THAN PULSE',
+    sub: 'Per-operation vs. the leading open-source DEX',
+  },
+]
+
+const HOW_IT_WORKS = [
+  {
+    num: '01',
+    title: 'WALLET-SIGNED ORDERS',
+    body: 'Every order carries your wallet signature. The engine verifies it before matching. No one can place or cancel orders on your behalf.',
+  },
+  {
+    num: '02',
+    title: 'OPTIMISTIC-ZK PROOFS',
+    body: 'Every batch of trades is provable on-chain. Challenge any batch and receive a cryptographic fraud proof. Trust the math, not the operator.',
+  },
+  {
+    num: '03',
+    title: 'ON-CHAIN SETTLEMENT',
+    body: 'Funds are held in a smart contract on Ethereum. Withdraw directly to your wallet. Emergency exit available after a 7-day timelock — no permission needed.',
+  },
+]
+
+const FOOTER_LINKS = [
+  { label: 'Privacy Policy', href: '/privacy' },
+  { label: 'Terms', href: '/privacy-disclosure' },
+  { label: 'Docs', href: 'https://monolithsystematicllc.mintlify.app' },
+  { label: 'GitHub', href: 'https://github.com/arpjw/vela' },
+]
+
+export default function HomePage() {
+  const router = useRouter()
+  const [email, setEmail] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+
+  function handleEmailSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (email.includes('@') && email.includes('.')) {
+      localStorage.setItem('vela_beta_email', email)
+      setSubmitted(true)
+    }
+  }
+
+  return (
+    <div style={{ background: '#0C0C0C' }}>
+      <section
         style={{
-          width: 'calc(50% - 4vw)',
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
+          position: 'relative',
+          minHeight: 'calc(100vh - 96px)',
+          background: '#0C0C0C',
+          overflow: 'hidden',
         }}
       >
-        {displayAsks.map((ask, i) => {
-          const pct = (parseFloat(ask.quantity) / maxAskQty) * 100
-          return (
-            <div
-              key={`ask-${i}`}
+        <HexTexture />
+        <div style={{ position: 'relative', zIndex: 2, padding: '100px 52px 80px' }}>
+          <div
+            style={{
+              fontFamily: IN,
+              fontSize: '10px',
+              letterSpacing: '0.2em',
+              color: 'rgba(232,228,216,0.3)',
+              textTransform: 'uppercase',
+              marginBottom: '24px',
+            }}
+          >
+            Monolith Systematic — Public Beta
+          </div>
+          <div>
+            <span
               style={{
-                height: rowH,
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-start',
+                display: 'block',
+                fontFamily: PF,
+                fontWeight: 900,
+                fontSize: '72px',
+                color: '#E8E4D8',
+                lineHeight: 0.95,
               }}
             >
+              Trade with
+            </span>
+            <span
+              style={{
+                display: 'block',
+                fontFamily: PF,
+                fontWeight: 400,
+                fontStyle: 'italic',
+                fontSize: '72px',
+                color: 'rgba(232,228,216,0.38)',
+                lineHeight: 0.95,
+              }}
+            >
+              provable
+            </span>
+            <span
+              style={{
+                display: 'block',
+                fontFamily: PF,
+                fontWeight: 900,
+                fontSize: '72px',
+                color: '#E8E4D8',
+                lineHeight: 0.95,
+              }}
+            >
+              fairness.
+            </span>
+          </div>
+          <p
+            style={{
+              fontFamily: IN,
+              fontWeight: 300,
+              fontSize: '15px',
+              lineHeight: 1.75,
+              color: 'rgba(232,228,216,0.35)',
+              maxWidth: '480px',
+              marginTop: '28px',
+            }}
+          >
+            A central limit order book exchange where every match is cryptographically verified. The first DEX that doesn&apos;t make you choose between speed and transparency.
+          </p>
+          <div style={{ display: 'flex', gap: '12px', marginTop: '40px' }}>
+            <button
+              type="button"
+              onClick={() => router.push('/markets/ETH-USDC')}
+              style={{
+                background: '#E8E4D8',
+                color: '#0C0C0C',
+                fontFamily: IN,
+                fontWeight: 600,
+                fontSize: '13px',
+                padding: '14px 36px',
+                border: 'none',
+                borderRadius: 0,
+                cursor: 'pointer',
+              }}
+            >
+              Launch Exchange →
+            </button>
+            <button
+              type="button"
+              onClick={() => window.open('https://ssrn.com/abstract=6579199', '_blank')}
+              style={{
+                background: 'transparent',
+                border: '1px solid rgba(232,228,216,0.15)',
+                color: 'rgba(232,228,216,0.5)',
+                fontFamily: IN,
+                fontSize: '13px',
+                padding: '14px 28px',
+                borderRadius: 0,
+                cursor: 'pointer',
+              }}
+            >
+              Read the paper
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section
+        style={{
+          background: '#E8E4D8',
+          padding: '90px 52px',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '80px',
+            alignItems: 'start',
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: IN,
+                fontSize: '11px',
+                letterSpacing: '0.18em',
+                color: 'rgba(12,12,12,0.4)',
+                textTransform: 'uppercase',
+                marginBottom: '20px',
+              }}
+            >
+              Performance
+            </div>
+            <div>
               <div
                 style={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  height: '100%',
-                  width: `${pct}%`,
-                  background: 'linear-gradient(to right, rgba(204,51,51,0.12), transparent)',
-                  transition: 'width 400ms cubic-bezier(0.25,0.1,0.25,1)',
+                  fontFamily: PF,
+                  fontWeight: 900,
+                  fontSize: '48px',
+                  color: '#0C0C0C',
+                  lineHeight: 1.02,
                 }}
-              />
+              >
+                Built for speed
+              </div>
               <div
                 style={{
-                  position: 'relative',
-                  zIndex: 1,
-                  textAlign: 'left',
-                  paddingLeft: 10,
-                  lineHeight: 1.2,
+                  fontFamily: PF,
+                  fontWeight: 400,
+                  fontStyle: 'italic',
+                  fontSize: '48px',
+                  color: 'rgba(12,12,12,0.35)',
+                  lineHeight: 1.02,
+                }}
+              >
+                and verification.
+              </div>
+            </div>
+            <p
+              style={{
+                fontFamily: IN,
+                fontWeight: 300,
+                fontSize: '14px',
+                lineHeight: 1.8,
+                color: 'rgba(12,12,12,0.45)',
+                maxWidth: '400px',
+                marginTop: '22px',
+              }}
+            >
+              Vela&apos;s matching engine runs at sub-microsecond latency while keeping a full cryptographic record of every trade. Performance and transparency — for the first time, together.
+            </p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            {STATS.map((stat) => (
+              <div
+                key={stat.label}
+                style={{
+                  background: 'rgba(12,12,12,0.04)',
+                  borderLeft: '3px solid rgba(12,12,12,0.08)',
+                  padding: '26px 30px',
                 }}
               >
                 <div
                   style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'clamp(0.65rem,1vw,0.85rem)',
-                    color: '#00B0B0',
-                    opacity: 0.9,
+                    fontFamily: PF,
+                    fontWeight: 900,
+                    fontSize: '40px',
+                    color: '#0C0C0C',
                   }}
                 >
-                  {ask.price}
+                  {stat.num}
                 </div>
                 <div
                   style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '0.65rem',
-                    color: 'rgba(0,176,176,0.6)',
+                    fontFamily: IN,
+                    fontSize: '9px',
+                    letterSpacing: '0.2em',
+                    color: 'rgba(12,12,12,0.3)',
+                    textTransform: 'uppercase',
+                    marginTop: '4px',
                   }}
                 >
-                  {ask.quantity}
+                  {stat.label}
+                </div>
+                <div
+                  style={{
+                    fontFamily: IN,
+                    fontSize: '11px',
+                    color: 'rgba(12,12,12,0.28)',
+                    marginTop: '3px',
+                  }}
+                >
+                  {stat.sub}
                 </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function TextOverlay() {
-  let wordIndex = 0
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 20,
-        pointerEvents: 'none',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          top: 28,
-          right: '6vw',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        <motion.span
-          animate={{ opacity: [0, 1, 0] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ color: '#00D2D2', display: 'inline-block' }}
-        >
-          ●
-        </motion.span>
-        <span
-          style={{
-            fontFamily: 'var(--font-inter)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.15em',
-            fontSize: '0.65rem',
-            color: '#00D2D2',
-          }}
-        >
-          LIVE
-        </span>
-      </div>
-
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '15vh',
-          left: '6vw',
-        }}
-      >
-        {HEADLINE.map((line) => (
-          <div key={line.text} style={{ display: 'block', lineHeight: 0.9 }}>
-            {line.text.split(' ').map((word) => {
-              const delay = 0.5 + wordIndex++ * 0.1
-              return (
-                <motion.span
-                  key={word}
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 0.92, y: 0 }}
-                  transition={{ delay, duration: 0.8, ease: EASE }}
-                  style={{
-                    display: 'inline-block',
-                    fontFamily: 'var(--font-inter)',
-                    fontWeight: 800,
-                    fontSize: 'clamp(3rem,5vw,5rem)',
-                    color: line.color,
-                    lineHeight: 0.9,
-                    marginRight: '0.28em',
-                    ...(word === 'provable' ? { textShadow: '0 0 30px rgba(0,210,210,0.4)' } : {}),
-                  }}
-                >
-                  {word}
-                </motion.span>
-              )
-            })}
-          </div>
-        ))}
-      </div>
-
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '15vh',
-          right: '6vw',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'flex-end',
-          gap: 20,
-        }}
-      >
-        {OVERLAY_STATS.map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.2 + i * 0.1, duration: 0.6, ease: EASE }}
-            style={{ textAlign: 'right' }}
-          >
-            <div
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontWeight: 600,
-                fontSize: '1.4rem',
-                color: stat.color,
-                lineHeight: 1,
-              }}
-            >
-              {stat.num}
-            </div>
-            <div
-              style={{
-                fontFamily: 'var(--font-inter)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.15em',
-                fontSize: '0.58rem',
-                color: '#1A3040',
-                marginTop: 3,
-              }}
-            >
-              {stat.label}
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      <motion.div
-        animate={{ y: [0, 6, 0] }}
-        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-        style={{
-          position: 'absolute',
-          bottom: '6vh',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          fontFamily: 'var(--font-inter)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.2em',
-          fontSize: '0.65rem',
-          color: '#1A3040',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        ↓{'  '}EXPLORE
-      </motion.div>
-    </div>
-  )
-}
-
-function MarketRow({ market: m, idx, livePrices }: { market: MarketResponse; idx: number; livePrices: LivePrices }) {
-  const [hovered, setHovered] = useState(false)
-  const livePrice = livePrices[m.id]?.price
-  const change = livePrices[m.id]?.change24h
-
-  return (
-    <motion.tr
-      initial={{ opacity: 0, x: -20 }}
-      whileInView={{ opacity: 1, x: 0 }}
-      viewport={{ once: true }}
-      transition={{ delay: idx * 0.06, duration: 0.5, ease: EASE }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        borderBottom: '1px solid rgba(14,26,32,0.06)',
-        borderLeft: hovered ? '3px solid #00D2D2' : '3px solid transparent',
-        background: hovered ? 'rgba(0,210,210,0.04)' : 'transparent',
-        transition: 'background 150ms ease, border-left-color 150ms ease',
-      }}
-    >
-      <td style={{ padding: '14px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              background: 'rgba(0,210,210,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 10,
-              fontWeight: 700,
-              color: '#00D2D2',
-              flexShrink: 0,
-            }}
-          >
-            {m.base.slice(0, 2)}
-          </div>
-          <div>
-            <div
-              style={{
-                fontWeight: 600,
-                fontSize: '0.875rem',
-                color: '#E8F4F8',
-              }}
-            >
-              {m.base}/{m.quote}
-            </div>
-            <div
-              style={{
-                fontSize: '0.625rem',
-                color: '#1A3040',
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-              }}
-            >
-              {m.id}
-            </div>
+            ))}
           </div>
         </div>
-      </td>
-      <td
-        style={{
-          padding: '14px 16px',
-          textAlign: 'right',
-          fontFamily: 'var(--font-mono)',
-          fontWeight: 500,
-          fontSize: '0.875rem',
-          color: '#E8F4F8',
-        }}
-      >
-        {livePrice != null ? livePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-      </td>
-      <td
-        style={{
-          padding: '14px 16px',
-          textAlign: 'right',
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.875rem',
-          color: change != null
-            ? change > 0
-              ? '#00A090'
-              : change < 0
-                ? '#00D2D2'
-                : '#1A3040'
-            : '#1A3040',
-        }}
-      >
-        {change != null
-          ? (change >= 0 ? '+' : '') + change.toFixed(2) + '%'
-          : '—'}
-      </td>
-      <td
-        style={{
-          padding: '14px 16px',
-          textAlign: 'right',
-          fontFamily: 'var(--font-mono)',
-          fontWeight: 500,
-          fontSize: '0.875rem',
-          color: '#00D2D2',
-        }}
-      >
-        {m.best_bid ?? '—'}
-      </td>
-      <td
-        style={{
-          padding: '14px 16px',
-          textAlign: 'right',
-          fontFamily: 'var(--font-mono)',
-          fontWeight: 500,
-          fontSize: '0.875rem',
-          color: '#00B0B0',
-        }}
-      >
-        {m.best_ask ?? '—'}
-      </td>
-      <td
-        style={{
-          padding: '14px 16px',
-          textAlign: 'right',
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.875rem',
-          color: '#00B0B0',
-        }}
-      >
-        {m.spread ?? '—'}
-      </td>
-      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-        <Link href={`/markets/${encodeURIComponent(m.id)}`}>
-          <button
-            type="button"
-            style={{
-              padding: '4px 16px',
-              border: '1px solid rgba(0,210,210,0.4)',
-              color: '#00D2D2',
-              fontSize: '0.7rem',
-              fontWeight: 500,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              background: 'transparent',
-              cursor: 'pointer',
-              borderRadius: 0,
-            }}
-          >
-            Trade
-          </button>
-        </Link>
-      </td>
-    </motion.tr>
-  )
-}
+      </section>
 
-function EmailCapture() {
-  const [email, setEmail] = useState('')
-  const [submitted, setSubmitted] = useState(false)
-  const [error, setError] = useState('')
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!email.includes('@') || !email.includes('.')) {
-      setError('Please enter a valid email address.')
-      return
-    }
-    localStorage.setItem('vela_beta_email', email)
-    setSubmitted(true)
-    setError('')
-  }
-
-  return (
-    <section
-      style={{
-        width: '100%',
-        background: 'rgba(0,210,210,0.04)',
-        borderTop: '1px solid rgba(0,210,210,0.1)',
-        borderBottom: '1px solid rgba(0,210,210,0.1)',
-        padding: '40px 6vw',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '5vw',
-        boxSizing: 'border-box',
-      }}
-    >
-      <div style={{ flex: '0 0 60%' }}>
-        <div style={galleryLabel}>Join the Beta</div>
-        <div
-          style={{
-            fontFamily: 'var(--font-inter)',
-            fontWeight: 600,
-            fontSize: '1.3rem',
-            color: '#E8F4F8',
-            marginTop: 8,
-          }}
-        >
-          Be among the first to trade on Vela.
-        </div>
-        <div
-          style={{
-            fontSize: '0.85rem',
-            color: '#7BA4B8',
-            marginTop: 8,
-          }}
-        >
-          Get early access updates, trading incentives, and the mainnet announcement.
-        </div>
-      </div>
-      <div style={{ flex: '0 0 40%' }}>
-        {submitted ? (
-          <div
-            style={{
-              fontFamily: 'var(--font-inter)',
-              fontSize: '0.9rem',
-              color: '#00D2D2',
-            }}
-          >
-            You&apos;re on the list. We&apos;ll be in touch.
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} style={{ display: 'flex' }}>
-            <input
-              type="text"
-              value={email}
-              onChange={(e) => { setEmail(e.target.value); setError('') }}
-              placeholder="your@email.com"
-              style={{
-                flex: 1,
-                fontFamily: 'var(--font-inter)',
-                background: 'transparent',
-                border: '1px solid rgba(0,210,210,0.3)',
-                borderRight: 'none',
-                color: '#E8F4F8',
-                padding: '10px 16px',
-                fontSize: '0.85rem',
-                outline: 'none',
-                borderRadius: 0,
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = '#00D2D2')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(0,210,210,0.3)')}
-            />
-            <button
-              type="submit"
-              style={{
-                fontFamily: 'var(--font-inter)',
-                fontWeight: 600,
-                background: '#00D2D2',
-                color: '#080C10',
-                padding: '10px 20px',
-                border: 'none',
-                cursor: 'pointer',
-                borderRadius: 0,
-                fontSize: '0.85rem',
-                letterSpacing: '0.05em',
-                flexShrink: 0,
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#00B0B0')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = '#00D2D2')}
-            >
-              JOIN →
-            </button>
-          </form>
-        )}
-        {error && (
-          <div style={{ fontFamily: 'var(--font-inter)', fontSize: '0.75rem', color: '#cc5555', marginTop: 6 }}>
-            {error}
-          </div>
-        )}
-      </div>
-    </section>
-  )
-}
-
-function MarketsRoom({ markets, livePrices }: { markets: MarketResponse[]; livePrices: LivePrices }) {
-  const COLS = ['Pair', 'Last Price', '24H Change', 'Bid', 'Ask', 'Spread', '']
-
-  return (
-    <section style={{ padding: '80px 6vw', background: '#080C10' }}>
-      <div style={galleryLabel}>The Collection</div>
-      <div
-        style={{
-          height: 1,
-          background: 'rgba(14,26,32,0.1)',
-          marginTop: 8,
-          marginBottom: 48,
-        }}
-      />
-      {markets.length === 0 ? (
-        <p style={{ color: '#1A3040', fontSize: '0.85rem' }}>
-          No markets available.
-        </p>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {COLS.map((col) => (
-                  <th
-                    key={col}
-                    style={{
-                      ...galleryLabel,
-                      padding: '0 16px 12px',
-                      textAlign:
-                        col === 'Pair' || col === '' ? 'left' : 'right',
-                      borderBottom: '1px solid rgba(14,26,32,0.1)',
-                      fontWeight: 500,
-                    }}
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {markets.map((m, idx) => (
-                <MarketRow key={m.id} market={m} idx={idx} livePrices={livePrices} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function PerformanceRoom() {
-  return (
-    <section style={{ padding: '80px 6vw', background: '#0D1218' }}>
-      <div style={galleryLabel}>The Numbers</div>
-      <div
-        style={{
-          height: 1,
-          background: 'rgba(14,26,32,0.1)',
-          marginTop: 8,
-          marginBottom: 48,
-        }}
-      />
-      <div style={{ display: 'flex' }}>
-        {PERF_BLOCKS.map((block, i) => (
-          <motion.div
-            key={block.label}
-            initial={{ opacity: 0, y: 40 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: i * 0.12, duration: 0.6, ease: EASE }}
-            style={{
-              flex: 1,
-              padding: '0 48px',
-              borderLeft:
-                i > 0 ? '1px solid rgba(14,26,32,0.1)' : 'none',
-            }}
-          >
-            <div
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontWeight: 700,
-                fontSize: 'clamp(3rem,5vw,5rem)',
-                color: block.color,
-                lineHeight: 1,
-              }}
-            >
-              {block.num}
-              {block.unit && (
-                <span style={{ fontSize: '60%' }}>{block.unit}</span>
-              )}
-            </div>
-            <div style={{ ...galleryLabel, marginTop: 8 }}>{block.label}</div>
-            <div
-              style={{
-                fontFamily: 'var(--font-inter)',
-                fontSize: '0.7rem',
-                color: '#1A3040',
-                marginTop: 6,
-              }}
-            >
-              {block.sub}
-            </div>
-          </motion.div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function EnterSection({ markets }: { markets: MarketResponse[] }) {
-  const tradeHref =
-    markets.length > 0
-      ? `/markets/${encodeURIComponent(markets[0].id)}`
-      : '/markets/ETH-USDC'
-
-  const LINES: { text: string; color: string }[] = [
-    { text: 'Every trade.', color: '#E8F4F8' },
-    { text: 'Verifiable.', color: '#00D2D2' },
-    { text: 'On-chain.', color: '#00B0B0' },
-  ]
-
-  return (
-    <section
-      style={{ padding: '120px 6vw', background: '#080C10', textAlign: 'center' }}
-    >
-      <div>
-        {LINES.map((line, i) => (
-          <motion.div
-            key={line.text}
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: i * 0.1, duration: 0.7, ease: EASE }}
-            style={{
-              fontFamily: 'var(--font-inter)',
-              fontWeight: 800,
-              fontSize: 'clamp(2.5rem,5vw,4.5rem)',
-              color: line.color,
-              lineHeight: 0.95,
-            }}
-          >
-            {line.text}
-          </motion.div>
-        ))}
-      </div>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ delay: 0.4, duration: 0.6, ease: EASE }}
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: 16,
-          marginTop: 48,
-        }}
-      >
-        <Link href={tradeHref}>
-          <Button size="lg">Enter Exchange</Button>
-        </Link>
-        <a
-          href="https://ssrn.com/abstract=6579199"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Button variant="ghost" size="lg">
-            Read the Paper
-          </Button>
-        </a>
-      </motion.div>
-      <div
-        style={{
-          fontFamily: 'var(--font-inter)',
-          fontSize: '0.7rem',
-          color: '#1A3040',
-          marginTop: 24,
-        }}
-      >
-        Vela Exchange v0.1.0 — Monolith Research Vol. 2 — MIT License
-      </div>
-    </section>
-  )
-}
-
-export default function HomePage() {
-  const [markets, setMarkets] = useState<MarketResponse[]>([])
-  const [livePrices, setLivePrices] = useState<LivePrices>({})
-  const [book, setBook] = useState<OrderBook>(MOCK_BOOK)
-  const [pair, setPair] = useState<string | null>(null)
-  const [simBook, setSimBook] = useState<OrderBook>(MOCK_BOOK)
-  const [flashDir, setFlashDir] = useState<FlashDir>(null)
-  const simRef = useRef<{ book: OrderBook; tickCount: number; prevMid: number; flashTimer: ReturnType<typeof setTimeout> | null }>({
-    book: MOCK_BOOK,
-    tickCount: 0,
-    prevMid: (parseFloat(MOCK_BOOK.bids[0].price) + parseFloat(MOCK_BOOK.asks[0].price)) / 2,
-    flashTimer: null,
-  })
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      const s = simRef.current
-      s.tickCount++
-      const next = s.tickCount % 4 === 0 ? tradeBook(s.book) : stepBook(s.book)
-      s.book = next
-      setSimBook(next)
-
-      const newMid = (parseFloat(next.bids[0].price) + parseFloat(next.asks[0].price)) / 2
-      if (newMid !== s.prevMid) {
-        const dir: FlashDir = newMid > s.prevMid ? 'up' : 'down'
-        setFlashDir(dir)
-        if (s.flashTimer !== null) clearTimeout(s.flashTimer)
-        s.flashTimer = setTimeout(() => setFlashDir(null), 500)
-      }
-      s.prevMid = newMid
-    }, 800)
-
-    return () => {
-      clearInterval(id)
-      if (simRef.current.flashTimer !== null) clearTimeout(simRef.current.flashTimer)
-    }
-  }, [])
-
-  useEffect(() => {
-    listMarkets()
-      .then((res) => {
-        if (res.ok && res.data && res.data.length > 0) {
-          setMarkets(res.data)
-          setPair(res.data[0].id)
-        }
-      })
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    fetchLivePrices().then(setLivePrices)
-  }, [])
-
-  useEffect(() => {
-    if (!pair) return
-    const ws = getWsClient()
-    ws.connect()
-    const channel = `book:${pair}`
-    ws.subscribe([channel])
-
-    const removeHandler = ws.onMessage((msg: WsServerMessage) => {
-      if (msg.type === 'book_snapshot' && msg.market === pair) {
-        setBook({
-          bids: msg.bids.map(([price, quantity]) => ({ price, quantity })),
-          asks: msg.asks.map(([price, quantity]) => ({ price, quantity })),
-        })
-      }
-    })
-
-    return () => {
-      removeHandler()
-      ws.unsubscribe([channel])
-    }
-  }, [pair])
-
-  return (
-    <div>
       <section
         style={{
           position: 'relative',
-          height: 'calc(100vh - 60px)',
+          background: '#111110',
+          padding: '90px 52px',
           overflow: 'hidden',
         }}
       >
-        <OrderBookViz book={simBook} flashDir={flashDir} />
-        <TextOverlay />
+        <HexTexture />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '80px',
+              alignItems: 'end',
+              marginBottom: '64px',
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontFamily: IN,
+                  fontSize: '11px',
+                  letterSpacing: '0.18em',
+                  color: 'rgba(232,228,216,0.3)',
+                  textTransform: 'uppercase',
+                  marginBottom: '16px',
+                }}
+              >
+                How it works
+              </div>
+              <div>
+                <div
+                  style={{
+                    fontFamily: PF,
+                    fontWeight: 900,
+                    fontSize: '46px',
+                    color: '#E8E4D8',
+                    lineHeight: 1.05,
+                  }}
+                >
+                  Exchange-grade
+                </div>
+                <div
+                  style={{
+                    fontFamily: PF,
+                    fontWeight: 900,
+                    fontSize: '46px',
+                    color: '#E8E4D8',
+                    lineHeight: 1.05,
+                  }}
+                >
+                  infrastructure.
+                </div>
+                <div
+                  style={{
+                    fontFamily: PF,
+                    fontWeight: 400,
+                    fontStyle: 'italic',
+                    fontSize: '46px',
+                    color: 'rgba(232,228,216,0.3)',
+                    lineHeight: 1.05,
+                  }}
+                >
+                  On-chain proof.
+                </div>
+              </div>
+            </div>
+            <div>
+              <p
+                style={{
+                  fontFamily: IN,
+                  fontWeight: 300,
+                  fontSize: '14px',
+                  lineHeight: 1.8,
+                  color: 'rgba(232,228,216,0.32)',
+                }}
+              >
+                Every order signed by your wallet. Every batch provable on-chain. Funds held in a smart contract. Withdraw without asking anyone&apos;s permission — ever.
+              </p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: '1px',
+              background: 'rgba(232,228,216,0.06)',
+            }}
+          >
+            {HOW_IT_WORKS.map((card) => (
+              <div key={card.num} style={{ background: '#111110', padding: '36px 28px' }}>
+                <div
+                  style={{
+                    fontFamily: PF,
+                    fontStyle: 'italic',
+                    fontSize: '42px',
+                    color: 'rgba(232,228,216,0.07)',
+                    marginBottom: '24px',
+                    lineHeight: 1,
+                  }}
+                >
+                  {card.num}
+                </div>
+                <div
+                  style={{
+                    fontFamily: IN,
+                    fontWeight: 600,
+                    fontSize: '11px',
+                    letterSpacing: '0.14em',
+                    textTransform: 'uppercase',
+                    color: '#E8E4D8',
+                    marginBottom: '14px',
+                  }}
+                >
+                  {card.title}
+                </div>
+                <p
+                  style={{
+                    fontFamily: IN,
+                    fontWeight: 300,
+                    fontSize: '13px',
+                    lineHeight: 1.75,
+                    color: 'rgba(232,228,216,0.28)',
+                  }}
+                >
+                  {card.body}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
-      <EmailCapture />
-      <MarketsRoom markets={markets} livePrices={livePrices} />
-      <PerformanceRoom />
-      <EnterSection markets={markets} />
+      <section
+        style={{
+          background: '#E8E4D8',
+          padding: '90px 52px',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: '580px',
+            margin: '0 auto',
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              fontFamily: IN,
+              fontSize: '10px',
+              letterSpacing: '0.2em',
+              color: 'rgba(12,12,12,0.3)',
+              textTransform: 'uppercase',
+              marginBottom: '16px',
+            }}
+          >
+            Early access
+          </div>
+          <div>
+            <span
+              style={{
+                display: 'block',
+                fontFamily: PF,
+                fontWeight: 900,
+                fontSize: '54px',
+                color: '#0C0C0C',
+                lineHeight: 0.98,
+              }}
+            >
+              Join the
+            </span>
+            <span
+              style={{
+                display: 'block',
+                fontFamily: PF,
+                fontWeight: 400,
+                fontStyle: 'italic',
+                fontSize: '54px',
+                color: 'rgba(12,12,12,0.32)',
+                lineHeight: 0.98,
+              }}
+            >
+              beta.
+            </span>
+          </div>
+          <p
+            style={{
+              fontFamily: IN,
+              fontWeight: 300,
+              fontSize: '14px',
+              lineHeight: 1.75,
+              color: 'rgba(12,12,12,0.42)',
+              marginTop: '18px',
+            }}
+          >
+            Get early access updates, trading incentives, and the mainnet launch announcement.
+          </p>
+          {submitted ? (
+            <div
+              style={{
+                fontFamily: IN,
+                fontSize: '13px',
+                color: 'rgba(12,12,12,0.5)',
+                marginTop: '36px',
+              }}
+            >
+              You&apos;re on the list. We&apos;ll be in touch.
+            </div>
+          ) : (
+            <form onSubmit={handleEmailSubmit} style={{ display: 'flex', marginTop: '36px' }}>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your@email.com"
+                style={{
+                  flex: 1,
+                  fontFamily: IN,
+                  fontSize: '13px',
+                  color: '#0C0C0C',
+                  background: 'white',
+                  border: '1px solid rgba(12,12,12,0.18)',
+                  borderRight: 'none',
+                  padding: '14px 18px',
+                  borderRadius: 0,
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="submit"
+                style={{
+                  fontFamily: IN,
+                  fontWeight: 600,
+                  fontSize: '12px',
+                  color: '#E8E4D8',
+                  background: '#0C0C0C',
+                  padding: '14px 26px',
+                  border: 'none',
+                  borderRadius: 0,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Get started →
+              </button>
+            </form>
+          )}
+          <div
+            style={{
+              fontFamily: IN,
+              fontSize: '10px',
+              color: 'rgba(12,12,12,0.28)',
+              letterSpacing: '0.05em',
+              marginTop: '14px',
+            }}
+          >
+            Public beta · Ethereum Sepolia · No real funds
+          </div>
+        </div>
+      </section>
+
+      <section
+        style={{
+          position: 'relative',
+          background: '#0C0C0C',
+          minHeight: '400px',
+          overflow: 'hidden',
+        }}
+      >
+        <HexRainColumns />
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            textAlign: 'center',
+            padding: '80px 52px 0',
+          }}
+        >
+          <div
+            style={{
+              fontFamily: PF,
+              fontWeight: 700,
+              fontSize: '46px',
+              color: '#E8E4D8',
+            }}
+          >
+            Ready to trade?
+          </div>
+          <div
+            style={{
+              fontFamily: PF,
+              fontWeight: 400,
+              fontStyle: 'italic',
+              fontSize: '46px',
+              color: 'rgba(232,228,216,0.35)',
+            }}
+          >
+            Start now.
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => router.push('/markets/ETH-USDC')}
+              style={{
+                background: '#E8E4D8',
+                color: '#0C0C0C',
+                fontFamily: IN,
+                fontWeight: 600,
+                fontSize: '13px',
+                padding: '14px 44px',
+                border: 'none',
+                borderRadius: 0,
+                cursor: 'pointer',
+                display: 'inline-block',
+                marginTop: '32px',
+              }}
+            >
+              Launch Exchange →
+            </button>
+          </div>
+          <span
+            style={{
+              display: 'block',
+              fontFamily: PF,
+              fontWeight: 900,
+              fontStyle: 'italic',
+              fontSize: '140px',
+              color: 'rgba(232,228,216,0.04)',
+              letterSpacing: '-4px',
+              lineHeight: 1,
+              textAlign: 'center',
+              paddingBottom: 0,
+              marginTop: '40px',
+            }}
+          >
+            Vela
+          </span>
+        </div>
+      </section>
+
+      <footer
+        style={{
+          background: '#0C0C0C',
+          borderTop: '1px solid rgba(232,228,216,0.06)',
+          padding: '24px 52px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <div style={{ display: 'flex', gap: '24px' }}>
+          {FOOTER_LINKS.map(({ label, href }) => (
+            <a
+              key={label}
+              href={href}
+              target={href.startsWith('http') ? '_blank' : undefined}
+              rel={href.startsWith('http') ? 'noopener noreferrer' : undefined}
+              style={{
+                fontFamily: IN,
+                fontSize: '11px',
+                color: 'rgba(232,228,216,0.2)',
+                textDecoration: 'none',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.45)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.2)')}
+            >
+              {label}
+            </a>
+          ))}
+        </div>
+        <span
+          style={{
+            fontFamily: IN,
+            fontSize: '11px',
+            color: 'rgba(232,228,216,0.2)',
+          }}
+        >
+          © 2026 Monolith Systematic LLC
+        </span>
+      </footer>
     </div>
   )
 }

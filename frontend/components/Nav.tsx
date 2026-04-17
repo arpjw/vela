@@ -8,11 +8,14 @@ import { useAuth } from '@/lib/auth'
 import { Spinner } from '@/components/ui/Spinner'
 
 const LINKS = [
-  { href: '/',           label: 'Markets'   },
+  { href: '/markets',    label: 'Markets'   },
   { href: '/dashboard',  label: 'Dashboard' },
   { href: '/analytics',  label: 'Analytics' },
   { href: '/history',    label: 'History'   },
 ]
+
+const PF = "var(--font-playfair), 'Playfair Display', serif"
+const IN = "var(--font-inter-sans), 'Inter', sans-serif"
 
 export default function Nav() {
   const pathname = usePathname()
@@ -35,21 +38,35 @@ export default function Nav() {
     : null
 
   return (
-    <header style={{ background: '#080C10', position: 'fixed', top: '36px', left: 0, right: 0, zIndex: 100 }} className="border-b border-border">
+    <header
+      style={{
+        background: '#0C0C0C',
+        borderBottom: '1px solid rgba(232,228,216,0.08)',
+        position: 'fixed',
+        top: '36px',
+        left: 0,
+        right: 0,
+        zIndex: 100,
+      }}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[60px] flex items-center justify-between gap-6">
-        <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <div className="w-6 h-6 bg-ochre flex items-center justify-center">
-            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-              <path d="M2 10L7 2l5 8H2z" fill="#E8F4F8" />
-            </svg>
-          </div>
-          <span className="font-bold text-ink text-base tracking-[0.06em] uppercase">VELA</span>
+        <Link href="/" className="flex items-center shrink-0">
+          <span
+            style={{
+              fontFamily: PF,
+              fontStyle: 'italic',
+              fontSize: '24px',
+              color: '#E8E4D8',
+              lineHeight: 1,
+            }}
+          >
+            Vela
+          </span>
         </Link>
 
         <nav className="hidden sm:flex items-center gap-0">
           {LINKS.map(({ href, label }, i) => {
-            const active =
-              href === '/' ? pathname === '/' : pathname.startsWith(href)
+            const active = pathname.startsWith(href)
             return (
               <motion.div
                 key={href}
@@ -59,16 +76,33 @@ export default function Nav() {
               >
                 <Link
                   href={href}
-                  className={[
-                    'relative px-4 py-[18px] text-[0.8rem] font-medium transition-colors duration-150 uppercase tracking-[0.1em] block',
-                    active
-                      ? 'text-ink'
-                      : 'text-brown hover:text-ink',
-                  ].join(' ')}
+                  style={{
+                    fontFamily: IN,
+                    fontSize: '12px',
+                    letterSpacing: '0.02em',
+                    color: active ? '#E8E4D8' : 'rgba(232,228,216,0.38)',
+                    textDecoration: 'none',
+                    display: 'block',
+                    padding: '18px 16px',
+                    position: 'relative',
+                    textTransform: 'uppercase',
+                    transition: 'color 150ms ease',
+                  }}
+                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.color = 'rgba(232,228,216,0.65)' }}
+                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.color = 'rgba(232,228,216,0.38)' }}
                 >
                   {label}
                   {active && (
-                    <span className="absolute bottom-0 left-4 right-4 h-[2px] bg-ochre" />
+                    <span
+                      style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: '16px',
+                        right: '16px',
+                        height: '2px',
+                        background: '#E8E4D8',
+                      }}
+                    />
                   )}
                 </Link>
               </motion.div>
@@ -82,17 +116,30 @@ export default function Nav() {
             >
               <Link
                 href="/deposit"
-                className={[
-                  'relative px-4 py-[18px] text-[0.8rem] font-medium transition-colors duration-150 uppercase tracking-[0.1em] block',
-                  pathname.startsWith('/deposit')
-                    ? 'text-crimson'
-                    : 'text-crimson hover:text-crimson/70',
-                ].join(' ')}
-                style={{ color: '#00D2D2' }}
+                style={{
+                  fontFamily: IN,
+                  fontSize: '12px',
+                  letterSpacing: '0.02em',
+                  color: pathname.startsWith('/deposit') ? '#E8E4D8' : 'rgba(232,228,216,0.38)',
+                  textDecoration: 'none',
+                  display: 'block',
+                  padding: '18px 16px',
+                  position: 'relative',
+                  textTransform: 'uppercase',
+                }}
               >
-                DEPOSIT
+                Deposit
                 {pathname.startsWith('/deposit') && (
-                  <span className="absolute bottom-0 left-4 right-4 h-[2px]" style={{ background: '#00D2D2' }} />
+                  <span
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: '16px',
+                      right: '16px',
+                      height: '2px',
+                      background: '#E8E4D8',
+                    }}
+                  />
                 )}
               </Link>
             </motion.div>
@@ -105,17 +152,30 @@ export default function Nav() {
             >
               <Link
                 href="/withdraw"
-                className={[
-                  'relative px-4 py-[18px] text-[0.8rem] font-medium transition-colors duration-150 uppercase tracking-[0.1em] block',
-                  pathname.startsWith('/withdraw')
-                    ? 'text-crimson'
-                    : 'text-crimson hover:text-crimson/70',
-                ].join(' ')}
-                style={{ color: '#00D2D2' }}
+                style={{
+                  fontFamily: IN,
+                  fontSize: '12px',
+                  letterSpacing: '0.02em',
+                  color: pathname.startsWith('/withdraw') ? '#E8E4D8' : 'rgba(232,228,216,0.38)',
+                  textDecoration: 'none',
+                  display: 'block',
+                  padding: '18px 16px',
+                  position: 'relative',
+                  textTransform: 'uppercase',
+                }}
               >
-                WITHDRAW
+                Withdraw
                 {pathname.startsWith('/withdraw') && (
-                  <span className="absolute bottom-0 left-4 right-4 h-[2px]" style={{ background: '#00D2D2' }} />
+                  <span
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: '16px',
+                      right: '16px',
+                      height: '2px',
+                      background: '#E8E4D8',
+                    }}
+                  />
                 )}
               </Link>
             </motion.div>
@@ -129,42 +189,91 @@ export default function Nav() {
               href="https://monolithsystematicllc.mintlify.app"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-[18px] text-[0.8rem] font-medium transition-colors duration-150 uppercase tracking-[0.1em] block text-brown hover:text-ink"
+              style={{
+                fontFamily: IN,
+                fontSize: '12px',
+                letterSpacing: '0.02em',
+                color: 'rgba(232,228,216,0.38)',
+                textDecoration: 'none',
+                display: 'block',
+                padding: '18px 16px',
+                textTransform: 'uppercase',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.65)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.38)')}
             >
-              DOCS
+              Docs
             </a>
           </motion.div>
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {isConnected && shortAddress ? (
-            <div className="flex items-center gap-2">
-              <span className="hidden sm:block px-3 py-1.5 bg-canvas border border-border text-xs font-mono text-brown">
-                {shortAddress}
-              </span>
-              <button
-                type="button"
-                onClick={signOut}
-                className="px-3 py-1.5 text-xs font-medium text-brown hover:text-ink transition-colors duration-150 tracking-[0.08em] uppercase"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <motion.button
+            <button
               type="button"
-              onClick={handleConnect}
-              disabled={connecting}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.97 }}
-              transition={{ duration: 0.15 }}
-              className="flex items-center gap-2 px-4 h-8 border-[1.5px] border-ink text-ink text-[0.8rem] font-medium uppercase tracking-[0.08em] hover:bg-ink hover:text-parchment active:bg-ink active:text-parchment transition-colors duration-150 disabled:opacity-50"
+              onClick={signOut}
+              style={{
+                fontFamily: IN,
+                fontWeight: 600,
+                fontSize: '12px',
+                color: '#0C0C0C',
+                background: '#E8E4D8',
+                padding: '8px 20px',
+                border: 'none',
+                borderRadius: 0,
+                cursor: 'pointer',
+              }}
             >
-              {connecting ? (
-                <Spinner size="xs" className="text-ink" />
-              ) : null}
-              Connect Wallet
-            </motion.button>
+              {shortAddress}
+            </button>
+          ) : (
+            <>
+              <motion.button
+                type="button"
+                onClick={handleConnect}
+                disabled={connecting}
+                whileHover={{ opacity: 0.8 }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ duration: 0.15 }}
+                style={{
+                  fontFamily: IN,
+                  fontSize: '12px',
+                  color: 'rgba(232,228,216,0.55)',
+                  background: 'transparent',
+                  border: '1px solid rgba(232,228,216,0.18)',
+                  padding: '8px 18px',
+                  borderRadius: 0,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {connecting ? <Spinner size="xs" className="text-ink" /> : null}
+                Log in
+              </motion.button>
+              <motion.button
+                type="button"
+                onClick={handleConnect}
+                disabled={connecting}
+                whileHover={{ opacity: 0.85 }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ duration: 0.15 }}
+                style={{
+                  fontFamily: IN,
+                  fontWeight: 600,
+                  fontSize: '12px',
+                  color: '#0C0C0C',
+                  background: '#E8E4D8',
+                  padding: '8px 20px',
+                  border: 'none',
+                  borderRadius: 0,
+                  cursor: 'pointer',
+                }}
+              >
+                Get started
+              </motion.button>
+            </>
           )}
         </div>
       </div>
