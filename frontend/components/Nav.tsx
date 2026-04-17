@@ -35,7 +35,7 @@ export default function Nav() {
     : null
 
   return (
-    <header className="sticky top-0 z-40 bg-parchment border-b border-border">
+    <header className="sticky top-[36px] z-[100] bg-parchment border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[60px] flex items-center justify-between gap-6">
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
           <div className="w-6 h-6 bg-ochre flex items-center justify-center">
