@@ -2,81 +2,10 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-
-const GENESIS_HEX = `00000000 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3B A3 ED FD 7A 7B 12 B2 7A C7 2C 3E 67 76 8F 61 7F C8 1B C3 88 8A 51 32 3A 9F B8 AA 4B 1E 5E 4A 29 AB 5F 49 FF FF 00 1D 1D AC 2B 7C 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FF FF FF FF 4D 04 FF FF 00 1D 01 04 45 54 68 65 20 54 69 6D 65 73 20 30 33 2F 4A 61 6E 2F 32 30 30 39 20 43 68 61 6E 63 65 6C 6C 6F 72 20 6F 6E 20 62 72 69 6E 6B 20 6F 66 20 73 65 63 6F 6E 64 20 62 61 69 6C 6F 75 74 20 66 6F 72 20 62 61 6E 6B 73 FF FF FF FF 01 00 F2 05 2A 01 00 00 00 43 41 04 67 8A FD B0 FE 55 48 27 19 67 F1 A6 71 30 B7 10 5C D6 A8 28 E0 39 09 A6 79 62 E0 EA 1F 61 DE B6 49 F6 BC 3F 4C EF 38 C4 F3 55 04 E5 1E C1 12 DE 5C 38 4D F7 BA 0B 8D 57 8A 4C 70 2B 6B F1 1D 5F AC 00 00 00 00`
-
-const REPEATED_HEX = Array(30).fill(GENESIS_HEX).join(' ')
-
-const RAIN_BYTES = '00 01 3B A3 ED FD 7A 7B 12 B2 7A C7 2C 3E 67 76 8F 61 7F C8 1B C3 88 8A 51 32 3A 9F B8 AA 4B 1E 5E 4A 29 AB 5F 49 FF FF 00 1D AC 2B 7C FF FF FF FF 4D 04 FF FF 00 1D 01 04 45 54 68 65 20 54 69 6D 65 73 20 30 33 2F 4A 61 6E 2F 32 30 30 39 20 43 68 61 6E 63 65 6C 6C 6F 72 20 6F 6E 20 62 72 69 6E 6B 20 6F 66 20 73 65 63 6F 6E 64 20 62 61 69 6C 6F 75 74 20 66 6F 72 20 62 61 6E 6B 73 FF FF FF FF 01 00 F2 05 2A 01 43 41 04 67 8A FD B0 FE 55 48 27 19 67 F1 A6 71 30 B7 10 5C D6 A8 28 E0 39 09 A6 79 62 E0 EA 1F 61 DE B6 49 F6 BC 3F 4C EF 38 C4 F3 55 04 E5 1E C1 12 DE 5C 38 4D F7 BA 0B 8D 57 8A 4C 70 2B 6B F1 1D 5F AC 00 00 00 00'
-
-const RAIN_COL_CONTENT = Array(10).fill(RAIN_BYTES).join(' ')
-
-const RAIN_COLUMNS = [
-  { left: '3%' },
-  { left: '9%' },
-  { left: '15%' },
-  { left: '21%' },
-  { left: '27%' },
-  { left: '73%' },
-  { left: '79%' },
-  { left: '85%' },
-  { left: '91%' },
-  { left: '97%' },
-]
+import HexCanvas from '@/components/HexCanvas'
 
 const PF = "var(--font-playfair), 'Playfair Display', serif"
 const IN = "var(--font-inter-sans), 'Inter', sans-serif"
-
-function HexTexture() {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        fontFamily: "'Courier New', monospace",
-        fontSize: '10.5px',
-        lineHeight: 1.6,
-        letterSpacing: '0.05em',
-        wordBreak: 'break-all',
-        color: 'rgba(232,228,216,0.09)',
-        padding: '16px 20px',
-        pointerEvents: 'none',
-        overflow: 'hidden',
-        zIndex: 0,
-      }}
-    >
-      {REPEATED_HEX}
-    </div>
-  )
-}
-
-function HexRainColumns() {
-  return (
-    <>
-      {RAIN_COLUMNS.map((pos, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: pos.left,
-            writingMode: 'vertical-rl',
-            fontFamily: "'Courier New', monospace",
-            fontSize: '8.5px',
-            lineHeight: 1.55,
-            color: 'rgba(232,228,216,0.07)',
-            letterSpacing: '0.06em',
-            pointerEvents: 'none',
-            height: '100%',
-            overflow: 'hidden',
-          }}
-        >
-          {RAIN_COL_CONTENT}
-        </div>
-      ))}
-    </>
-  )
-}
 
 const STATS = [
   {
@@ -144,7 +73,7 @@ export default function HomePage() {
           overflow: 'hidden',
         }}
       >
-        <HexTexture />
+        <HexCanvas />
         <div style={{ position: 'relative', zIndex: 2, padding: '100px 52px 80px' }}>
           <div
             style={{
@@ -371,7 +300,7 @@ export default function HomePage() {
           overflow: 'hidden',
         }}
       >
-        <HexTexture />
+        <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <div
             style={{
@@ -636,7 +565,7 @@ export default function HomePage() {
           overflow: 'hidden',
         }}
       >
-        <HexRainColumns />
+        <HexCanvas />
         <div
           style={{
             position: 'relative',
