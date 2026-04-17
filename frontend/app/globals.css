@@ -110,6 +110,12 @@
   100% { background: transparent; }
 }
 
+@media (max-width: 900px) {
+  .hero-orderbook-col {
+    display: none !important;
+  }
+}
+
 @layer utilities {
   .tabular-nums {
     font-variant-numeric: tabular-nums;

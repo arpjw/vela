@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import HexCanvas from '@/components/HexCanvas'
+import HeroOrderBook from '@/components/HeroOrderBook'
 
 const PF = "var(--font-playfair), 'Playfair Display', serif"
 const IN = "var(--font-inter-sans), 'Inter', sans-serif"
@@ -77,102 +78,123 @@ export default function HomePage() {
         <div style={{ position: 'relative', zIndex: 2, padding: '100px 52px 80px' }}>
           <div
             style={{
-              fontFamily: IN,
-              fontSize: '10px',
-              letterSpacing: '0.2em',
-              color: 'rgba(232,228,216,0.3)',
-              textTransform: 'uppercase',
-              marginBottom: '24px',
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '60px',
+              alignItems: 'center',
             }}
           >
-            Monolith Systematic — Public Beta
-          </div>
-          <div>
-            <span
+            <div>
+              <div
+                style={{
+                  fontFamily: IN,
+                  fontSize: '10px',
+                  letterSpacing: '0.2em',
+                  color: 'rgba(232,228,216,0.3)',
+                  textTransform: 'uppercase',
+                  marginBottom: '24px',
+                }}
+              >
+                Monolith Systematic — Public Beta
+              </div>
+              <div>
+                <span
+                  style={{
+                    display: 'block',
+                    fontFamily: PF,
+                    fontWeight: 900,
+                    fontSize: '72px',
+                    color: '#E8E4D8',
+                    lineHeight: 0.95,
+                  }}
+                >
+                  Trade with
+                </span>
+                <span
+                  style={{
+                    display: 'block',
+                    fontFamily: PF,
+                    fontWeight: 400,
+                    fontStyle: 'italic',
+                    fontSize: '72px',
+                    color: 'rgba(232,228,216,0.38)',
+                    lineHeight: 0.95,
+                  }}
+                >
+                  provable
+                </span>
+                <span
+                  style={{
+                    display: 'block',
+                    fontFamily: PF,
+                    fontWeight: 900,
+                    fontSize: '72px',
+                    color: '#E8E4D8',
+                    lineHeight: 0.95,
+                  }}
+                >
+                  fairness.
+                </span>
+              </div>
+              <p
+                style={{
+                  fontFamily: IN,
+                  fontWeight: 300,
+                  fontSize: '15px',
+                  lineHeight: 1.75,
+                  color: 'rgba(232,228,216,0.35)',
+                  maxWidth: '480px',
+                  marginTop: '28px',
+                }}
+              >
+                A central limit order book exchange where every match is cryptographically verified. The first DEX that doesn&apos;t make you choose between speed and transparency.
+              </p>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '40px' }}>
+                <button
+                  type="button"
+                  onClick={() => router.push('/markets/ETH-USDC')}
+                  style={{
+                    background: '#E8E4D8',
+                    color: '#0C0C0C',
+                    fontFamily: IN,
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    padding: '14px 36px',
+                    border: 'none',
+                    borderRadius: 0,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Launch Exchange →
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.open('https://ssrn.com/abstract=6579199', '_blank')}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid rgba(232,228,216,0.15)',
+                    color: 'rgba(232,228,216,0.5)',
+                    fontFamily: IN,
+                    fontSize: '13px',
+                    padding: '14px 28px',
+                    borderRadius: 0,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Read the paper
+                </button>
+              </div>
+            </div>
+            <div
+              className="hero-orderbook-col"
               style={{
-                display: 'block',
-                fontFamily: PF,
-                fontWeight: 900,
-                fontSize: '72px',
-                color: '#E8E4D8',
-                lineHeight: 0.95,
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
               }}
             >
-              Trade with
-            </span>
-            <span
-              style={{
-                display: 'block',
-                fontFamily: PF,
-                fontWeight: 400,
-                fontStyle: 'italic',
-                fontSize: '72px',
-                color: 'rgba(232,228,216,0.38)',
-                lineHeight: 0.95,
-              }}
-            >
-              provable
-            </span>
-            <span
-              style={{
-                display: 'block',
-                fontFamily: PF,
-                fontWeight: 900,
-                fontSize: '72px',
-                color: '#E8E4D8',
-                lineHeight: 0.95,
-              }}
-            >
-              fairness.
-            </span>
-          </div>
-          <p
-            style={{
-              fontFamily: IN,
-              fontWeight: 300,
-              fontSize: '15px',
-              lineHeight: 1.75,
-              color: 'rgba(232,228,216,0.35)',
-              maxWidth: '480px',
-              marginTop: '28px',
-            }}
-          >
-            A central limit order book exchange where every match is cryptographically verified. The first DEX that doesn&apos;t make you choose between speed and transparency.
-          </p>
-          <div style={{ display: 'flex', gap: '12px', marginTop: '40px' }}>
-            <button
-              type="button"
-              onClick={() => router.push('/markets/ETH-USDC')}
-              style={{
-                background: '#E8E4D8',
-                color: '#0C0C0C',
-                fontFamily: IN,
-                fontWeight: 600,
-                fontSize: '13px',
-                padding: '14px 36px',
-                border: 'none',
-                borderRadius: 0,
-                cursor: 'pointer',
-              }}
-            >
-              Launch Exchange →
-            </button>
-            <button
-              type="button"
-              onClick={() => window.open('https://ssrn.com/abstract=6579199', '_blank')}
-              style={{
-                background: 'transparent',
-                border: '1px solid rgba(232,228,216,0.15)',
-                color: 'rgba(232,228,216,0.5)',
-                fontFamily: IN,
-                fontSize: '13px',
-                padding: '14px 28px',
-                borderRadius: 0,
-                cursor: 'pointer',
-              }}
-            >
-              Read the paper
-            </button>
+              <HeroOrderBook />
+            </div>
           </div>
         </div>
       </section>
