@@ -1,91 +1,51 @@
 ---
 title: "Deposit Funds"
-description: "Fund your Vela account to start trading."
+description: "How to fund your Vela account — ETH on-chain or trust-based for other assets"
 ---
 
-Before you can place orders on Vela, you need a balance in your account. During the public beta, Vela uses a trust-based deposit model — the exchange operator credits your account balance after you initiate a deposit.
+## Overview
+
+Vela supports two deposit modes depending on the asset:
+
+- **ETH** — fully on-chain via the VelaSettlement smart contract on Ethereum Sepolia. Your funds are locked in the contract, not held by Vela.
+- **Other assets (USDC, BTC, SOL, etc.)** — trust-based beta deposits. Funds are credited directly to your engine balance.
+
+## Depositing ETH (On-Chain)
+
+1. Go to [vela.monolithsystematic.com/deposit](https://vela.monolithsystematic.com/deposit)
+2. Connect your MetaMask wallet
+3. Select **ETH** as the asset
+4. Enter the amount and click **Deposit**
+5. MetaMask will prompt you to confirm a transaction to the VelaSettlement contract
+6. Once confirmed, your ETH is locked on-chain and your engine balance is credited
+
+**Contract address:** `0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686`  
+**Network:** Ethereum Sepolia (chainId: 11155111)
+
+You can verify your deposit on [Sepolia Etherscan](https://sepolia.etherscan.io/address/0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686).
+
+## Depositing Other Assets (Trust-Based)
+
+For USDC, BTC, SOL, AVAX, MATIC, LINK, UNI, ARB, OP, AAVE, and DOGE:
+
+1. Go to [vela.monolithsystematic.com/deposit](https://vela.monolithsystematic.com/deposit)
+2. Connect your wallet
+3. Select the asset
+4. Enter the amount and click **Deposit**
+5. Your balance is credited immediately — no on-chain transaction required
 
 <Warning>
-**Beta deposit model:** Deposits in the current beta are **not settled on-chain**. Your balance is held by the exchange operator and tracked in Vela's state layer. On-chain deposit contracts are on the [M6 roadmap](/resources/roadmap). Do not deposit funds you cannot afford to lose.
+Trust-based deposits are held by Monolith Systematic LLC during the beta period. ERC20 on-chain deposits are coming in a future update.
 </Warning>
 
-## Supported Assets
+## Limits
 
-Vela supports deposits in the following assets during beta:
+| Limit | Value |
+|-------|-------|
+| Maximum deposit | 1,000,000 per asset |
+| Minimum deposit | 0.000001 |
+| Deposits per minute | 5 per wallet |
 
-| Asset | Type | Used For |
-|---|---|---|
-| USDC | Quote currency | All markets — required for placing orders |
-| ETH | Base asset | ETH-USDC market |
-| BTC | Base asset | BTC-USDC market |
-| SOL | Base asset | SOL-USDC market |
-| AVAX | Base asset | AVAX-USDC market |
-| MATIC | Base asset | MATIC-USDC market |
-| LINK | Base asset | LINK-USDC market |
-| UNI | Base asset | UNI-USDC market |
-| ARB | Base asset | ARB-USDC market |
-| OP | Base asset | OP-USDC market |
-| AAVE | Base asset | AAVE-USDC market |
-| DOGE | Base asset | DOGE-USDC market |
+## Beta Notice
 
-<Info>
-Most traders only need **USDC** to get started. USDC is the quote asset for all markets. You can buy any base asset once you have a USDC balance.
-</Info>
-
-## How to Deposit (Beta)
-
-<Steps>
-  <Step title="Connect your wallet">
-    Make sure your wallet is connected. See [Connect Your Wallet](/getting-started/connect-wallet) if you haven't done this yet.
-  </Step>
-  <Step title="Navigate to the Deposit page">
-    Click your address in the top navigation and select **Deposit**, or navigate to the **Account** section from the sidebar.
-  </Step>
-  <Step title="Select asset and amount">
-    Choose the asset you want to deposit and enter the amount. The UI will show your connected wallet's balance for that asset.
-  </Step>
-  <Step title="Confirm the deposit">
-    Click **Deposit**. In beta, this sends a signed deposit request to the Vela server. Your wallet signs the request to authenticate it — no on-chain transaction is submitted.
-  </Step>
-  <Step title="Balance credited">
-    Your Vela account balance updates immediately. You can see the new balance in the account sidebar and on the Balances page.
-  </Step>
-</Steps>
-
-## Viewing Your Balances
-
-Your balances are visible in multiple places:
-
-- **Account sidebar** — shown while trading, updates in real time as orders fill
-- **Balances page** — full breakdown of all assets with available vs. reserved (in open orders) amounts
-- **API** — `GET /account/:address/balances` returns your full balance snapshot
-
-### Available vs. Reserved
-
-| Balance Type | Description |
-|---|---|
-| **Total** | All funds credited to your account |
-| **Available** | Funds not locked in open orders — can be used for new orders |
-| **Reserved** | Funds locked as order value in resting limit orders |
-
-When you place a limit order to buy 1 ETH at 3200 USDC, 3200 USDC moves from Available to Reserved. When the order fills, the Reserved USDC is consumed and you receive 1 ETH. If you cancel the order, the 3200 USDC returns to Available.
-
-## Withdrawals
-
-Withdrawals in beta work the same way as deposits: you submit a signed withdrawal request to the server. The server debits your balance and records the withdrawal. On-chain settlement (actual transfer to your wallet) is on the M6 roadmap.
-
-<Warning>
-Withdrawals in beta do **not** transfer funds to your wallet immediately. The withdrawal is recorded in Vela's state layer. On-chain withdrawal settlement requires the smart contract work in M6.
-</Warning>
-
-## What Changes at Mainnet
-
-At mainnet (M6), the deposit model changes to on-chain settlement:
-
-1. A Solidity deposit contract is deployed
-2. You call `deposit()` on the contract with your funds
-3. The contract emits a `Deposited` event
-4. The Vela engine observes the event and credits your account
-5. Withdrawals submit a request that the engine approves, and the contract releases funds to your wallet
-
-This makes deposits and withdrawals trustless — the operator cannot prevent you from withdrawing.
+Vela is currently in public beta on Ethereum Sepolia testnet. Do not deposit real mainnet funds.
