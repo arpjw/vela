@@ -53,7 +53,7 @@ const PLACEHOLDER_SIG = '0x' + '0'.repeat(130)
 export default function OperatorPage() {
   return (
     <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '60px 52px 52px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '16px' }}>
@@ -73,7 +73,7 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '20px' }}>
           The Operator
         </p>
@@ -81,7 +81,7 @@ export default function OperatorPage() {
           Monolith Systematic LLC
         </h2>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: 'rgba(12,12,12,0.07)', marginBottom: '40px' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[1px] mb-10" style={{ background: 'rgba(12,12,12,0.07)' }}>
           {[
             ['ENTITY', 'Monolith Systematic LLC'],
             ['TYPE', 'Delaware Limited Liability Company'],
@@ -121,7 +121,7 @@ export default function OperatorPage() {
         </p>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '52px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '20px' }}>
@@ -131,7 +131,7 @@ export default function OperatorPage() {
             What we can do.
           </h2>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '48px' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-[48px]">
             <div>
               <div style={{ borderLeft: '3px solid #6B8A5A', paddingLeft: '20px' }}>
                 {CAN_DO.map((item) => (
@@ -157,7 +157,7 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '20px' }}>
           Commitments
         </p>
@@ -165,7 +165,7 @@ export default function OperatorPage() {
           Our promise to users.
         </h2>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: 'rgba(12,12,12,0.07)' }}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
           {COMMITMENTS.map((c) => (
             <div key={c.title} style={{ background: 'white', padding: '28px 28px' }}>
               <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>{c.title}</p>
@@ -175,7 +175,7 @@ export default function OperatorPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '52px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '20px' }}>

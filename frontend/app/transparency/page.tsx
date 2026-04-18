@@ -130,7 +130,7 @@ export default function TransparencyPage() {
 
   return (
     <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '60px 52px 40px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-10 lg:px-[52px] lg:pt-[60px] lg:pb-[40px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '16px' }}>
@@ -150,7 +150,7 @@ export default function TransparencyPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '20px' }}>
           Proof of Reserves
         </p>
@@ -161,7 +161,7 @@ export default function TransparencyPage() {
           The VelaSettlement contract on Ethereum holds all deposited funds. The engine tracks all credited balances. These numbers must match — and you can verify it yourself, right now.
         </p>
 
-        <div style={{ display: 'flex', gap: '1px', background: 'rgba(12,12,12,0.05)' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
           <div style={{ background: 'white', padding: '28px 32px', flex: 1 }}>
             <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
               ETH In Contract
@@ -246,7 +246,7 @@ export default function TransparencyPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '52px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', margin: '0 0 12px' }}>
@@ -284,9 +284,9 @@ export default function TransparencyPage() {
             ))}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 120px 100px 180px 180px', padding: '8px 0', borderBottom: '1px solid rgba(232,228,216,0.06)' }}>
-            {['Time', 'Market', 'Price', 'Size', 'Maker', 'Taker'].map((h) => (
-              <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,228,216,0.2)' }}>{h}</span>
+          <div style={{ padding: '8px 0', borderBottom: '1px solid rgba(232,228,216,0.06)' }} className="grid grid-cols-[1fr_80px_100px_80px] lg:grid-cols-[1fr_100px_120px_100px_180px_180px]">
+            {['Time', 'Market', 'Price', 'Size', 'Maker', 'Taker'].map((h, i) => (
+              <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,228,216,0.2)' }} className={i >= 4 ? 'hidden lg:block' : ''}>{h}</span>
             ))}
           </div>
 
@@ -301,7 +301,8 @@ export default function TransparencyPage() {
               return (
                 <div
                   key={trade.id}
-                  style={{ display: 'grid', gridTemplateColumns: '1fr 100px 120px 100px 180px 180px', padding: '9px 0', borderBottom: '1px solid rgba(232,228,216,0.04)', alignItems: 'center' }}
+                  style={{ padding: '9px 0', borderBottom: '1px solid rgba(232,228,216,0.04)', alignItems: 'center' }}
+                  className="grid grid-cols-[1fr_80px_100px_80px] lg:grid-cols-[1fr_100px_120px_100px_180px_180px]"
                 >
                   <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.3)' }}>
                     {new Date(trade.timestamp / 1000).toLocaleTimeString()}
@@ -316,6 +317,7 @@ export default function TransparencyPage() {
                     style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.4)', textDecoration: 'none' }}
                     onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.7)')}
                     onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.4)')}
+                    className="hidden lg:block"
                   >
                     {truncateAddress(trade.maker_address)}
                   </a>
@@ -324,6 +326,7 @@ export default function TransparencyPage() {
                     style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.4)', textDecoration: 'none' }}
                     onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.7)')}
                     onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.4)')}
+                    className="hidden lg:block"
                   >
                     {truncateAddress(trade.taker_address)}
                   </a>
@@ -334,7 +337,7 @@ export default function TransparencyPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>
           Order Audit Trail
         </p>
@@ -348,7 +351,7 @@ export default function TransparencyPage() {
         <label style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', display: 'block', marginBottom: '8px' }}>
           Look up an order ID:
         </label>
-        <div style={{ display: 'flex', gap: '0' }}>
+        <div className="flex flex-col sm:flex-row gap-0">
           <input
             type="text"
             value={orderInput}
@@ -366,6 +369,7 @@ export default function TransparencyPage() {
               outline: 'none',
               width: '280px',
             }}
+            className="w-full sm:w-[280px]"
           />
           <button
             onClick={() => { if (orderInput.trim()) router.push(`/orders/${orderInput.trim()}`) }}
@@ -388,7 +392,7 @@ export default function TransparencyPage() {
         </p>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>
           Go Deeper
         </p>
@@ -396,7 +400,7 @@ export default function TransparencyPage() {
           Go deeper.
         </h2>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: 'rgba(12,12,12,0.07)' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
           {[
             {
               href: '/operator',

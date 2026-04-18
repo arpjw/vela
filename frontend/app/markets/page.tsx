@@ -53,7 +53,7 @@ function MarketCard({
   const topBids = book?.bids.slice(0, 3) ?? []
   const topAsks = book?.asks.slice(0, 3) ?? []
   const priceValue = market?.best_bid ? parseFloat(market.best_bid) : 0
-  const priceFontSize = priceValue > 10000 ? 24 : 28
+  const priceFontSize = priceValue > 10000 ? 22 : 28
 
   return (
     <div
@@ -62,7 +62,6 @@ function MarketCard({
       onMouseLeave={() => setHovered(false)}
       style={{
         background: hovered ? '#111110' : '#0C0C0C',
-        padding: '24px 28px',
         cursor: 'pointer',
         position: 'relative',
         overflow: 'hidden',
@@ -70,6 +69,7 @@ function MarketCard({
         flexDirection: 'column',
         transition: 'background 0.15s',
       }}
+      className="p-4 sm:p-[24px] lg:p-[24px]"
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <span style={{ fontFamily: IN, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(232,228,216,0.3)' }}>
@@ -181,16 +181,16 @@ export default function MarketsPage() {
   return (
     <>
       <style>{`* { box-sizing: border-box; } ::-webkit-scrollbar { display: none; }`}</style>
-      <div style={{ height: 'calc(100vh - 96px)', background: '#0C0C0C', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ background: '#0C0C0C', display: 'flex', flexDirection: 'column' }} className="min-h-[calc(100vh-96px)] lg:h-[calc(100vh-96px)] lg:overflow-hidden">
 
-        <div style={{ height: 52, flexShrink: 0, borderBottom: '1px solid rgba(232,228,216,0.07)', padding: '0 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ flexShrink: 0, borderBottom: '1px solid rgba(232,228,216,0.07)' }} className="h-auto lg:h-[52px] px-6 lg:px-10 py-3 lg:py-0 flex items-center justify-between flex-wrap gap-2">
           <div>
             <div style={{ lineHeight: 1 }}>
               <span style={{ fontFamily: PF, fontWeight: 900, fontSize: 22, color: '#E8E4D8' }}>Markets</span>
               <span style={{ fontFamily: PF, fontStyle: 'italic', fontWeight: 400, fontSize: 22, color: 'rgba(232,228,216,0.25)' }}>{' / '}</span>
               <span style={{ fontFamily: PF, fontStyle: 'italic', fontWeight: 400, fontSize: 22, color: 'rgba(232,228,216,0.25)' }}>Live</span>
             </div>
-            <div style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', textTransform: 'uppercase', marginTop: 4 }}>
+            <div style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', textTransform: 'uppercase', marginTop: 4 }} className="hidden sm:block">
               11 markets · Ethereum Sepolia · Updating every 3s
             </div>
           </div>
@@ -202,15 +202,10 @@ export default function MarketsPage() {
           </div>
         </div>
 
-        <div style={{
-          flex: 1,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gridTemplateRows: 'repeat(4, 1fr)',
-          gap: 1,
-          background: 'rgba(232,228,216,0.05)',
-          overflow: 'hidden',
-        }}>
+        <div
+          style={{ gap: 1, background: 'rgba(232,228,216,0.05)' }}
+          className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 lg:overflow-hidden"
+        >
           {ORDERED_PAIRS.map((pair) => (
             <MarketCard
               key={pair}
@@ -223,7 +218,7 @@ export default function MarketsPage() {
           <div style={{ background: '#0C0C0C' }} />
         </div>
 
-        <div style={{ height: 44, flexShrink: 0, borderTop: '1px solid rgba(232,228,216,0.06)', padding: '0 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ flexShrink: 0, borderTop: '1px solid rgba(232,228,216,0.06)' }} className="hidden lg:flex h-[44px] px-10 items-center justify-between">
           <div style={{ display: 'flex', gap: 40 }}>
             {[
               { label: 'TOTAL MARKETS', value: '11' },

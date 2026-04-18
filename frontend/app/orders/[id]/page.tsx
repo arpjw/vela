@@ -137,7 +137,7 @@ export default function OrderAuditPage() {
 
   return (
     <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '52px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <a href="/transparency" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.3)', textDecoration: 'none', display: 'inline-block', marginBottom: '24px' }}>
@@ -155,8 +155,8 @@ export default function OrderAuditPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '52px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <DetailCard label="Market">
             <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '16px', color: '#0C0C0C' }}>{order.market_id}</span>
           </DetailCard>
@@ -194,7 +194,7 @@ export default function OrderAuditPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '52px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#E8E4D8', margin: '0 0 10px' }}>
@@ -224,7 +224,7 @@ export default function OrderAuditPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#0C0C0C', margin: '0 0 20px' }}>
           Fill history
         </h2>

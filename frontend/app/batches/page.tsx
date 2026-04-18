@@ -64,7 +64,7 @@ export default function BatchesPage() {
 
   return (
     <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '60px 52px 52px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '16px' }}>
@@ -84,14 +84,14 @@ export default function BatchesPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '24px' }}>
           Batch History
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 80px 80px 140px 1fr', padding: '6px 0', borderBottom: '1px solid rgba(12,12,12,0.1)', marginBottom: '0' }}>
-          {['BATCH', 'TIMESTAMP', 'FILLS', 'ORDERS', 'STATE ROOT', 'ACTION'].map((h) => (
-            <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.3)' }}>{h}</span>
+        <div style={{ padding: '6px 0', borderBottom: '1px solid rgba(12,12,12,0.1)' }} className="grid grid-cols-[80px_80px_1fr] lg:grid-cols-[80px_1fr_80px_80px_140px_1fr]">
+          {(['BATCH', 'FILLS', 'ACTION', 'TIMESTAMP', 'ORDERS', 'STATE ROOT'] as const).map((h, i) => (
+            <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.3)' }} className={i >= 3 ? 'hidden lg:block' : ''}>{h}</span>
           ))}
         </div>
 
@@ -107,13 +107,14 @@ export default function BatchesPage() {
           batches.map((batch) => (
             <div
               key={batch.batch_id}
-              style={{ display: 'grid', gridTemplateColumns: '80px 1fr 80px 80px 140px 1fr', padding: '12px 0', borderBottom: '1px solid rgba(12,12,12,0.05)', alignItems: 'center' }}
+              style={{ padding: '12px 0', borderBottom: '1px solid rgba(12,12,12,0.05)', alignItems: 'center' }}
+              className="grid grid-cols-[80px_80px_1fr] lg:grid-cols-[80px_1fr_80px_80px_140px_1fr]"
             >
               <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#0C0C0C' }}>{padBatchId(batch.batch_id)}</span>
-              <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.45)' }}>{formatDateTime(batch.timestamp)}</span>
+              <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.45)' }} className="hidden lg:block">{formatDateTime(batch.timestamp)}</span>
               <span style={{ fontFamily: CN, fontSize: '12px', color: '#0C0C0C' }}>{batch.fill_count}</span>
-              <span style={{ fontFamily: CN, fontSize: '12px', color: 'rgba(12,12,12,0.5)' }}>{batch.order_count}</span>
-              <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(12,12,12,0.4)' }}>{batch.state_root.slice(0, 10)}…</span>
+              <span style={{ fontFamily: CN, fontSize: '12px', color: 'rgba(12,12,12,0.5)' }} className="hidden lg:block">{batch.order_count}</span>
+              <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(12,12,12,0.4)' }} className="hidden lg:block">{batch.state_root.slice(0, 10)}…</span>
               <Link
                 href={`/batches/${batch.batch_id}`}
                 style={{ fontFamily: IN, fontSize: '10px', color: '#0C0C0C', textDecoration: 'none' }}

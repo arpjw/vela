@@ -75,15 +75,8 @@ export default function HomePage() {
         }}
       >
         <HexCanvas />
-        <div style={{ position: 'relative', zIndex: 2, padding: '100px 52px 80px' }}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '60px',
-              alignItems: 'center',
-            }}
-          >
+        <div style={{ position: 'relative', zIndex: 2 }} className="px-6 pt-16 pb-12 lg:px-[52px] lg:pt-[100px] lg:pb-[80px]">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-[60px] items-center">
             <div>
               <div
                 style={{
@@ -99,39 +92,20 @@ export default function HomePage() {
               </div>
               <div>
                 <span
-                  style={{
-                    display: 'block',
-                    fontFamily: PF,
-                    fontWeight: 900,
-                    fontSize: '72px',
-                    color: '#E8E4D8',
-                    lineHeight: 0.95,
-                  }}
+                  style={{ display: 'block', fontFamily: PF, fontWeight: 900, color: '#E8E4D8', lineHeight: 0.95 }}
+                  className="text-[44px] lg:text-[72px]"
                 >
                   Trade with
                 </span>
                 <span
-                  style={{
-                    display: 'block',
-                    fontFamily: PF,
-                    fontWeight: 400,
-                    fontStyle: 'italic',
-                    fontSize: '72px',
-                    color: 'rgba(232,228,216,0.38)',
-                    lineHeight: 0.95,
-                  }}
+                  style={{ display: 'block', fontFamily: PF, fontWeight: 400, fontStyle: 'italic', color: 'rgba(232,228,216,0.38)', lineHeight: 0.95 }}
+                  className="text-[44px] lg:text-[72px]"
                 >
                   provable
                 </span>
                 <span
-                  style={{
-                    display: 'block',
-                    fontFamily: PF,
-                    fontWeight: 900,
-                    fontSize: '72px',
-                    color: '#E8E4D8',
-                    lineHeight: 0.95,
-                  }}
+                  style={{ display: 'block', fontFamily: PF, fontWeight: 900, color: '#E8E4D8', lineHeight: 0.95 }}
+                  className="text-[44px] lg:text-[72px]"
                 >
                   fairness.
                 </span>
@@ -149,7 +123,7 @@ export default function HomePage() {
               >
                 A central limit order book exchange where every match is cryptographically verified. The first DEX that doesn&apos;t make you choose between speed and transparency.
               </p>
-              <div style={{ display: 'flex', gap: '12px', marginTop: '40px' }}>
+              <div className="flex flex-col sm:flex-row gap-3 mt-10">
                 <button
                   type="button"
                   onClick={() => router.push('/markets/ETH-USDC')}
@@ -186,12 +160,7 @@ export default function HomePage() {
               </div>
             </div>
             <div
-              className="hero-orderbook-col"
-              style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                alignItems: 'center',
-              }}
+              className="hero-orderbook-col hidden sm:flex justify-end items-center"
             >
               <HeroOrderBook />
             </div>
@@ -202,18 +171,11 @@ export default function HomePage() {
       <section
         style={{
           background: '#E8E4D8',
-          padding: '90px 52px',
           overflow: 'hidden',
         }}
+        className="px-6 py-16 lg:px-[52px] lg:py-[90px]"
       >
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '80px',
-            alignItems: 'start',
-          }}
-        >
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-[80px] items-start">
           <div>
             <div
               style={{
@@ -318,21 +280,13 @@ export default function HomePage() {
         style={{
           position: 'relative',
           background: '#111110',
-          padding: '90px 52px',
           overflow: 'hidden',
         }}
+        className="px-6 py-16 lg:px-[52px] lg:py-[90px]"
       >
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '80px',
-              alignItems: 'end',
-              marginBottom: '64px',
-            }}
-          >
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-[80px] items-end mb-16">
             <div>
               <div
                 style={{
@@ -398,14 +352,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr 1fr',
-              gap: '1px',
-              background: 'rgba(232,228,216,0.06)',
-            }}
-          >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[1px]" style={{ background: 'rgba(232,228,216,0.06)' }}>
             {HOW_IT_WORKS.map((card) => (
               <div key={card.num} style={{ background: '#111110', padding: '36px 28px' }}>
                 <div
@@ -453,9 +400,9 @@ export default function HomePage() {
       <section
         style={{
           background: '#E8E4D8',
-          padding: '90px 52px',
           overflow: 'hidden',
         }}
+        className="px-6 py-16 lg:px-[52px] lg:py-[90px]"
       >
         <div
           style={{
@@ -527,7 +474,7 @@ export default function HomePage() {
               You&apos;re on the list. We&apos;ll be in touch.
             </div>
           ) : (
-            <form onSubmit={handleEmailSubmit} style={{ display: 'flex', marginTop: '36px' }}>
+            <form onSubmit={handleEmailSubmit} className="flex flex-col sm:flex-row mt-9">
               <input
                 type="email"
                 value={email}
@@ -544,7 +491,9 @@ export default function HomePage() {
                   padding: '14px 18px',
                   borderRadius: 0,
                   outline: 'none',
+                  minWidth: 0,
                 }}
+                className="sm:border-r-0 border-b-0 sm:border-b border-[rgba(12,12,12,0.18)]"
               />
               <button
                 type="submit"
@@ -589,12 +538,8 @@ export default function HomePage() {
       >
         <HexCanvas />
         <div
-          style={{
-            position: 'relative',
-            zIndex: 2,
-            textAlign: 'center',
-            padding: '80px 52px 0',
-          }}
+          style={{ position: 'relative', zIndex: 2, textAlign: 'center' }}
+          className="px-6 pt-16 sm:pt-[80px] lg:px-[52px]"
         >
           <div
             style={{
@@ -662,11 +607,8 @@ export default function HomePage() {
         style={{
           background: '#0C0C0C',
           borderTop: '1px solid rgba(232,228,216,0.06)',
-          padding: '24px 52px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
         }}
+        className="px-6 py-6 lg:px-[52px] flex flex-col sm:flex-row justify-between items-center gap-4"
       >
         <div style={{ display: 'flex', gap: '24px' }}>
           {FOOTER_LINKS.map(({ label, href }) => (

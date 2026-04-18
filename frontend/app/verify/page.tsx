@@ -112,7 +112,7 @@ export default function VerifyPage() {
 
   return (
     <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '60px 52px 52px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '16px' }}>
@@ -132,12 +132,12 @@ export default function VerifyPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '24px' }}>
           How It Works
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: 'rgba(12,12,12,0.07)' }}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
           {STEPS.map((step) => (
             <div key={step.num} style={{ background: 'white', padding: '28px 28px' }}>
               <p style={{ fontFamily: CN, fontSize: '11px', color: 'rgba(12,12,12,0.2)', margin: '0 0 12px' }}>Step {step.num}</p>
@@ -148,7 +148,7 @@ export default function VerifyPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '52px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.25)', marginBottom: '12px' }}>
@@ -187,7 +187,7 @@ export default function VerifyPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#0C0C0C', margin: '0 0 12px' }}>
           Found a discrepancy?
         </h2>
@@ -203,7 +203,7 @@ export default function VerifyPage() {
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ maxWidth: '520px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="w-full max-w-[520px]">
             <div>
               <label style={labelStyle}>Batch ID</label>
               <input
@@ -246,7 +246,7 @@ export default function VerifyPage() {
         )}
       </div>
 
-      <div style={{ position: 'relative', background: '#0C0C0C', padding: '52px', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '24px', color: '#E8E4D8', margin: '0 0 24px' }}>

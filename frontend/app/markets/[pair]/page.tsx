@@ -863,9 +863,33 @@ function OrderEntryPanel({
   )
 }
 
+function MobileGate() {
+  return (
+    <div style={{ background: '#0C0C0C', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '24px', padding: '40px', textAlign: 'center' }}>
+      <span style={{ fontFamily: PF, fontStyle: 'italic', fontSize: '32px', color: '#E8E4D8' }}>Vela</span>
+      <h1 style={{ fontFamily: PF, fontWeight: 900, fontSize: '28px', color: '#E8E4D8', margin: 0 }}>Built for the desktop.</h1>
+      <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.7, color: 'rgba(232,228,216,0.4)', maxWidth: '320px', margin: 0 }}>
+        Vela&apos;s trading terminal requires a larger screen. Open this page on a laptop or desktop to trade.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <Link href="/markets" style={{ background: '#E8E4D8', color: '#0C0C0C', fontFamily: IN, fontWeight: 600, fontSize: '12px', textTransform: 'uppercase', padding: '12px 32px', textDecoration: 'none', display: 'block', width: '200px', textAlign: 'center', letterSpacing: '0.06em' }}>
+          View Markets
+        </Link>
+        <Link href="/" style={{ background: 'transparent', color: 'rgba(232,228,216,0.4)', border: '1px solid rgba(232,228,216,0.15)', fontFamily: IN, fontSize: '12px', padding: '12px 32px', textDecoration: 'none', display: 'block', width: '200px', textAlign: 'center' }}>
+          Back to Home
+        </Link>
+      </div>
+      <span style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,228,216,0.15)', marginTop: '40px' }}>
+        vela.monolithsystematic.com
+      </span>
+    </div>
+  )
+}
+
 export default function TradingPage({ params }: { params: { pair: string } }) {
   const pair = decodeURIComponent(params.pair)
   const { toasts, addToast } = useToasts()
+  const [isMobile, setIsMobile] = useState(true)
 
   const [bids, setBids] = useState<{ price: string; quantity: string }[]>([])
   const [asks, setAsks] = useState<{ price: string; quantity: string }[]>([])
@@ -904,6 +928,15 @@ export default function TradingPage({ params }: { params: { pair: string } }) {
     const interval = setInterval(fetchMarkets, 10_000)
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 1024)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  if (isMobile) return <MobileGate />
 
   return (
     <>
