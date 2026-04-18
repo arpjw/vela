@@ -14,13 +14,14 @@ use types::{
     OrderType, PostOrderRequest, Request, Response as EngineResponse, UserId, WithdrawalRequest,
     PRICE_DECIMALS, QUANTITY_DECIMALS,
 };
+use std::collections::{BTreeMap, HashSet};
 use crate::{
     AppState,
     auth::{cancel_signing_message, eth_message_hash, order_signing_message, verify_matches_async, withdrawal_signing_message},
     types::{
-        ApiResponse, BalanceResponse, BookLevel, BookResponse, CancelOrderBody,
-        DepositBody, MarketResponse, OrderFillRecord, PostOrderBody, StoredFill, StoredOrder,
-        WithdrawBody, format_amount,
+        ApiResponse, BalanceResponse, BatchDetail, BatchSummary, BookLevel, BookResponse,
+        CancelOrderBody, DepositBody, MarketResponse, OrderFillRecord, PostOrderBody,
+        StateRootData, StoredFill, StoredOrder, WithdrawBody, format_amount,
     },
     ws::handle_ws,
 };
@@ -140,6 +141,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/ws", get(ws_handler))
         .route("/admin/state", get(admin_state_handler))
         .route("/admin/reserves", get(admin_reserves_handler))
+        .route("/batches", get(list_batches))
+        .route("/batches/:batch_id", get(get_batch))
+        .route("/state-root", get(get_state_root))
         .with_state(state)
         .layer(cors)
 }
@@ -805,6 +809,125 @@ async fn admin_state_handler(
         "snapshot_exists": snapshot_exists,
         "uptime_secs": uptime_secs,
     })))).into_response()
+}
+
+fn batch_state_root(fill_ids: &[String]) -> String {
+    let mut hasher = Keccak256::new();
+    for id in fill_ids {
+        hasher.update(id.as_bytes());
+    }
+    format!("0x{}", hex::encode(hasher.finalize()))
+}
+
+
+async fn list_batches(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    const WINDOW_US: u64 = 30_000_000;
+    let fills = state.fills.lock().await;
+    let mut windows: BTreeMap<u64, Vec<&StoredFill>> = BTreeMap::new();
+    for fill in fills.iter() {
+        windows.entry(fill.timestamp / WINDOW_US).or_default().push(fill);
+    }
+    let batches: Vec<BatchSummary> = windows.into_iter().enumerate().map(|(idx, (window_key, batch_fills))| {
+        let fill_ids: Vec<String> = batch_fills.iter().map(|f| f.id.clone()).collect();
+        let mut order_ids: HashSet<u64> = HashSet::new();
+        let mut markets: HashSet<String> = HashSet::new();
+        for fill in &batch_fills {
+            order_ids.insert(fill.maker_order_id);
+            order_ids.insert(fill.taker_order_id);
+            markets.insert(fill.market_id.clone());
+        }
+        let mut markets_vec: Vec<String> = markets.into_iter().collect();
+        markets_vec.sort();
+        let state_root = batch_state_root(&fill_ids);
+        BatchSummary {
+            batch_id: (idx + 1) as u64,
+            timestamp: window_key * WINDOW_US / 1000,
+            fill_count: batch_fills.len(),
+            order_count: order_ids.len(),
+            markets: markets_vec,
+            state_root,
+            operator_signature: format!("0x{}", "0".repeat(130)),
+            fills: fill_ids,
+        }
+    }).collect();
+    Json(ApiResponse::ok(batches))
+}
+
+async fn get_batch(
+    Path(batch_id): Path<u64>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    const WINDOW_US: u64 = 30_000_000;
+    let fills = state.fills.lock().await;
+    let mut windows: BTreeMap<u64, Vec<&StoredFill>> = BTreeMap::new();
+    for fill in fills.iter() {
+        windows.entry(fill.timestamp / WINDOW_US).or_default().push(fill);
+    }
+    let target_idx = batch_id.saturating_sub(1) as usize;
+    let entry = windows.into_iter().nth(target_idx);
+    match entry {
+        None => (StatusCode::NOT_FOUND, Json(ApiResponse::<()>::err("batch not found"))).into_response(),
+        Some((window_key, batch_fills)) => {
+            let fill_ids: Vec<String> = batch_fills.iter().map(|f| f.id.clone()).collect();
+            let mut order_ids: HashSet<u64> = HashSet::new();
+            let mut markets: HashSet<String> = HashSet::new();
+            for fill in &batch_fills {
+                order_ids.insert(fill.maker_order_id);
+                order_ids.insert(fill.taker_order_id);
+                markets.insert(fill.market_id.clone());
+            }
+            let mut markets_vec: Vec<String> = markets.into_iter().collect();
+            markets_vec.sort();
+            let state_root = batch_state_root(&fill_ids);
+            let detail = BatchDetail {
+                batch_id,
+                timestamp: window_key * WINDOW_US / 1000,
+                fill_count: batch_fills.len(),
+                order_count: order_ids.len(),
+                markets: markets_vec,
+                state_root,
+                operator_signature: format!("0x{}", "0".repeat(130)),
+                fills: batch_fills.iter().map(|f| (*f).clone()).collect(),
+            };
+            (StatusCode::OK, Json(ApiResponse::ok(detail))).into_response()
+        }
+    }
+}
+
+async fn get_state_root(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let engine = state.engine.lock().await;
+    let order_count: usize = engine.metadata.values().map(|m| m.open_order_ids.len()).sum();
+    let user_count = engine.metadata.len();
+    drop(engine);
+
+    let fills = state.fills.lock().await;
+    let fill_ids: Vec<String> = fills.iter().map(|f| f.id.clone()).collect();
+    drop(fills);
+
+    let orders = state.stored_orders.lock().await;
+    let order_ids: Vec<String> = orders.keys().map(|k| k.to_string()).collect();
+    drop(orders);
+
+    let mut hasher = Keccak256::new();
+    for id in &fill_ids {
+        hasher.update(id.as_bytes());
+    }
+    for id in &order_ids {
+        hasher.update(id.as_bytes());
+    }
+    let state_root = format!("0x{}", hex::encode(hasher.finalize()));
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    Json(ApiResponse::ok(StateRootData {
+        state_root,
+        timestamp,
+        order_count,
+        user_count,
+        block_number: None,
+    }))
 }
 
 fn parse_decimal_amount(s: &str) -> Option<u64> {

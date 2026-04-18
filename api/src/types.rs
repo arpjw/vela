@@ -154,6 +154,39 @@ impl<T> ApiResponse<T> {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchSummary {
+    pub batch_id: u64,
+    pub timestamp: u64,
+    pub fill_count: usize,
+    pub order_count: usize,
+    pub markets: Vec<String>,
+    pub state_root: String,
+    pub operator_signature: String,
+    pub fills: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchDetail {
+    pub batch_id: u64,
+    pub timestamp: u64,
+    pub fill_count: usize,
+    pub order_count: usize,
+    pub markets: Vec<String>,
+    pub state_root: String,
+    pub operator_signature: String,
+    pub fills: Vec<StoredFill>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateRootData {
+    pub state_root: String,
+    pub timestamp: u64,
+    pub order_count: usize,
+    pub user_count: usize,
+    pub block_number: Option<u64>,
+}
+
 pub fn format_amount(raw: u64, decimals: u32) -> String {
     let scale = 10u64.pow(decimals);
     let whole = raw / scale;

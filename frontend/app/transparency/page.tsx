@@ -387,6 +387,50 @@ export default function TransparencyPage() {
           Order IDs are shown in your trade history after placing orders.
         </p>
       </div>
+
+      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>
+          Go Deeper
+        </p>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#0C0C0C', margin: '0 0 32px' }}>
+          Go deeper.
+        </h2>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: 'rgba(12,12,12,0.07)' }}>
+          {[
+            {
+              href: '/operator',
+              title: 'Operator Disclosure',
+              desc: 'Who runs Vela, what they can and cannot do, and a signed commitment to fair operation.',
+              link: 'Read disclosure →',
+            },
+            {
+              href: '/batches',
+              title: 'Batch Explorer',
+              desc: 'Browse every batch of trades processed by Vela. Download state roots. Verify any batch yourself.',
+              link: 'Explore batches →',
+            },
+            {
+              href: '/verify',
+              title: 'Fraud Proof System',
+              desc: 'Understand the ZK architecture. Verify state roots. Submit a challenge if you find a discrepancy.',
+              link: 'Verify trades →',
+            },
+          ].map((card) => (
+            <a
+              key={card.href}
+              href={card.href}
+              style={{ background: 'white', padding: '28px', textDecoration: 'none', display: 'block' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#F5F2E8')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
+            >
+              <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#0C0C0C', margin: '0 0 10px' }}>{card.title}</p>
+              <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(12,12,12,0.55)', lineHeight: 1.8, margin: '0 0 16px' }}>{card.desc}</p>
+              <span style={{ fontFamily: IN, fontSize: '11px', color: '#0C0C0C', textDecoration: 'underline' }}>{card.link}</span>
+            </a>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
