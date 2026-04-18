@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import HexCanvas from '@/components/HexCanvas'
+import Skeleton from '@/components/ui/Skeleton'
 
 const PF = "'Playfair Display', serif"
 const IN = 'Inter, sans-serif'
@@ -112,9 +113,24 @@ export default function OrderAuditPage() {
 
   if (loading) {
     return (
-      <div style={{ background: '#0C0C0C', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '32px', height: '32px', border: '2px solid rgba(232,228,216,0.15)', borderTopColor: 'rgba(232,228,216,0.6)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
+        <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+          <HexCanvas />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <Skeleton className="w-24 h-3 mb-6" />
+            <Skeleton className="w-48 h-5" />
+          </div>
+        </div>
+        <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} style={{ padding: '20px 24px', background: 'rgba(12,12,12,0.04)', borderLeft: '2px solid rgba(12,12,12,0.08)' }}>
+                <Skeleton className="w-16 h-2" />
+                <Skeleton className="w-24 h-4 mt-2" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     )
   }

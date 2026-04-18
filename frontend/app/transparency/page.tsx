@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import HexCanvas from '@/components/HexCanvas'
+import Skeleton from '@/components/ui/Skeleton'
 
 const PF = "'Playfair Display', serif"
 const IN = 'Inter, sans-serif'
@@ -45,6 +46,7 @@ export default function TransparencyPage() {
   const [engineEth, setEngineEth] = useState<number | null>(null)
   const [reservesUpdated, setReservesUpdated] = useState<Date | null>(null)
   const [trades, setTrades] = useState<StoredFill[]>([])
+  const [tradesLoaded, setTradesLoaded] = useState(false)
   const [activeMarket, setActiveMarket] = useState('ALL')
   const [orderInput, setOrderInput] = useState('')
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -101,6 +103,7 @@ export default function TransparencyPage() {
       if (data.ok && Array.isArray(data.data)) {
         setTrades(data.data.slice(0, 50))
       }
+      setTradesLoaded(true)
     } catch {
       // silently ignore
     }
@@ -161,6 +164,17 @@ export default function TransparencyPage() {
           The VelaSettlement contract on Ethereum holds all deposited funds. The engine tracks all credited balances. These numbers must match — and you can verify it yourself, right now.
         </p>
 
+        {contractEth === null ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{ background: 'white', padding: '28px 32px' }}>
+                <Skeleton className="w-28 h-2" />
+                <Skeleton className="w-20 h-10 mt-3" />
+                <Skeleton className="w-36 h-2 mt-2" />
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
           <div style={{ background: 'white', padding: '28px 32px', flex: 1 }}>
             <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
@@ -230,6 +244,7 @@ export default function TransparencyPage() {
             )}
           </div>
         </div>
+        )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '20px' }}>
           <button
@@ -290,7 +305,22 @@ export default function TransparencyPage() {
             ))}
           </div>
 
-          {trades.length === 0 ? (
+          {!tradesLoaded ? (
+            Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                style={{ padding: '9px 0', borderBottom: '1px solid rgba(232,228,216,0.04)', alignItems: 'center' }}
+                className="grid grid-cols-[1fr_80px_100px_80px] lg:grid-cols-[1fr_100px_120px_100px_180px_180px]"
+              >
+                <Skeleton className="w-20 h-3" />
+                <Skeleton className="w-14 h-3" />
+                <Skeleton className="w-16 h-3" />
+                <Skeleton className="w-12 h-3" />
+                <Skeleton className="w-24 h-3 hidden lg:block" />
+                <Skeleton className="w-24 h-3 hidden lg:block" />
+              </div>
+            ))
+          ) : trades.length === 0 ? (
             <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,228,216,0.2)', textAlign: 'center', padding: '48px 0' }}>
               No trades yet. Be the first to trade on Vela.
             </p>

@@ -9,6 +9,7 @@ import {
   pairChange,
   sparklineBars,
 } from '@/lib/markets'
+import Skeleton from '@/components/ui/Skeleton'
 
 const PF = "'Playfair Display', serif"
 const IN = 'Inter, sans-serif'
@@ -138,9 +139,30 @@ function MarketCard({
   )
 }
 
+function SkeletonCard() {
+  return (
+    <div style={{
+      background: '#111110',
+      border: '1px solid rgba(232,228,216,0.04)',
+      display: 'flex',
+      flexDirection: 'column',
+      padding: '24px 28px',
+    }}>
+      <Skeleton className="w-24 h-3" />
+      <Skeleton className="w-32 h-8 mt-3" />
+      <Skeleton className="w-16 h-2 mt-2" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+        <Skeleton className="w-full h-16" />
+        <Skeleton className="w-full h-16" />
+      </div>
+      <Skeleton className="w-full h-5 mt-3" />
+    </div>
+  )
+}
+
 export default function MarketsPage() {
   const router = useRouter()
-  const [markets, setMarkets] = useState<MarketResponse[]>([])
+  const [markets, setMarkets] = useState<MarketResponse[] | null>(null)
   const [books, setBooks] = useState<Record<string, { bids: BookLevel[]; asks: BookLevel[] }>>({})
 
   const fetchMarkets = useCallback(async () => {
@@ -176,7 +198,7 @@ export default function MarketsPage() {
     }
   }, [fetchMarkets, fetchBooks])
 
-  const marketsById = Object.fromEntries(markets.map((m) => [m.id, m]))
+  const marketsById = Object.fromEntries((markets ?? []).map((m) => [m.id, m]))
 
   return (
     <>
@@ -206,15 +228,17 @@ export default function MarketsPage() {
           style={{ gap: 1, background: 'rgba(232,228,216,0.05)' }}
           className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 lg:overflow-hidden"
         >
-          {ORDERED_PAIRS.map((pair) => (
-            <MarketCard
-              key={pair}
-              pair={pair}
-              market={marketsById[pair]}
-              book={books[pair]}
-              onClick={() => router.push(`/markets/${pair}`)}
-            />
-          ))}
+          {markets === null
+            ? ORDERED_PAIRS.map((pair) => <SkeletonCard key={pair} />)
+            : ORDERED_PAIRS.map((pair) => (
+                <MarketCard
+                  key={pair}
+                  pair={pair}
+                  market={marketsById[pair]}
+                  book={books[pair]}
+                  onClick={() => router.push(`/markets/${pair}`)}
+                />
+              ))}
           <div style={{ background: '#0C0C0C' }} />
         </div>
 

@@ -18,3 +18,5 @@ export type { SpinnerProps } from './Spinner'
 
 export { Tooltip } from './Tooltip'
 export type { TooltipProps } from './Tooltip'
+
+export { default as Skeleton } from './Skeleton'

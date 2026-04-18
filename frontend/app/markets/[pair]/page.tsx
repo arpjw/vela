@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import Skeleton from '@/components/ui/Skeleton'
 import { createChart, CandlestickSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts'
 import {
@@ -165,9 +166,10 @@ function TopBar({ pair, market }: { pair: string; market: MarketResponse | undef
         {info.ticker} / USDC
       </span>
 
-      <span style={{ fontFamily: CN, fontWeight: 700, fontSize: 14, color: '#E8E4D8' }}>
-        {midStr}
-      </span>
+      {market === undefined
+        ? <Skeleton className="w-24 h-4 inline-block" />
+        : <span style={{ fontFamily: CN, fontWeight: 700, fontSize: 14, color: '#E8E4D8' }}>{midStr}</span>
+      }
 
       <span style={{ fontFamily: IN, fontWeight: 500, fontSize: 11, color: isPositive ? '#6B8A5A' : '#CC3333' }}>
         {changeStr}
@@ -439,10 +441,12 @@ function OrderBookPanel({
   bids,
   asks,
   pair,
+  loading,
 }: {
   bids: { price: string; quantity: string }[]
   asks: { price: string; quantity: string }[]
   pair: string
+  loading: boolean
 }) {
   const info = getMarketInfo(pair)
   const decimals = getPriceDecimals(pair)
@@ -481,16 +485,24 @@ function OrderBookPanel({
       </div>
 
       <div style={{ flex: 1, overflowY: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-        {topAsks.map((lvl) => {
-          const pct = maxSize > 0 ? (parseFloat(lvl.quantity) / maxSize) * 100 : 0
-          return (
-            <div key={`ask-${lvl.price}`} style={{ position: 'relative', padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-              <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(204,51,51,0.08)' }} />
-              <span style={{ fontFamily: CN, fontSize: 10.5, color: '#CC3333', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
-              <span style={{ fontFamily: CN, fontSize: 10.5, color: '#CC3333', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
-            </div>
-          )
-        })}
+        {loading
+          ? Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} style={{ padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <Skeleton className="w-16 h-3" />
+                <Skeleton className="w-10 h-3 ml-auto" />
+              </div>
+            ))
+          : topAsks.map((lvl) => {
+              const pct = maxSize > 0 ? (parseFloat(lvl.quantity) / maxSize) * 100 : 0
+              return (
+                <div key={`ask-${lvl.price}`} style={{ position: 'relative', padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                  <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(204,51,51,0.08)' }} />
+                  <span style={{ fontFamily: CN, fontSize: 10.5, color: '#CC3333', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
+                  <span style={{ fontFamily: CN, fontSize: 10.5, color: '#CC3333', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
+                </div>
+              )
+            })
+        }
       </div>
 
       <div style={{ padding: '5px 12px', borderTop: '1px solid rgba(232,228,216,0.04)', borderBottom: '1px solid rgba(232,228,216,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
@@ -502,16 +514,24 @@ function OrderBookPanel({
       </div>
 
       <div style={{ flex: 1, overflowY: 'hidden' }}>
-        {topBids.map((lvl) => {
-          const pct = maxSize > 0 ? (parseFloat(lvl.quantity) / maxSize) * 100 : 0
-          return (
-            <div key={`bid-${lvl.price}`} style={{ position: 'relative', padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(107,138,90,0.08)' }} />
-              <span style={{ fontFamily: CN, fontSize: 10.5, color: '#6B8A5A', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
-              <span style={{ fontFamily: CN, fontSize: 10.5, color: '#6B8A5A', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
-            </div>
-          )
-        })}
+        {loading
+          ? Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} style={{ padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <Skeleton className="w-16 h-3" />
+                <Skeleton className="w-10 h-3 ml-auto" />
+              </div>
+            ))
+          : topBids.map((lvl) => {
+              const pct = maxSize > 0 ? (parseFloat(lvl.quantity) / maxSize) * 100 : 0
+              return (
+                <div key={`bid-${lvl.price}`} style={{ position: 'relative', padding: '3.5px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(107,138,90,0.08)' }} />
+                  <span style={{ fontFamily: CN, fontSize: 10.5, color: '#6B8A5A', position: 'relative', zIndex: 1 }}>{fmtPrice(lvl.price, decimals)}</span>
+                  <span style={{ fontFamily: CN, fontSize: 10.5, color: '#6B8A5A', textAlign: 'right', position: 'relative', zIndex: 1 }}>{fmtSize(lvl.quantity, info.ticker)}</span>
+                </div>
+              )
+            })
+        }
       </div>
     </div>
   )
@@ -893,6 +913,7 @@ export default function TradingPage({ params }: { params: { pair: string } }) {
 
   const [bids, setBids] = useState<{ price: string; quantity: string }[]>([])
   const [asks, setAsks] = useState<{ price: string; quantity: string }[]>([])
+  const [bookLoaded, setBookLoaded] = useState(false)
   const [markets, setMarkets] = useState<MarketResponse[]>([])
 
   const market = useMemo(() => markets.find((m) => m.id === pair), [markets, pair])
@@ -911,7 +932,8 @@ export default function TradingPage({ params }: { params: { pair: string } }) {
           setBids(res.data.bids)
           setAsks(res.data.asks)
         }
-      }).catch(() => {})
+        setBookLoaded(true)
+      }).catch(() => { setBookLoaded(true) })
     }
     fetchBook()
     const interval = setInterval(fetchBook, 2000)
@@ -956,7 +978,7 @@ export default function TradingPage({ params }: { params: { pair: string } }) {
         <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '180px 1fr 200px 240px', overflow: 'hidden' }}>
           <MarketSelectorColumn currentPair={pair} markets={markets} />
           <ChartColumn pair={pair} midPrice={midPrice} onToast={addToast} />
-          <OrderBookPanel bids={bids} asks={asks} pair={pair} />
+          <OrderBookPanel bids={bids} asks={asks} pair={pair} loading={!bookLoaded} />
           <OrderEntryPanel pair={pair} bids={bids} asks={asks} onToast={addToast} />
         </div>
       </div>
