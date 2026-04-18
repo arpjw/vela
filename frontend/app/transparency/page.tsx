@@ -1,0 +1,392 @@
+'use client'
+
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import HexCanvas from '@/components/HexCanvas'
+
+const PF = "'Playfair Display', serif"
+const IN = 'Inter, sans-serif'
+const CN = "'Courier New', monospace"
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
+const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? ''
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ?? '0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686'
+const ALCHEMY_URL = process.env.NEXT_PUBLIC_ALCHEMY_API_URL ?? 'https://eth-sepolia.g.alchemy.com/v2/demo'
+
+interface StoredFill {
+  id: string
+  market_id: string
+  price: number
+  quantity: number
+  maker_order_id: number
+  taker_order_id: number
+  maker_address: string
+  taker_address: string
+  timestamp: number
+  side: string
+}
+
+function formatPrice(price: number): string {
+  if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  if (price >= 1) return price.toFixed(2)
+  return price.toFixed(4)
+}
+
+function truncateAddress(addr: string): string {
+  if (!addr || addr.length < 12) return addr
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+}
+
+const MARKETS = ['ALL', 'BTC-USDC', 'ETH-USDC', 'SOL-USDC']
+
+export default function TransparencyPage() {
+  const router = useRouter()
+  const [contractEth, setContractEth] = useState<number | null>(null)
+  const [engineEth, setEngineEth] = useState<number | null>(null)
+  const [reservesUpdated, setReservesUpdated] = useState<Date | null>(null)
+  const [trades, setTrades] = useState<StoredFill[]>([])
+  const [activeMarket, setActiveMarket] = useState('ALL')
+  const [orderInput, setOrderInput] = useState('')
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const fetchContractBalance = useCallback(async () => {
+    try {
+      const res = await fetch(ALCHEMY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_getBalance',
+          params: [CONTRACT_ADDRESS, 'latest'],
+          id: 1,
+        }),
+      })
+      const data = await res.json()
+      if (data.result) {
+        const wei = parseInt(data.result, 16)
+        setContractEth(wei / 1e18)
+      }
+    } catch {
+      // silently ignore
+    }
+  }, [])
+
+  const fetchEngineReserves = useCallback(async () => {
+    if (!ADMIN_TOKEN) return
+    try {
+      const res = await fetch(`${API_URL}/admin/reserves`, {
+        headers: { 'x-admin-token': ADMIN_TOKEN },
+      })
+      const data = await res.json()
+      if (data.ok && data.data?.engine_balances?.ETH !== undefined) {
+        setEngineEth(data.data.engine_balances.ETH / 1_000_000)
+      }
+    } catch {
+      // silently ignore
+    }
+  }, [])
+
+  const fetchReserves = useCallback(async () => {
+    await Promise.all([fetchContractBalance(), fetchEngineReserves()])
+    setReservesUpdated(new Date())
+  }, [fetchContractBalance, fetchEngineReserves])
+
+  const fetchTrades = useCallback(async () => {
+    try {
+      const url = activeMarket === 'ALL'
+        ? `${API_URL}/trades`
+        : `${API_URL}/trades/${activeMarket}`
+      const res = await fetch(url)
+      const data = await res.json()
+      if (data.ok && Array.isArray(data.data)) {
+        setTrades(data.data.slice(0, 50))
+      }
+    } catch {
+      // silently ignore
+    }
+  }, [activeMarket])
+
+  useEffect(() => {
+    fetchReserves()
+    fetchTrades()
+  }, [fetchReserves, fetchTrades])
+
+  useEffect(() => {
+    if (refreshTimerRef.current) clearInterval(refreshTimerRef.current)
+    refreshTimerRef.current = setInterval(() => {
+      fetchReserves()
+    }, 60_000)
+    return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current) }
+  }, [fetchReserves])
+
+  useEffect(() => {
+    const t = setInterval(fetchTrades, 3_000)
+    return () => clearInterval(t)
+  }, [fetchTrades])
+
+  useEffect(() => { fetchTrades() }, [activeMarket, fetchTrades])
+
+  const solvent = contractEth !== null && engineEth !== null && contractEth >= engineEth
+
+  return (
+    <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
+      <div style={{ position: 'relative', background: '#0C0C0C', padding: '60px 52px 40px', overflow: 'hidden' }}>
+        <HexCanvas />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '16px' }}>
+            Monolith Systematic — Vela Exchange
+          </p>
+          <div>
+            <span style={{ fontFamily: PF, fontWeight: 900, fontSize: '52px', color: '#E8E4D8', display: 'block', lineHeight: 1.1 }}>
+              Transparency
+            </span>
+            <span style={{ fontFamily: PF, fontWeight: 400, fontStyle: 'italic', fontSize: '52px', color: 'rgba(232,228,216,0.3)', display: 'block', lineHeight: 1.1 }}>
+              by default.
+            </span>
+          </div>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '15px', lineHeight: 1.75, color: 'rgba(232,228,216,0.4)', maxWidth: '560px', marginTop: '20px' }}>
+            Every trade. Every order. Every dollar. Verifiable on-chain, in real time, forever. No other exchange has ever done this.
+          </p>
+        </div>
+      </div>
+
+      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '20px' }}>
+          Proof of Reserves
+        </p>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#0C0C0C', margin: 0 }}>
+          Vela holds exactly what it owes.
+        </h2>
+        <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(12,12,12,0.45)', maxWidth: '500px', marginTop: '12px', marginBottom: '32px' }}>
+          The VelaSettlement contract on Ethereum holds all deposited funds. The engine tracks all credited balances. These numbers must match — and you can verify it yourself, right now.
+        </p>
+
+        <div style={{ display: 'flex', gap: '1px', background: 'rgba(12,12,12,0.05)' }}>
+          <div style={{ background: 'white', padding: '28px 32px', flex: 1 }}>
+            <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
+              ETH In Contract
+            </p>
+            <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '36px', color: '#0C0C0C', margin: '0 0 6px' }}>
+              {contractEth !== null ? `${contractEth.toFixed(4)} ETH` : '—'}
+            </p>
+            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: '0 0 10px' }}>
+              Locked in VelaSettlement.sol
+            </p>
+            <a
+              href={`https://sepolia.etherscan.io/address/${CONTRACT_ADDRESS}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontFamily: IN, fontSize: '11px', color: '#0C0C0C', textDecoration: 'underline' }}
+            >
+              View on Etherscan →
+            </a>
+          </div>
+
+          <div style={{ background: 'white', padding: '28px 32px', flex: 1 }}>
+            <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
+              ETH Credited
+            </p>
+            <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '36px', color: '#0C0C0C', margin: '0 0 6px' }}>
+              {!ADMIN_TOKEN ? '—' : engineEth !== null ? `${engineEth.toFixed(4)} ETH` : '—'}
+            </p>
+            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: 0 }}>
+              Across all user accounts
+            </p>
+          </div>
+
+          <div style={{ background: 'white', padding: '28px 32px', flex: 1 }}>
+            <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>
+              Status
+            </p>
+            {contractEth === null || engineEth === null ? (
+              <p style={{ fontFamily: IN, fontSize: '14px', color: 'rgba(12,12,12,0.3)', margin: 0 }}>Checking…</p>
+            ) : solvent ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="15" stroke="#6B8A5A" strokeWidth="2" />
+                    <path d="M9 16.5L13.5 21L23 11" stroke="#6B8A5A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span style={{ fontFamily: IN, fontWeight: 700, fontSize: '18px', color: '#6B8A5A' }}>SOLVENT</span>
+                </div>
+                <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', margin: 0 }}>
+                  Contract holds sufficient ETH to cover all withdrawals.
+                </p>
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <path d="M16 3L29 28H3L16 3Z" stroke="#CC3333" strokeWidth="2" fill="none" />
+                    <path d="M16 12V18" stroke="#CC3333" strokeWidth="2.5" strokeLinecap="round" />
+                    <circle cx="16" cy="23" r="1.5" fill="#CC3333" />
+                  </svg>
+                  <span style={{ fontFamily: IN, fontWeight: 700, fontSize: '18px', color: '#CC3333' }}>UNDERCOLLATERALIZED</span>
+                </div>
+                <p style={{ fontFamily: IN, fontSize: '11px', color: '#CC3333', margin: 0 }}>
+                  Contract balance is below engine credits.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '20px' }}>
+          <button
+            onClick={fetchReserves}
+            style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.5)', background: 'transparent', border: '1px solid rgba(12,12,12,0.15)', padding: '6px 14px', cursor: 'pointer' }}
+          >
+            Refresh
+          </button>
+          {reservesUpdated && (
+            <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.3)' }}>
+              Last updated {reservesUpdated.toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div style={{ position: 'relative', background: '#0C0C0C', padding: '52px', overflow: 'hidden' }}>
+        <HexCanvas />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', margin: '0 0 12px' }}>
+            Live Trade Feed
+          </p>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#E8E4D8', margin: '0 0 12px' }}>
+            Every trade. Unfiltered.
+          </h2>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,228,216,0.38)', maxWidth: '500px', marginBottom: '32px' }}>
+            Every fill that executes on Vela is published here in real time. No anonymization. No aggregation. Every counterparty, every price, every timestamp.
+          </p>
+
+          <div style={{ display: 'flex', borderBottom: '1px solid rgba(232,228,216,0.07)', marginBottom: '0', overflowX: 'auto' }}>
+            {MARKETS.map((m) => (
+              <button
+                key={m}
+                onClick={() => setActiveMarket(m)}
+                style={{
+                  fontFamily: IN,
+                  fontSize: '10px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  color: activeMarket === m ? '#E8E4D8' : 'rgba(232,228,216,0.28)',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: activeMarket === m ? '2px solid #E8E4D8' : '2px solid transparent',
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  marginBottom: '-1px',
+                }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 120px 100px 180px 180px', padding: '8px 0', borderBottom: '1px solid rgba(232,228,216,0.06)' }}>
+            {['Time', 'Market', 'Price', 'Size', 'Maker', 'Taker'].map((h) => (
+              <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,228,216,0.2)' }}>{h}</span>
+            ))}
+          </div>
+
+          {trades.length === 0 ? (
+            <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,228,216,0.2)', textAlign: 'center', padding: '48px 0' }}>
+              No trades yet. Be the first to trade on Vela.
+            </p>
+          ) : (
+            trades.map((trade) => {
+              const priceNum = trade.price / 1e8
+              const sizeNum = trade.quantity / 1e8
+              return (
+                <div
+                  key={trade.id}
+                  style={{ display: 'grid', gridTemplateColumns: '1fr 100px 120px 100px 180px 180px', padding: '9px 0', borderBottom: '1px solid rgba(232,228,216,0.04)', alignItems: 'center' }}
+                >
+                  <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.3)' }}>
+                    {new Date(trade.timestamp / 1000).toLocaleTimeString()}
+                  </span>
+                  <span style={{ fontFamily: IN, fontWeight: 500, fontSize: '11px', color: '#E8E4D8' }}>{trade.market_id}</span>
+                  <span style={{ fontFamily: CN, fontSize: '11px', color: trade.side === 'bid' ? '#6B8A5A' : '#CC3333' }}>
+                    {formatPrice(priceNum)}
+                  </span>
+                  <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.6)' }}>{sizeNum.toFixed(4)}</span>
+                  <a
+                    href={`/orders/${trade.maker_order_id}`}
+                    style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.4)', textDecoration: 'none' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.7)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.4)')}
+                  >
+                    {truncateAddress(trade.maker_address)}
+                  </a>
+                  <a
+                    href={`/orders/${trade.taker_order_id}`}
+                    style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.4)', textDecoration: 'none' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.7)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.4)')}
+                  >
+                    {truncateAddress(trade.taker_address)}
+                  </a>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+
+      <div style={{ background: '#E8E4D8', padding: '52px' }}>
+        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>
+          Order Audit Trail
+        </p>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#0C0C0C', margin: '0 0 12px' }}>
+          Every order has a permanent record.
+        </h2>
+        <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(12,12,12,0.45)', maxWidth: '500px', marginBottom: '28px' }}>
+          Every order ever placed on Vela is accessible at vela.monolithsystematic.com/orders/{'{id}'}. You can verify your order was handled correctly — the price it matched at, the counterparty, the exact timestamp.
+        </p>
+
+        <label style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.4)', display: 'block', marginBottom: '8px' }}>
+          Look up an order ID:
+        </label>
+        <div style={{ display: 'flex', gap: '0' }}>
+          <input
+            type="text"
+            value={orderInput}
+            onChange={(e) => setOrderInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && orderInput.trim()) router.push(`/orders/${orderInput.trim()}`) }}
+            placeholder="e.g. 42"
+            style={{
+              fontFamily: CN,
+              fontSize: '13px',
+              color: '#0C0C0C',
+              background: 'white',
+              border: '1px solid rgba(12,12,12,0.15)',
+              borderRight: 'none',
+              padding: '10px 16px',
+              outline: 'none',
+              width: '280px',
+            }}
+          />
+          <button
+            onClick={() => { if (orderInput.trim()) router.push(`/orders/${orderInput.trim()}`) }}
+            style={{
+              fontFamily: IN,
+              fontSize: '12px',
+              fontWeight: 600,
+              color: '#E8E4D8',
+              background: '#0C0C0C',
+              border: 'none',
+              padding: '10px 20px',
+              cursor: 'pointer',
+            }}
+          >
+            Look up →
+          </button>
+        </div>
+        <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(12,12,12,0.3)', marginTop: '10px' }}>
+          Order IDs are shown in your trade history after placing orders.
+        </p>
+      </div>
+    </div>
+  )
+}

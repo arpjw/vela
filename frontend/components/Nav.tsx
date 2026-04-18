@@ -8,10 +8,11 @@ import { useAuth } from '@/lib/auth'
 import { Spinner } from '@/components/ui/Spinner'
 
 const LINKS = [
-  { href: '/markets', label: 'Markets' },
-  { href: '/dashboard',  label: 'Dashboard' },
-  { href: '/analytics',  label: 'Analytics' },
-  { href: '/history',    label: 'History'   },
+  { href: '/markets',      label: 'Markets'      },
+  { href: '/dashboard',    label: 'Dashboard'    },
+  { href: '/analytics',    label: 'Analytics'    },
+  { href: '/history',      label: 'History'      },
+  { href: '/transparency', label: 'Transparency' },
 ]
 
 const PF = "var(--font-playfair), 'Playfair Display', serif"

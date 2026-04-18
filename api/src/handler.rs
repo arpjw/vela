@@ -10,15 +10,17 @@ use k256::ecdsa::SigningKey;
 use sha3::{Digest, Keccak256};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use types::{
-    AssetId, CancelOrderRequest, DepositRequest, MarketId, PostOrderRequest,
-    Request, Response as EngineResponse, UserId, WithdrawalRequest, PRICE_DECIMALS, QUANTITY_DECIMALS,
+    AssetId, CancelOrderRequest, DepositRequest, Fill, MarketId, OrderSide, OrderStatus,
+    OrderType, PostOrderRequest, Request, Response as EngineResponse, UserId, WithdrawalRequest,
+    PRICE_DECIMALS, QUANTITY_DECIMALS,
 };
 use crate::{
     AppState,
     auth::{cancel_signing_message, eth_message_hash, order_signing_message, verify_matches_async, withdrawal_signing_message},
     types::{
         ApiResponse, BalanceResponse, BookLevel, BookResponse, CancelOrderBody,
-        DepositBody, MarketResponse, PostOrderBody, WithdrawBody, format_amount,
+        DepositBody, MarketResponse, OrderFillRecord, PostOrderBody, StoredFill, StoredOrder,
+        WithdrawBody, format_amount,
     },
     ws::handle_ws,
 };
@@ -129,11 +131,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/account/:address/orders", get(get_open_orders))
         .route("/orders", post(post_order))
         .route("/orders/cancel", post(cancel_order))
+        .route("/orders/:order_id", get(get_order_by_id))
+        .route("/trades", get(list_trades))
+        .route("/trades/:market_id", get(list_trades_by_market))
         .route("/withdrawals", post(initiate_withdrawal))
         .route("/withdrawal-signature", post(withdrawal_signature_handler))
         .route("/deposit", post(deposit_handler))
         .route("/ws", get(ws_handler))
         .route("/admin/state", get(admin_state_handler))
+        .route("/admin/reserves", get(admin_reserves_handler))
         .with_state(state)
         .layer(cors)
 }
@@ -279,13 +285,13 @@ async fn post_order(
 
     let req = PostOrderRequest {
         user: user.clone(),
-        market: MarketId(body.market),
+        market: MarketId(body.market.clone()),
         side: body.side,
         order_type: body.order_type,
         price: body.price,
         quantity: body.quantity,
         nonce: body.nonce,
-        client_order_id: body.client_order_id,
+        client_order_id: body.client_order_id.clone(),
         signature: vec![],
     };
 
@@ -309,7 +315,215 @@ async fn post_order(
         return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(msg))).into_response();
     }
 
+    record_order_and_fills(&state, &body, &responses, ts).await;
+
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
+}
+
+async fn record_order_and_fills(
+    state: &Arc<AppState>,
+    body: &PostOrderBody,
+    responses: &[EngineResponse],
+    ts: u64,
+) {
+    let fill_pairs: Vec<(String, Fill)> = responses
+        .iter()
+        .filter_map(|r| if let EngineResponse::OrderFilled(f) = r { Some(f.clone()) } else { None })
+        .map(|f| {
+            let id = format!("fill_{}_{}", f.maker_order_id, f.taker_order_id);
+            (id, f)
+        })
+        .collect();
+
+    let posted = responses.iter().find_map(|r| {
+        if let EngineResponse::OrderPosted(p) = r { Some(p.clone()) } else { None }
+    });
+
+    let Some(posted) = posted else { return };
+
+    let total_filled: u64 = fill_pairs.iter().map(|(_, f)| f.quantity).sum();
+
+    let self_fills: Vec<OrderFillRecord> = fill_pairs
+        .iter()
+        .map(|(fill_id, f)| {
+            let (counterparty_order_id, counterparty_address) = if f.taker_order_id == posted.order_id {
+                (f.maker_order_id, f.maker.to_hex())
+            } else {
+                (f.taker_order_id, f.taker.to_hex())
+            };
+            OrderFillRecord {
+                fill_id: fill_id.clone(),
+                counterparty_order_id,
+                counterparty_address,
+                price: f.price,
+                quantity: f.quantity,
+                timestamp: f.timestamp,
+            }
+        })
+        .collect();
+
+    let new_order = StoredOrder {
+        id: posted.order_id,
+        market_id: body.market.clone(),
+        user: body.address.clone(),
+        side: side_to_str(body.side).to_string(),
+        price: body.price,
+        quantity: body.quantity,
+        filled_quantity: total_filled,
+        status: status_to_str(posted.status).to_string(),
+        order_type: order_type_to_str(body.order_type).to_string(),
+        time_in_force: order_type_to_tif(body.order_type).to_string(),
+        nonce: body.nonce,
+        signature: body.signature.clone(),
+        created_at: ts,
+        updated_at: ts,
+        fills: self_fills,
+    };
+
+    {
+        let mut fills_guard = state.fills.lock().await;
+        for (fill_id, f) in &fill_pairs {
+            fills_guard.push(StoredFill {
+                id: fill_id.clone(),
+                market_id: body.market.clone(),
+                price: f.price,
+                quantity: f.quantity,
+                maker_order_id: f.maker_order_id,
+                taker_order_id: f.taker_order_id,
+                maker_address: f.maker.to_hex(),
+                taker_address: f.taker.to_hex(),
+                timestamp: f.timestamp,
+                side: side_to_str(f.side).to_string(),
+            });
+        }
+    }
+
+    {
+        let mut orders_guard = state.stored_orders.lock().await;
+        for (fill_id, f) in &fill_pairs {
+            if let Some(maker_order) = orders_guard.get_mut(&f.maker_order_id) {
+                maker_order.filled_quantity += f.quantity;
+                maker_order.status = if maker_order.filled_quantity >= maker_order.quantity {
+                    "filled".to_string()
+                } else {
+                    "partially_filled".to_string()
+                };
+                maker_order.updated_at = ts;
+                maker_order.fills.push(OrderFillRecord {
+                    fill_id: fill_id.clone(),
+                    counterparty_order_id: f.taker_order_id,
+                    counterparty_address: f.taker.to_hex(),
+                    price: f.price,
+                    quantity: f.quantity,
+                    timestamp: f.timestamp,
+                });
+            }
+        }
+        orders_guard.insert(posted.order_id, new_order);
+    }
+}
+
+fn side_to_str(side: OrderSide) -> &'static str {
+    match side {
+        OrderSide::Bid => "bid",
+        OrderSide::Ask => "ask",
+    }
+}
+
+fn order_type_to_str(ot: OrderType) -> &'static str {
+    match ot {
+        OrderType::GoodTillCanceled => "limit",
+        OrderType::PostOnly => "post_only",
+        OrderType::ImmediateOrCancel => "limit",
+        OrderType::FillOrKill => "limit",
+    }
+}
+
+fn order_type_to_tif(ot: OrderType) -> &'static str {
+    match ot {
+        OrderType::GoodTillCanceled => "gtc",
+        OrderType::PostOnly => "post_only",
+        OrderType::ImmediateOrCancel => "ioc",
+        OrderType::FillOrKill => "fok",
+    }
+}
+
+fn status_to_str(status: OrderStatus) -> &'static str {
+    match status {
+        OrderStatus::Open => "open",
+        OrderStatus::PartiallyFilled => "partially_filled",
+        OrderStatus::Filled => "filled",
+        OrderStatus::Canceled => "cancelled",
+        OrderStatus::Rejected => "rejected",
+    }
+}
+
+async fn get_order_by_id(
+    Path(order_id): Path<u64>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let orders = state.stored_orders.lock().await;
+    match orders.get(&order_id) {
+        Some(order) => (StatusCode::OK, Json(ApiResponse::ok(order.clone()))).into_response(),
+        None => (StatusCode::NOT_FOUND, Json(ApiResponse::<()>::err("order not found"))).into_response(),
+    }
+}
+
+async fn list_trades(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let fills = state.fills.lock().await;
+    let mut result = fills.clone();
+    result.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    result.truncate(500);
+    Json(ApiResponse::ok(result))
+}
+
+async fn list_trades_by_market(
+    Path(market_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let fills = state.fills.lock().await;
+    let mut result: Vec<StoredFill> = fills
+        .iter()
+        .filter(|f| f.market_id == market_id)
+        .cloned()
+        .collect();
+    result.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    result.truncate(500);
+    Json(ApiResponse::ok(result))
+}
+
+async fn admin_reserves_handler(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let expected = std::env::var("ADMIN_TOKEN").unwrap_or_else(|_| "vela-admin-2026".to_string());
+    let provided = headers
+        .get("x-admin-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if provided != expected {
+        return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("unauthorized"))).into_response();
+    }
+
+    let engine = state.engine.lock().await;
+
+    let mut engine_balances: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    for ((_, asset), bal) in &engine.balances {
+        *engine_balances.entry(asset.0.clone()).or_insert(0) += bal.total();
+    }
+
+    let total_users = engine.metadata.len();
+    let snapshot_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    (StatusCode::OK, Json(ApiResponse::ok(serde_json::json!({
+        "engine_balances": engine_balances,
+        "total_users": total_users,
+        "snapshot_time": snapshot_time,
+    })))).into_response()
 }
 
 async fn cancel_order(

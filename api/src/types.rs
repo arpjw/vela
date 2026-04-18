@@ -1,5 +1,48 @@
 use serde::{Deserialize, Serialize};
-use types::{MarketId, OrderSide, OrderStatus, OrderType, Price, Quantity, UserId};
+use types::{OrderSide, OrderType, Price, Quantity};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredFill {
+    pub id: String,
+    pub market_id: String,
+    pub price: u64,
+    pub quantity: u64,
+    pub maker_order_id: u64,
+    pub taker_order_id: u64,
+    pub maker_address: String,
+    pub taker_address: String,
+    pub timestamp: u64,
+    pub side: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderFillRecord {
+    pub fill_id: String,
+    pub counterparty_order_id: u64,
+    pub counterparty_address: String,
+    pub price: u64,
+    pub quantity: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredOrder {
+    pub id: u64,
+    pub market_id: String,
+    pub user: String,
+    pub side: String,
+    pub price: u64,
+    pub quantity: u64,
+    pub filled_quantity: u64,
+    pub status: String,
+    pub order_type: String,
+    pub time_in_force: String,
+    pub nonce: u64,
+    pub signature: String,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub fills: Vec<OrderFillRecord>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
