@@ -26,6 +26,8 @@ Most exchanges ask you to trust them. Vela is designed so you don't have to.
 ---
 
 ## Architecture
+
+```
 ┌─────────────────────────────────────────────┐
 │              Next.js Frontend               │
 │         vela.monolithsystematic.com         │
@@ -48,6 +50,7 @@ Most exchanges ask you to trust them. Vela is designed so you don't have to.
 │  0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686 │
 │              Ethereum Sepolia               │
 └─────────────────────────────────────────────┘
+```
 
 **Stack:** Rust · Solidity/Foundry · Next.js 14 · TypeScript · Tailwind · fly.io · Vercel
 
@@ -201,6 +204,8 @@ cd frontend && npx vercel --prod   # deploy frontend
 ---
 
 ## Repo Structure
+
+```
 vela/
 ├── types/       # Shared types (Order, Fill, Market, Request, Response)
 ├── engine/      # Matching engine (price-time priority CLOB)
@@ -211,6 +216,7 @@ vela/
 ├── contracts/   # Solidity (VelaSettlement.sol, Foundry)
 ├── frontend/    # Next.js 14 frontend
 └── docs/        # Mintlify documentation
+```
 
 ---
 
