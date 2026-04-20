@@ -1,0 +1,138 @@
+---
+title: "HFT Nonce Scheme"
+description: "How Vela's rolling 20-window nonce design enables 20 concurrent in-flight orders"
+---
+
+## The Problem with Simple Monotonic Nonces
+
+A strict monotonic nonce (nonce N+1 must follow nonce N) creates a head-of-line blocking problem for HFT strategies:
+
+1. You send order A with nonce 100
+2. You send order B with nonce 101 in parallel
+3. Order B arrives at the engine before A (network jitter)
+4. Engine rejects B: nonce 101 is greater than expected 100? Wait — actually in a strict scheme, the engine must process them in order. If B arrives first, either it is buffered (adds latency) or rejected (forces retry).
+
+For a market maker sending bursts of 5–20 quotes simultaneously, strict ordering means you can only have one order in-flight at a time. This limits effective throughput to one order per round-trip latency — around 10–30 orders/second over the internet.
+
+## Rolling 20-Window Design
+
+Vela maintains a rolling window of the 20 most recent nonces per user. The window acts as a sliding acceptance range:
+
+```
+Window (sorted): [100, 101, 103, 105, 107, ..., 119]
+                   ^
+                 min(window)
+
+A new nonce is accepted if:
+  new_nonce > min(window)  AND  new_nonce not in window
+```
+
+When the window is full (20 entries) and a new nonce is accepted, the oldest (minimum) nonce is evicted, shifting the window forward.
+
+## Validation Rules
+
+| Condition | Result | Error |
+|-----------|--------|-------|
+| `new_nonce > min(window)` and not in window | Accepted | — |
+| `new_nonce <= min(window)` | Rejected | `InvalidNonce` |
+| `new_nonce` already in window | Rejected | `DuplicateNonce` |
+
+This gives you 20 "slots" of concurrency. You can dispatch 20 orders simultaneously, and all will be accepted regardless of arrival order at the engine — as long as each nonce is unique and greater than the current window minimum.
+
+## Replay Attack Prevention
+
+The window prevents replay attacks:
+- A nonce below `min(window)` is permanently rejected — an attacker cannot re-submit a captured request.
+- A nonce in the window is rejected as a duplicate — even if the original is still being processed.
+- The window minimum only moves forward — there is no way to roll it back.
+
+## How to Use: Timestamp-Based Nonces
+
+Timestamp-based nonces are recommended. They are always increasing across restarts, human-readable for debugging, and virtually guarantee uniqueness:
+
+```python
+import time
+
+class NonceManager:
+    def __init__(self):
+        self._counter = int(time.time() * 1000)  # milliseconds
+
+    def next(self) -> int:
+        self._counter += 1
+        return self._counter
+```
+
+**Why milliseconds, not nanoseconds?** Millisecond timestamps are large enough to be unique across restarts (no two restarts within the same millisecond in practice), and small enough to stay well within int64 range for decades.
+
+**Avoid random nonces.** If you generate a random nonce below the current window minimum, it is rejected. A timestamp-based counter is monotonically increasing and never hits this case.
+
+## Code Example: Concurrent Dispatch
+
+```python
+import asyncio
+import time
+import aiohttp
+
+API_URL = "https://vela-engine.fly.dev"
+
+_nonce = int(time.time() * 1000)
+
+def next_nonce() -> int:
+    global _nonce
+    _nonce += 1
+    return _nonce
+
+async def place_burst(session, orders: list[dict]):
+    """Dispatch up to 20 orders in parallel using the nonce window."""
+    assert len(orders) <= 20, "window size is 20"
+
+    # Assign nonces before dispatch — each gets a unique value
+    for order in orders:
+        order["nonce"] = next_nonce()
+        order["signature"] = sign_order(order)
+
+    tasks = [
+        session.post(f"{API_URL}/orders", json=order)
+        for order in orders
+    ]
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
+    return responses
+```
+
+## TypeScript Example
+
+```typescript
+let nonce = Date.now();
+
+function nextNonce(): number {
+  return ++nonce;
+}
+
+async function placeBurst(orders: OrderRequest[]): Promise<Response[]> {
+  if (orders.length > 20) throw new Error("window size is 20");
+
+  const signed = orders.map(order => ({
+    ...order,
+    nonce: nextNonce(),
+    signature: signOrder(order),
+  }));
+
+  return Promise.all(
+    signed.map(order =>
+      fetch(`${API_URL}/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(order),
+      })
+    )
+  );
+}
+```
+
+## Window State After Burst
+
+After sending 20 orders with nonces `[1000, 1001, ..., 1019]`, the window holds all 20. Sending nonce `1020` evicts `1000` (the minimum), leaving `[1001, ..., 1019, 1020]`. The window always holds exactly 20 entries once full.
+
+If you need to send a 21st order before any acknowledgments return, you must wait for at least one window slot to open — either by receiving a response (the nonce is now confirmed consumed) or by accepting that nonce 1000 was evicted and 1020 is safe to send.
+
+In practice, network round-trip time means responses start arriving before you exhaust 20 slots.

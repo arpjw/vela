@@ -163,6 +163,160 @@ Returns all balances for a wallet address.
 }
 ```
 
+### GET /ohlcv/:market_id
+Returns OHLCV candlestick data for a market, derived from real trade history.
+
+Query parameters:
+
+| Param | Description | Default |
+|-------|-------------|---------|
+| `interval` | Candle interval: `1m`, `5m`, `15m`, `1h`, `4h`, `1d` | `1h` |
+| `limit` | Number of candles to return (max 500) | `100` |
+| `since` | ISO8601 start time | 24h ago |
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "t": "2026-04-15T12:00:00Z",
+      "o": "3200000000",
+      "h": "3215000000",
+      "l": "3195000000",
+      "c": "3208000000",
+      "v": "42500000",
+      "source": "LIVE"
+    }
+  ]
+}
+```
+
+`source` is `"LIVE"` when built from real trades, `"SIMULATED"` when built from order book midpoints.
+
+### GET /account/:address/orders/by-client-id/:client_order_id
+Look up a specific order by client order ID.
+
+```json
+{
+  "ok": true,
+  "data": {
+    "order_id": 12345,
+    "client_order_id": "my-order-001",
+    "status": "open",
+    "market_id": "ETH-USDC",
+    "side": "bid",
+    "price": 1580500000,
+    "quantity": 500000,
+    "filled_quantity": 0
+  }
+}
+```
+
+### GET /referral/:address
+Returns referral stats for a wallet address.
+
+```json
+{
+  "ok": true,
+  "data": {
+    "address": "0x...",
+    "referral_code": "0x...",
+    "referred_users": 3,
+    "total_earnings_usdc": "142000",
+    "active_until": "2026-07-15T00:00:00Z"
+  }
+}
+```
+
+### POST /referral/register
+Register a referral relationship.
+
+```json
+{
+  "referred": "0xNewUserAddress",
+  "referrer": "0xReferrerAddress",
+  "signature": "0x..."
+}
+```
+
+The signature message is `vela:referral:{referred}:{referrer}:{nonce}`, signed by the referred user.
+
+### GET /leaderboard
+Returns the trading leaderboard.
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "rank": 1,
+      "address": "0x...",
+      "volume_usdc": "4820000000",
+      "pnl_usdc": "198000",
+      "trades": 842
+    }
+  ]
+}
+```
+
+### GET /fees
+Returns current global fee configuration.
+
+```json
+{
+  "ok": true,
+  "data": {
+    "maker_fee_bps": -1,
+    "taker_fee_bps": 5
+  }
+}
+```
+
+### GET /markets/:id/fees
+Returns fee configuration for a specific market.
+
+```json
+{
+  "ok": true,
+  "data": {
+    "market_id": "ETH-USDC",
+    "maker_fee_bps": -1,
+    "taker_fee_bps": 5
+  }
+}
+```
+
+### GET /orders/:id/da-proof
+Returns a data availability proof for a filled order. Used by external parties to verify that a fill was included in the DA layer.
+
+```json
+{
+  "ok": true,
+  "data": {
+    "order_id": 12345,
+    "batch_id": "batch_abc123",
+    "merkle_root": "0x...",
+    "merkle_proof": ["0x...", "0x..."],
+    "fill_hash": "0x..."
+  }
+}
+```
+
+### POST /force-include
+Submit a signed transaction directly to the delayed inbox. The engine must include it within 24 hours or face an on-chain challenge.
+
+```json
+{
+  "user": "0x...",
+  "payload": "0x...",
+  "nonce": 1713000000000,
+  "signature": "0x..."
+}
+```
+
+### GET /ws
+WebSocket upgrade endpoint. Connect via `wss://vela-engine.fly.dev/ws`. See [WebSocket Feeds](/transparency/websocket) for the full protocol reference.
+
 ### GET /admin/state
 Admin-only endpoint. Requires `X-Admin-Token` header.
 

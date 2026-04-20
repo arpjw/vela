@@ -1,0 +1,132 @@
+---
+title: "Referral Program"
+description: "Earn 20% of referred users' taker fees for 90 days"
+---
+
+## How It Works
+
+When someone signs up and trades using your referral link, you earn **20% of their taker fees** for **90 days** from the date they register the referral.
+
+- Earnings are credited in USDC directly to your engine balance
+- There is no cap on the number of users you can refer
+- The 90-day window starts when the referred user calls `POST /referral/register`
+
+## Getting Your Referral Link
+
+In the Vela dashboard, navigate to the **Referrals** section. Your referral URL is:
+
+```
+https://vela.monolithsystematic.com?ref={your_wallet_address}
+```
+
+Share this link. When a new user connects their wallet via this URL, the referral code is pre-filled in their registration flow.
+
+## Registering a Referral
+
+A referred user registers the relationship by calling:
+
+```
+POST /referral/register
+```
+
+**Request:**
+
+```json
+{
+  "referred": "0xNewUserAddress",
+  "referrer": "0xYourAddress",
+  "nonce": 1713000000001,
+  "signature": "0x..."
+}
+```
+
+The signature message is `vela:referral:{referred}:{referrer}:{nonce}`, signed by the **referred user**.
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "referred": "0xNewUserAddress",
+    "referrer": "0xYourAddress",
+    "active_until": "2026-07-15T00:00:00Z"
+  }
+}
+```
+
+## Viewing Your Earnings
+
+```
+GET /referral/:address
+```
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "address": "0xYourAddress",
+    "referral_code": "0xYourAddress",
+    "referred_users": 3,
+    "total_earnings_usdc": "142000",
+    "active_referrals": [
+      {
+        "address": "0xReferredUser1",
+        "active_until": "2026-07-15T00:00:00Z",
+        "earned_usdc": "98000"
+      }
+    ]
+  }
+}
+```
+
+`total_earnings_usdc` is in fixed-point (divide by 1,000,000 for display).
+
+## Leaderboard
+
+The trading leaderboard at `/leaderboard` ranks all traders by 30-day volume. High-volume referrals may drive significant leaderboard movement.
+
+```
+GET /leaderboard
+```
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "rank": 1,
+      "address": "0x...",
+      "volume_usdc": "4820000000",
+      "pnl_usdc": "198000",
+      "trades": 842
+    }
+  ]
+}
+```
+
+## Rules
+
+- **One referrer per user.** A user can only have one referrer, and it cannot be changed after registration.
+- **Immutable once set.** The referral relationship is recorded in the engine state and cannot be overridden.
+- **Self-referral not allowed.** You cannot refer yourself.
+- **90-day window.** Earnings stop after 90 days from the referral registration date. The referred user remains a valid user; only the fee-sharing stops.
+- **Taker fees only.** Rebates earned by the referred user as a maker do not affect your referral earnings. The split applies only to taker fees they pay.
+
+## Signing Referral Registration (Python)
+
+```python
+from eth_account.messages import encode_defunct
+from web3 import Web3
+
+w3 = Web3()
+account = w3.eth.account.from_key(REFERRED_USER_PRIVATE_KEY)
+
+def sign_referral(referred: str, referrer: str, nonce: int) -> str:
+    msg = f"vela:referral:{referred}:{referrer}:{nonce}"
+    message = encode_defunct(text=msg)
+    signed = account.sign_message(message)
+    return signed.signature.hex()
+```

@@ -1,0 +1,68 @@
+---
+title: "Market Making Overview"
+description: "How to market make on Vela Exchange — features, mechanics, and getting started"
+---
+
+Vela is purpose-built for professional market makers. The engine exposes features that most DEXes require you to build workarounds for: concurrent order dispatch, capital-efficient quoting, private feeds, and maker rebates.
+
+## MM-Specific Features
+
+| Feature | Description |
+|---------|-------------|
+| Credit system | Quote up to 1× your deposited amount across all open orders |
+| HFT nonces | 20 concurrent in-flight orders with no head-of-line blocking |
+| Client order IDs | Assign your own IDs at placement; cancel by your ID without round-trips |
+| Auto-cancel | Engine clears room for new orders on credit ratio breach |
+| Maker rebate | −1 bps on every resting fill, credited in USDC |
+| Private L3 feeds | Authenticated WebSocket feed for your fills, order updates, and balance changes |
+
+## Getting Started
+
+1. **Connect your wallet** — any Ethereum-compatible wallet that supports `personal_sign` works. See [Connect Wallet](/getting-started/connect-wallet).
+
+2. **Deposit collateral** — ETH and USDC are settled on-chain. Minimum deposit: there is no enforced minimum, but $1,000+ USDC gives meaningful headroom. See [Deposit Funds](/getting-started/deposit).
+
+3. **Read the API guide** — the [Market Maker API Guide](/market-making/api-guide) covers authentication, nonce management, order placement, and a complete Python market maker implementation.
+
+4. **Subscribe to your private feed** — connect to the WebSocket and authenticate to receive real-time fills and order updates. See [WebSocket Feeds](/transparency/websocket).
+
+## Capital Efficiency
+
+The credit system lets you quote beyond your deposited amount — up to 1:1. A $10,000 USDC deposit supports $10,000 of live bid + ask notional across all markets simultaneously. Orders at multiple price levels across multiple markets all count toward the same cap.
+
+When a new order would exceed the cap, the engine auto-cancels your oldest open orders one at a time until there is room. This fires atomically within the same engine tick — your new order always lands.
+
+See [Credit System](/market-making/credit-system) for the math.
+
+## Fee Structure
+
+| Role | Fee |
+|------|-----|
+| Maker (resting order) | −1 bps (rebate) |
+| Taker (aggressive order) | +5 bps |
+
+Maker rebates are applied per fill and credited directly to your USDC balance. A two-sided market maker quoting competitive spreads should accumulate rebates on every fill.
+
+See [Fee Framework](/engine/fee-framework) for calculation details.
+
+## HFT Nonces
+
+Instead of a strict sequential nonce, Vela maintains a rolling window of your 20 most recent nonces. You can dispatch 20 orders simultaneously with no blocking. See [HFT Nonce Scheme](/engine/hft-nonces).
+
+## Private L3 Feed
+
+Your order flow is not visible on the public feed. Connect to `wss://vela-engine.fly.dev/ws`, authenticate with your wallet signature, and subscribe to `account:{your_address}` to receive:
+
+- `fill` — your fills, with fee breakdown
+- `order_update` — order status changes including auto-cancellations
+- `balance_update` — USDC balance and credit utilization changes
+
+See [WebSocket Feeds](/transparency/websocket).
+
+## MM Dashboard
+
+The dashboard at `/mm` surfaces credit utilization, open orders, P&L, and per-market summary in one view. It reads from your private feed in real time. See [MM Dashboard](/market-making/dashboard).
+
+## Institutional Tiers
+
+Enhanced rebates, higher credit limits, and dedicated support are available. Contact `team@monolithsystematic.com`.

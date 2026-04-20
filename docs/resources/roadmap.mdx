@@ -44,7 +44,7 @@ The roadmap shows direction and priority — not a release schedule. No dates ar
 - `api` crate: HTTP handler (axum), WebSocket, ECDSA auth, feed manager
 - `committer` crate: async batch committer, LocalDaClient
 - `zkvm` crate: verify_execution(), FraudProof generation
-- Full test suite: 73/73 tests passing
+- Full test suite: 142+ tests passing
 
 ---
 
@@ -76,7 +76,7 @@ The roadmap shows direction and priority — not a release schedule. No dates ar
 **Status: Complete**
 
 - Full-screen trading UI built on Next.js, deployed on Vercel
-- 11 live markets: BTC, ETH, SOL, AVAX, MATIC, LINK, UNI, ARB, OP, AAVE, DOGE
+- 16 live markets: BTC, ETH, SOL, AVAX, MATIC, LINK, UNI, ARB, OP, AAVE, DOGE, PEPE, WIF, JUP, PENDLE, EIGEN
 - Order book composition view with depth chart
 - Analytics panel: OFI, spread decomposition, VWAS, depth chart
 - MM dashboard: credit gauge, open orders table, P&L tracker, market summary
@@ -131,19 +131,13 @@ Replace `LocalDaClient` with a production DA layer:
 - Cryptographic availability proofs
 - DA-anchored fraud proof submissions
 
-### HFT Nonce Scheme (VEL-10)
+### HFT Nonce Scheme (VEL-10) — Shipped in v0.2.0
 
-High-frequency trading requires sub-microsecond nonce coordination. VEL-10 designs a nonce scheme that:
-- Supports concurrent order submission from the same account
-- Eliminates the sequential nonce bottleneck for HFT strategies
-- Maintains replay prevention guarantees
+Rolling 20-window nonce scheme shipped in Phase 2. Supports 20 concurrent in-flight orders per account with no head-of-line blocking. See [HFT Nonce Scheme](/engine/hft-nonces).
 
-### CoW Cache Delta Buffer (VEL-11)
+### CoW Cache Delta Buffer (VEL-11) — Shipped in v0.2.0
 
-Performance optimization for the CoW cache:
-- Buffer balance deltas in a compact delta structure
-- Coalesce multiple fills per account per batch into a single MPT write
-- Reduces MPT write amplification at high fill rates
+Copy-on-Write delta buffer shipped in Phase 2. Atomic FOK/IOC correctness with 841ns rollback overhead. See [Copy-on-Write Semantics](/engine/copy-on-write).
 
 ### Additional Institutional Features
 

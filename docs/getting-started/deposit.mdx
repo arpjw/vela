@@ -1,14 +1,22 @@
 ---
 title: "Deposit Funds"
-description: "How to fund your Vela account — ETH on-chain or trust-based for other assets"
+description: "How to fund your Vela account — ETH and USDC on-chain, or trust-based for other assets"
 ---
 
 ## Overview
 
 Vela supports two deposit modes depending on the asset:
 
+| Asset | Settlement |
+|-------|------------|
+| ETH | On-chain (VelaSettlement.sol) |
+| USDC | On-chain (VelaSettlement.sol, ERC20) |
+| Other assets | Trust-based (beta) |
+
+
 - **ETH** — fully on-chain via the VelaSettlement smart contract on Ethereum Sepolia. Your funds are locked in the contract, not held by Vela.
-- **Other assets (USDC, BTC, SOL, etc.)** — trust-based beta deposits. Funds are credited directly to your engine balance.
+- **USDC** — fully on-chain via the VelaSettlement smart contract on Ethereum Sepolia. Requires a two-step approve + deposit flow.
+- **Other assets (BTC, SOL, AVAX, etc.)** — trust-based beta deposits. Funds are credited directly to your engine balance.
 
 ## Depositing ETH (On-Chain)
 
@@ -24,9 +32,28 @@ Vela supports two deposit modes depending on the asset:
 
 You can verify your deposit on [Sepolia Etherscan](https://sepolia.etherscan.io/address/0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686).
 
+## Depositing USDC (On-Chain)
+
+USDC deposits are settled on-chain via the VelaSettlement contract. This is a two-step process:
+
+1. Go to [vela.monolithsystematic.com/deposit](https://vela.monolithsystematic.com/deposit)
+2. Connect your MetaMask wallet
+3. Select **USDC** as the asset
+4. Enter the amount and click **Deposit**
+5. **Step 1 — Approve:** MetaMask will prompt you to approve the VelaSettlement contract to spend your USDC. Confirm this transaction.
+6. **Step 2 — Deposit:** MetaMask will prompt you to deposit the USDC into the contract. Confirm this transaction.
+7. Once both transactions are mined, your USDC is locked on-chain and your engine balance is credited.
+
+**USDC contract (Sepolia):** `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`  
+**Get Sepolia USDC:** [faucet.circle.com](https://faucet.circle.com) — Circle's official Sepolia USDC faucet
+
+<Note>
+If you have already approved a sufficient allowance from a previous deposit, the approval step is skipped automatically.
+</Note>
+
 ## Depositing Other Assets (Trust-Based)
 
-For USDC, BTC, SOL, AVAX, MATIC, LINK, UNI, ARB, OP, AAVE, and DOGE:
+For BTC, SOL, AVAX, MATIC, LINK, UNI, ARB, OP, AAVE, and DOGE:
 
 1. Go to [vela.monolithsystematic.com/deposit](https://vela.monolithsystematic.com/deposit)
 2. Connect your wallet
@@ -35,7 +62,7 @@ For USDC, BTC, SOL, AVAX, MATIC, LINK, UNI, ARB, OP, AAVE, and DOGE:
 5. Your balance is credited immediately — no on-chain transaction required
 
 <Warning>
-Trust-based deposits are held by Monolith Systematic LLC during the beta period. ERC20 on-chain deposits are coming in a future update.
+Trust-based deposits are held by Monolith Systematic LLC during the beta period. Only ETH and USDC are settled on-chain.
 </Warning>
 
 ## Limits

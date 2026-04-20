@@ -5,15 +5,15 @@ description: "Frequently asked questions about Vela Exchange."
 
 <AccordionGroup>
   <Accordion title="Is Vela live?" icon="circle-question">
-    Yes. Vela is in **public beta** as of April 2026. The exchange is live at [vela.monolithsystematic.com](https://vela.monolithsystematic.com) with 11 spot markets, a full trading UI, and a working API.
+    Yes. Vela is in **public beta** as of April 2026. The exchange is live at [vela.monolithsystematic.com](https://vela.monolithsystematic.com) with 16 spot markets, a full trading UI, and a working API.
 
     Beta means the on-chain components (deposit contracts, fraud proof enforcement, forced inclusion) are not yet deployed. See [Trust Model](/security/trust-model) for what this means in practice.
   </Accordion>
 
   <Accordion title="Are deposits safe?" icon="shield">
-    In the current beta, deposits are **trust-based**. They are held by the operator (Monolith Systematic LLC) and tracked in Vela's state layer. There is no on-chain smart contract holding your funds.
+    ETH and USDC deposits are settled on-chain via the VelaSettlement smart contract on Ethereum Sepolia. Your funds are held by the contract, not the operator.
 
-    You should only deposit funds you are willing to lose. On-chain deposit settlement (where funds are held by a smart contract, not the operator) is the M6 milestone.
+    Other assets (BTC, SOL, etc.) are trust-based during the beta period — held by Monolith Systematic LLC and tracked in Vela's state layer.
 
     See [Deposit Funds](/getting-started/deposit) and [Trust Model](/security/trust-model) for the full picture.
   </Accordion>
@@ -79,11 +79,16 @@ description: "Frequently asked questions about Vela Exchange."
   </Accordion>
 
   <Accordion title="What are the fees?" icon="receipt">
-    During the public beta, **all trading is fee-free**. Fees will be activated at mainnet launch.
+    Vela uses a maker-taker fee model:
 
-    Vela will use a maker-taker fee model: takers pay a fee, makers receive a rebate. Volume-based tiers will be available. Specific rates will be announced before mainnet.
+    | Role | Fee |
+    |------|-----|
+    | Maker (resting order) | −1 bps (rebate) |
+    | Taker (aggressive order) | +5 bps fee |
 
-    See [Fees and Rebates](/trading/fees) for the full model description.
+    Fees are applied to the quote asset (USDC) on each fill. Maker rebates are credited directly to your balance.
+
+    See [Fee Framework](/engine/fee-framework) for the full model.
   </Accordion>
 
   <Accordion title="How do I become a market maker?" icon="chart-bar">
@@ -109,9 +114,9 @@ description: "Frequently asked questions about Vela Exchange."
   </Accordion>
 
   <Accordion title="What markets are available?" icon="chart-candlestick">
-    11 spot markets are live in beta, all quoted in USDC:
+    16 spot markets are live in beta, all quoted in USDC:
 
-    BTC-USDC, ETH-USDC, SOL-USDC, AVAX-USDC, MATIC-USDC, LINK-USDC, UNI-USDC, ARB-USDC, OP-USDC, AAVE-USDC, DOGE-USDC
+    BTC-USDC, ETH-USDC, SOL-USDC, AVAX-USDC, MATIC-USDC, LINK-USDC, UNI-USDC, ARB-USDC, OP-USDC, AAVE-USDC, DOGE-USDC, PEPE-USDC, WIF-USDC, JUP-USDC, PENDLE-USDC, EIGEN-USDC
 
     Additional markets will be added based on trader demand and liquidity.
   </Accordion>

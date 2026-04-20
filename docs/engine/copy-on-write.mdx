@@ -1,0 +1,88 @@
+---
+title: "Copy-on-Write Semantics"
+description: "How Vela's DeltaBuffer enables atomic order processing with sub-microsecond rollback"
+---
+
+## Why Atomic Order Processing Matters
+
+FOK (Fill-or-Kill) and IOC (Immediate-or-Cancel) orders require transactional semantics:
+
+- **FOK**: either the full quantity fills, or nothing changes. If the book doesn't have enough liquidity, no balances should move.
+- **IOC**: the filled portion commits, the unfilled remainder is silently discarded.
+
+Without atomic semantics, a partially-executed FOK that then fails would leave balances in an inconsistent state — some counterparty fills would be applied, others not.
+
+## How DeltaBuffer Works
+
+The `DeltaBuffer` is an overlay on top of the engine's balance and order state. It intercepts all writes during an order's execution and holds them in memory until either `commit()` or `rollback()` is called.
+
+```
+Incoming order
+     │
+     ▼
+┌────────────────────────────────┐
+│         DeltaBuffer            │
+│  overlay_balances: HashMap<..> │
+│  overlay_orders:   HashMap<..> │
+│  entry_log:        Vec<Entry>  │
+└─────────────┬──────────────────┘
+              │ reads: check overlay first, fall through to state
+              │ writes: go to overlay only
+              ▼
+┌────────────────────────────────┐
+│       Engine State             │
+│  (balances, order book, nonces)│
+└────────────────────────────────┘
+```
+
+Reads check the overlay first, falling back to committed state on a miss. Writes go to the overlay only — the underlying state is never touched until `commit()`.
+
+## commit() vs rollback()
+
+**`commit()`** — flushes the overlay into the committed state. All buffered balance and order changes become permanent. Called on:
+- Successful GTC order placement
+- Successful IOC partial/full fill
+- Successful FOK full fill
+
+**`rollback()`** — discards the overlay entirely. Zero-cost: the overlay maps are cleared and the entry log is dropped. The underlying state is unchanged. Called on:
+- FOK order that cannot fully fill
+- Any order that fails validation mid-execution
+
+Rollback overhead is 841ns — the cost of clearing the overlay maps plus deallocating the entry log. There is no undo log to replay, no state to restore.
+
+## Integration with FOK
+
+FOK uses a two-phase approach enabled by the delta buffer:
+
+```
+1. simulate — execute the full match against the book via DeltaBuffer
+2. check    — did the full quantity fill?
+   yes → commit()  (all fills become permanent)
+   no  → rollback() (book and balances unchanged, 841ns cost)
+```
+
+Without the delta buffer, phase 1 would require a separate "dry run" pass through the book before executing fills, doubling the matching cost for FOK orders.
+
+## Integration with IOC
+
+IOC uses a single-pass approach:
+
+```
+1. execute — match as much as possible via DeltaBuffer
+2. commit() — apply all fills that occurred
+3. discard remainder — any unfilled quantity is silently dropped
+```
+
+Because fills are buffered in the overlay, partial commits are clean — there is no possibility of applying fills for one counterparty but not another.
+
+## Performance
+
+| Operation | Cost |
+|-----------|------|
+| DeltaBuffer read (overlay hit) | ~5ns |
+| DeltaBuffer read (overlay miss, state fallthrough) | ~15ns |
+| DeltaBuffer write | ~8ns |
+| `commit()` — flush N entries | O(N), ~50ns per entry |
+| `rollback()` — discard overlay | 841ns (fixed) |
+
+The 841ns rollback cost is amortized over all FOK rejections. For a strategy placing many FOK orders, this overhead is negligible compared to network round-trip time.

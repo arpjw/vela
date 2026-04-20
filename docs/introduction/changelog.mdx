@@ -31,16 +31,21 @@ description: "Release history for Vela Exchange"
 
 ### Performance (v0.2.0)
 
-- 1.38μs p50 match latency
-- 725k ops/sec
-- 5.8× faster than Pulse (leading open-source DEX engine)
-- 142+ tests passing
+| Metric | Result |
+|--------|--------|
+| Match latency (p50) | 1.38 μs |
+| Throughput | 725k ops/sec |
+| vs. Pulse baseline | 5.8× faster |
+| Tests passing | 142+ |
 
 ---
 
-## v0.1.0 — Public Beta (April 2026)
+## v0.1.0 — April 2026
+
+Initial public beta. Core exchange, transparency layer, ETH settlement, 11 markets, MM bot, white paper.
 
 ### Exchange
+
 - 11 spot markets: BTC, ETH, SOL, AVAX, MATIC, LINK, UNI, ARB, OP, AAVE, DOGE (all vs USDC)
 - Central limit order book with price-time priority matching
 - Order types: Limit GTC, IOC, FOK, Post-Only
@@ -48,6 +53,7 @@ description: "Release history for Vela Exchange"
 - Live order books — CoinGecko price feeds update every 60 seconds
 
 ### On-Chain Settlement
+
 - VelaSettlement smart contract deployed to Ethereum Sepolia
 - Contract: `0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686`
 - On-chain ETH deposits via `depositETH()` payable function
@@ -55,30 +61,16 @@ description: "Release history for Vela Exchange"
 - 7-day emergency exit timelock for trustless fund recovery
 
 ### Infrastructure
+
 - Rust matching engine on fly.io (sjc region)
 - Persistent state via 1GB fly.io volume — snapshots every 60 seconds
 - Rate limiting: 20 orders/min, 5 deposits/min per wallet
 - Input validation with overflow protection
 - Admin state endpoint with token authentication
 
-### Frontend
-- Next.js 14 with TypeScript strict
-- Robinhood-inspired marketing landing page
-- Animated hex canvas (Bitcoin genesis block data)
-- Live mini order book in hero section
-- Full exchange: markets, dashboard, analytics, history
-- Deposit and withdrawal pages with on-chain ETH support
-- Mintlify documentation at monolithsystematicllc.mintlify.app
+### Performance (v0.1.0)
 
-### Performance
 - 1.08μs p50 match latency
 - 57.3k ops/sec
 - 4.7× faster than Pulse (leading open-source DEX engine)
 - 73/73 tests passing
-
-## Upcoming
-
-- Mainnet deployment
-- On-chain fraud proof verifier
-- Celestia / EigenDA integration
-- Series 3 / regulatory compliance

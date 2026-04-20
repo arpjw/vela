@@ -1,0 +1,108 @@
+---
+title: "Fee Framework"
+description: "How maker/taker fees are calculated and applied on Vela Exchange"
+---
+
+## Default Rates
+
+| Role | Fee | Description |
+|------|-----|-------------|
+| Maker | −1 bps | Rebate credited to your balance |
+| Taker | +5 bps | Fee deducted from your balance |
+
+A maker is a resting order that gets hit. A taker is the aggressive order that crosses the spread. Net exchange margin per matched pair is 4 bps.
+
+## Fee Calculation
+
+Fees apply to the **quote asset (USDC)** on every fill, calculated as:
+
+```
+fill_value = price × quantity (in display units)
+
+maker_fee = fill_value × (−0.0001)   // −1 bps → rebate
+taker_fee = fill_value × 0.0005      // +5 bps → fee
+```
+
+**Example: 1 ETH fill at $1,580**
+
+| Role | Calculation | Amount |
+|------|-------------|--------|
+| Maker | −0.01% × $1,580 | +$0.158 rebate |
+| Taker | +0.05% × $1,580 | −$0.790 fee |
+
+## Fee Amounts in Fill Responses
+
+Fee fields are in fixed-point (divide by 1,000,000 for display):
+
+```json
+{
+  "fill_id": "fill_abc123",
+  "order_id": 12345,
+  "market_id": "ETH-USDC",
+  "side": "bid",
+  "price": 1580000000,
+  "quantity": 1000000,
+  "filled_at": "2026-04-15T12:00:01.000Z",
+  "maker_fee": -158000,
+  "taker_fee": 790000,
+  "role": "maker"
+}
+```
+
+`maker_fee: -158000` divides to **+$0.158** (negative = rebate).
+`taker_fee: 790000` divides to **−$0.790** (positive = fee charged).
+
+The `role` field tells you which side you were on.
+
+## Exchange Fee Accumulation
+
+The exchange accumulates the net margin (4 bps per matched pair). This is tracked in the engine state and visible via the admin endpoint.
+
+## Fee Endpoints
+
+```
+GET /fees               — global fee rates
+GET /markets/:id/fees  — per-market fee rates
+```
+
+**GET /fees response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "maker_fee_bps": -1,
+    "taker_fee_bps": 5
+  }
+}
+```
+
+**GET /markets/:id/fees response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "market_id": "ETH-USDC",
+    "maker_fee_bps": -1,
+    "taker_fee_bps": 5
+  }
+}
+```
+
+## Why Maker Rebates
+
+Maker rebates incentivize liquidity providers to quote tight spreads. Resting orders add depth to the book, reduce spread, and improve execution quality for takers. Rebating makers shifts more of the fee burden to the party that benefits from available liquidity.
+
+This is standard practice on professional venues (Nasdaq, CME, most CEXes). Vela applies the same model at the DEX layer.
+
+## Fee Comparison
+
+| Venue | Maker | Taker |
+|-------|-------|-------|
+| Vela | −1 bps (rebate) | +5 bps |
+| Binance (standard) | 0–2 bps | 5–10 bps |
+| dYdX v4 | 0–1 bps | 2–5 bps |
+| Uniswap v3 (30 bps pool) | — | 30 bps |
+
+Vela's taker fee is competitive with professional CEX rates. The maker rebate is on the lower end — this is intentional during beta; institutional tiers with enhanced rebates are available by contacting the team.

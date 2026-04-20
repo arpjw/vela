@@ -1,0 +1,318 @@
+---
+title: "WebSocket Feeds"
+description: "Real-time market data and private account events via WebSocket"
+---
+
+## Connection
+
+```
+wss://vela-engine.fly.dev/ws
+```
+
+```javascript
+const ws = new WebSocket("wss://vela-engine.fly.dev/ws");
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({ type: "ping" }));
+};
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  handleMessage(msg);
+};
+```
+
+Send a `ping` every 30 seconds. The server closes idle connections after 60 seconds.
+
+## Subscribe / Unsubscribe
+
+```json
+{ "type": "subscribe", "channel": "orderbook:ETH-USDC" }
+{ "type": "unsubscribe", "channel": "orderbook:ETH-USDC" }
+```
+
+Private channels require authentication before subscribing. See [Authentication Flow](#authentication-flow) below.
+
+## Public Channels
+
+| Channel | Description |
+|---------|-------------|
+| `orderbook:{market_id}` | Full order book snapshot + incremental updates |
+| `trades:{market_id}` | Public trade feed for a market |
+| `markets` | All markets — best bid/ask, 24h volume, updated on change |
+
+### Order Book
+
+**Snapshot** (sent immediately on subscribe, and on significant changes):
+
+```json
+{
+  "type": "snapshot",
+  "channel": "orderbook:ETH-USDC",
+  "seq": 1,
+  "data": {
+    "bids": [[1580500000, 500000], [1580000000, 1000000]],
+    "asks": [[1581000000, 300000], [1581500000, 700000]]
+  },
+  "timestamp": "2026-04-15T12:00:00.000Z"
+}
+```
+
+**Incremental update:**
+
+```json
+{
+  "type": "update",
+  "channel": "orderbook:ETH-USDC",
+  "seq": 2,
+  "data": {
+    "bids": [[1580500000, 0]],
+    "asks": []
+  },
+  "timestamp": "2026-04-15T12:00:00.100Z"
+}
+```
+
+A quantity of `0` means the price level was removed. Apply updates in `seq` order. If you detect a gap in sequence numbers, re-subscribe to get a fresh snapshot.
+
+### Trades
+
+```json
+{
+  "type": "trade",
+  "channel": "trades:ETH-USDC",
+  "seq": 5,
+  "data": {
+    "trade_id": "trd_4a2b1c",
+    "price": 1581000000,
+    "quantity": 500000,
+    "side": "bid",
+    "timestamp": "2026-04-15T12:00:01.234Z"
+  }
+}
+```
+
+`side` is the aggressor (taker) side.
+
+### Markets
+
+```json
+{
+  "type": "markets_update",
+  "channel": "markets",
+  "seq": 12,
+  "data": [
+    {
+      "id": "ETH-USDC",
+      "best_bid": "1580500000",
+      "best_ask": "1581000000",
+      "volume_24h": "42500000000",
+      "last_price": "1580800000"
+    }
+  ],
+  "timestamp": "2026-04-15T12:00:05.000Z"
+}
+```
+
+## Private Channel
+
+| Channel | Auth Required | Description |
+|---------|---------------|-------------|
+| `account:{address}` | Yes | All account events: fills, order updates, balance changes |
+
+## Authentication Flow
+
+The auth signature message is `vela:ws:{address}:{timestamp}` (timestamp is Unix seconds, must be within 30 seconds of server time).
+
+**Step 1 — Send auth:**
+
+```json
+{
+  "type": "auth",
+  "address": "0xYourWalletAddress",
+  "signature": "0x...",
+  "timestamp": 1713000000
+}
+```
+
+**Signing in Python:**
+
+```python
+from eth_account.messages import encode_defunct
+
+def sign_ws_auth(account, address: str, timestamp: int) -> str:
+    msg = f"vela:ws:{address}:{timestamp}"
+    message = encode_defunct(text=msg)
+    signed = account.sign_message(message)
+    return signed.signature.hex()
+```
+
+**Signing in TypeScript:**
+
+```typescript
+async function signWsAuth(
+  signer: ethers.Signer,
+  address: string,
+  timestamp: number
+): Promise<string> {
+  return signer.signMessage(`vela:ws:${address}:${timestamp}`);
+}
+```
+
+**Step 2 — Subscribe to account channel:**
+
+```json
+{ "type": "subscribe", "channel": "account:0xYourWalletAddress" }
+```
+
+**Auth success response:**
+
+```json
+{ "type": "auth_success", "address": "0xYourWalletAddress" }
+```
+
+## Account Channel Message Types
+
+### `account_snapshot`
+
+Sent immediately after subscribing to the account channel. Provides current state.
+
+```json
+{
+  "type": "account_snapshot",
+  "channel": "account:0x...",
+  "data": {
+    "balances": {
+      "USDC": { "available": "10000000000", "locked": "500000000" }
+    },
+    "open_orders": [
+      {
+        "order_id": 12345,
+        "market_id": "ETH-USDC",
+        "side": "bid",
+        "price": 1580500000,
+        "quantity": 500000,
+        "filled_quantity": 0,
+        "status": "open"
+      }
+    ]
+  }
+}
+```
+
+### `fill`
+
+Sent when one of your orders receives a fill.
+
+```json
+{
+  "type": "fill",
+  "channel": "account:0x...",
+  "data": {
+    "fill_id": "fill_abc123",
+    "order_id": 12345,
+    "client_order_id": "my-order-001",
+    "market_id": "ETH-USDC",
+    "side": "bid",
+    "price": 1580500000,
+    "quantity": 250000,
+    "filled_quantity_cumulative": 250000,
+    "is_maker": true,
+    "maker_fee": -39512,
+    "taker_fee": 197563,
+    "timestamp": "2026-04-15T12:00:01.234Z"
+  }
+}
+```
+
+### `order_update`
+
+Sent when an order's status changes.
+
+```json
+{
+  "type": "order_update",
+  "channel": "account:0x...",
+  "data": {
+    "order_id": 12345,
+    "client_order_id": "my-order-001",
+    "market_id": "ETH-USDC",
+    "status": "partially_filled",
+    "filled_quantity": 250000,
+    "remaining_quantity": 250000,
+    "last_fill_price": 1580500000
+  }
+}
+```
+
+Possible `status` values: `open`, `partially_filled`, `filled`, `cancelled`, `rejected`.
+
+`cancelled` with no user-initiated cancel means the credit system auto-cancelled the order.
+
+### `balance_update`
+
+Sent when your balance changes.
+
+```json
+{
+  "type": "balance_update",
+  "channel": "account:0x...",
+  "data": {
+    "asset": "USDC",
+    "available": "9840000000",
+    "locked": "0",
+    "reason": "fill",
+    "timestamp": "2026-04-15T12:00:01.234Z"
+  }
+}
+```
+
+`reason` values: `fill`, `order_placed`, `order_cancelled`, `deposit`, `withdrawal`.
+
+## Sequence Numbers and Gap Detection
+
+All messages include a `seq` field that increments monotonically per channel. If you receive two messages with non-consecutive sequence numbers, you missed one or more updates.
+
+On gap detection: unsubscribe and re-subscribe to the channel to receive a fresh snapshot, then resume applying incremental updates from the new baseline.
+
+## Auto-Reconnect Pattern
+
+```python
+import asyncio
+import websockets
+import json
+import time
+
+async def connect_and_subscribe(address: str, sign_fn):
+    uri = "wss://vela-engine.fly.dev/ws"
+    while True:
+        try:
+            async with websockets.connect(uri) as ws:
+                # Auth
+                ts = int(time.time())
+                sig = sign_fn(address, ts)
+                await ws.send(json.dumps({
+                    "type": "auth",
+                    "address": address,
+                    "signature": sig,
+                    "timestamp": ts,
+                }))
+
+                # Subscribe
+                await ws.send(json.dumps({
+                    "type": "subscribe",
+                    "channel": f"account:{address}",
+                }))
+                await ws.send(json.dumps({
+                    "type": "subscribe",
+                    "channel": "orderbook:ETH-USDC",
+                }))
+
+                async for message in ws:
+                    handle(json.loads(message))
+
+        except websockets.ConnectionClosed:
+            await asyncio.sleep(1)  # brief pause before reconnect
+```
+
+On reconnect, re-send auth and all subscriptions. The server does not persist subscription state across connections.

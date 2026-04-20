@@ -21,6 +21,21 @@ Vela runs a high-performance matching engine off-chain while keeping a cryptogra
 - **DEX transparency** — every order is wallet-signed, every batch is provable via optimistic-ZK fraud proofs
 - **On-chain settlement** — funds held in a smart contract, withdrawals verifiable on Ethereum
 
+## Engine Features
+
+- Parallel signature verification (100k+ ops/sec ceiling)
+- HFT rolling 20-window nonce scheme for 20 concurrent in-flight orders
+- Client order IDs with cancel-by-client-id
+- Copy-on-Write delta buffer (atomic FOK/IOC, 841ns rollback)
+- Batched response sending
+- Auto-cancel on credit ratio breach
+- Configurable maker/taker fees (−1 bps maker rebate, 5 bps taker)
+- DA layer with content-addressed fill storage
+- Depth-32 sparse Merkle tree
+- Full WebSocket real-time feeds (orderbook, trades, markets, account)
+- 16 spot markets
+- 142+ tests passing
+
 ## Current Status
 
 Vela is in **public beta** on Ethereum Sepolia testnet.
@@ -30,10 +45,14 @@ Vela is in **public beta** on Ethereum Sepolia testnet.
 | Spot trading (16 markets) | ✓ Live |
 | Wallet-signed orders | ✓ Live |
 | On-chain ETH deposits/withdrawals | ✓ Live (Sepolia) |
+| On-chain USDC deposits | ✓ Live (Sepolia) |
 | Trust-based ERC20 deposits | ✓ Live (beta) |
 | Live order books (CoinGecko) | ✓ Live |
+| Real OHLCV candlestick data | ✓ Live |
+| Full WebSocket real-time feeds | ✓ Live |
+| Referral program | ✓ Live |
+| Trading leaderboard | ✓ Live |
 | Persistent engine state | ✓ Live |
-| ERC20 on-chain deposits | Coming soon |
 | Mainnet deployment | Coming soon |
 
 ## Access Vela
