@@ -1,0 +1,854 @@
+---
+title: "Market Maker API Guide"
+description: "Complete reference for algorithmic and professional market making on Vela Exchange"
+---
+
+## Overview
+
+Vela is purpose-built for high-frequency and professional market makers. Most DEXs force you to choose between capital efficiency and throughput. Vela eliminates that tradeoff.
+
+**What makes Vela different:**
+
+| Feature | Vela | Typical DEX |
+|---------|------|-------------|
+| Credit system | Quote up to 1× deposited | Must hold full collateral |
+| Nonce scheme | 20 concurrent in-flight orders | Strict sequence required |
+| Client order IDs | Native, cancel by your own ID | Order ID only |
+| Matching latency | 1.08μs p50, 57.3k ops/sec | 100ms–500ms |
+| Order privacy | Private L3 feed per wallet | Fully public |
+| Maker fee | −1 bps (rebate) | 0–5 bps fee |
+
+### Credit System
+
+Vela is the first DEX to let market makers quote beyond their deposited amount. Your total quoted notional across all open orders must be ≤ your deposited balance — but you can have many orders open simultaneously as long as the aggregate stays within that cap. A $10,000 deposit supports $10,000 of live quotes spread across as many orders as you like.
+
+### HFT Nonce Scheme
+
+Instead of a strict per-user sequence number, Vela maintains a rolling window of your 20 most recent nonces. Any new nonce greater than the minimum of that window is accepted — even if it arrives out of order. This means 20 orders can be in-flight simultaneously with no head-of-line blocking.
+
+### Sub-microsecond Matching
+
+The matching engine runs on a custom Rust CLOB with a 1.08μs p50 match latency at 57,300 operations per second. Benchmarks use a single-threaded, in-process setup to reflect the actual latency you experience, not a theoretical maximum.
+
+---
+
+## Authentication
+
+Every order mutation requires a wallet signature. Vela uses Ethereum's `personal_sign` standard (EIP-191 with `\x19Ethereum Signed Message:\n` prefix).
+
+### Signing Libraries
+
+- Python: `web3.py` (`eth_account`)
+- TypeScript: `viem` (`signMessage`) or `ethers.js` (`wallet.signMessage`)
+- Go: `go-ethereum` (`accounts.TextHash`)
+
+### Order Signature Format
+
+```
+Without client_order_id:
+  vela:order:{market_id}:{side}:{price}:{quantity}:{nonce}
+
+With client_order_id:
+  vela:order:{market_id}:{side}:{price}:{quantity}:{nonce}:{client_order_id}
+```
+
+All fields are plain strings. Price and quantity are the **fixed-point integers** you will send in the request body (see [Fixed-Point Encoding](#fixed-point-encoding)).
+
+### Cancel Signature Format
+
+```
+vela:cancel:{order_id}:{client_order_id}:{nonce}
+```
+
+Use an empty string `""` for `client_order_id` if the order was placed without one.
+
+### Python Example
+
+```python
+from web3 import Web3
+from eth_account.messages import encode_defunct
+
+w3 = Web3()
+account = w3.eth.account.from_key(PRIVATE_KEY)
+
+def sign_order(market_id, side, price, qty, nonce, client_order_id=None):
+    msg = f"vela:order:{market_id}:{side}:{price}:{qty}:{nonce}"
+    if client_order_id:
+        msg += f":{client_order_id}"
+    message = encode_defunct(text=msg)
+    signed = account.sign_message(message)
+    return signed.signature.hex()
+
+def sign_cancel(order_id, client_order_id, nonce):
+    cid = client_order_id or ""
+    msg = f"vela:cancel:{order_id}:{cid}:{nonce}"
+    message = encode_defunct(text=msg)
+    signed = account.sign_message(message)
+    return signed.signature.hex()
+```
+
+### TypeScript Example (viem)
+
+```typescript
+import { createWalletClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { mainnet } from "viem/chains";
+
+const account = privateKeyToAccount(PRIVATE_KEY as `0x${string}`);
+const client = createWalletClient({ account, chain: mainnet, transport: http() });
+
+async function signOrder(
+  marketId: string, side: string, price: number,
+  qty: number, nonce: number, clientOrderId?: string
+): Promise<string> {
+  let msg = `vela:order:${marketId}:${side}:${price}:${qty}:${nonce}`;
+  if (clientOrderId) msg += `:${clientOrderId}`;
+  return client.signMessage({ message: msg });
+}
+
+async function signCancel(
+  orderId: number, clientOrderId: string | undefined, nonce: number
+): Promise<string> {
+  const cid = clientOrderId ?? "";
+  return client.signMessage({ message: `vela:cancel:${orderId}:${cid}:${nonce}` });
+}
+```
+
+---
+
+## Nonce Scheme (HFT Compatible)
+
+Vela's nonce scheme is designed for market makers sending bursts of orders.
+
+### Rules
+
+1. The engine stores the 20 most recent nonces per user.
+2. A new nonce is **accepted** if it is greater than `min(window)` and not already in the window.
+3. A new nonce is **rejected** with `InvalidNonce` if it is ≤ `min(window)`.
+4. A new nonce is **rejected** with `DuplicateNonce` if it is already in the window.
+
+This gives you 20 "slots" of concurrency. You can dispatch 20 orders in parallel without waiting for acknowledgment on any of them.
+
+### Recommended Implementation
+
+```python
+import time
+
+class NonceManager:
+    def __init__(self):
+        # Millisecond timestamp ensures monotonic increase across restarts
+        self._counter = int(time.time() * 1000)
+
+    def next(self) -> int:
+        self._counter += 1
+        return self._counter
+```
+
+<Note>
+Timestamp-based nonces (`int(time.time_ns())`) work well — they are always increasing and survive process restarts without risking replay. Avoid random nonces; if you generate one below the window minimum it will be rejected.
+</Note>
+
+### Concurrent Dispatch Pattern
+
+```python
+import asyncio
+
+async def place_burst(session, orders: list[dict]):
+    """Dispatch up to 20 orders in parallel using the nonce window."""
+    tasks = [
+        session.post(f"{API_URL}/orders", json=order)
+        for order in orders[:20]  # window is 20
+    ]
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
+    return responses
+```
+
+---
+
+## Fixed-Point Encoding
+
+All prices and quantities in the API are **fixed-point integers with 6 decimal places**. Multiply your display value by 1,000,000 before sending.
+
+| Display | Fixed-Point |
+|---------|------------|
+| $1,580.50 | `1580500000` |
+| 0.5 ETH | `500000` |
+| $0.001 | `1000` |
+| 1 ETH | `1000000` |
+
+To convert back: divide by `1_000_000`.
+
+```python
+def to_fixed(display_value: float) -> int:
+    return int(round(display_value * 1_000_000))
+
+def from_fixed(fixed_value: int) -> float:
+    return fixed_value / 1_000_000
+```
+
+<Warning>
+Always use integer arithmetic after converting. Floating-point rounding errors will cause signature mismatches — the engine signs the integer you send, not the display value.
+</Warning>
+
+---
+
+## Order Management
+
+### Place a Limit Order
+
+```
+POST /orders
+```
+
+**Request body:**
+
+```json
+{
+  "user": "0xYourWalletAddress",
+  "market_id": "ETH-USDC",
+  "side": "bid",
+  "price": 1580500000,
+  "quantity": 500000,
+  "order_type": "limit",
+  "time_in_force": "gtc",
+  "nonce": 1713000000001,
+  "signature": "0x...",
+  "client_order_id": "my-order-001"
+}
+```
+
+**Field reference:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `user` | string | Yes | Your checksummed Ethereum address |
+| `market_id` | string | Yes | Market identifier, e.g. `"ETH-USDC"` |
+| `side` | string | Yes | `"bid"` (buy base) or `"ask"` (sell base) |
+| `price` | integer | Yes | Fixed-point price (×1,000,000) |
+| `quantity` | integer | Yes | Fixed-point quantity (×1,000,000) |
+| `order_type` | string | Yes | `"limit"` (only type currently supported) |
+| `time_in_force` | string | Yes | `"gtc"`, `"post_only"`, `"ioc"`, `"fok"` |
+| `nonce` | integer | Yes | Strictly increasing per-user integer |
+| `signature` | string | Yes | Hex signature of the canonical message |
+| `client_order_id` | string | No | Your identifier, max 64 chars |
+
+**Time-in-force semantics:**
+
+| TIF | Behavior |
+|-----|----------|
+| `gtc` | Good-till-cancelled. Rests in the book until filled or explicitly cancelled. |
+| `post_only` | Rejected (HTTP 422, `PostOnlyWouldMatch`) if it would immediately match. Use this for all resting maker quotes. |
+| `ioc` | Immediate-or-cancel. Matches as much as possible at the limit price, cancels any remainder. |
+| `fok` | Fill-or-kill. Fills the entire quantity at the limit price or rejects entirely (`FokNotFilled`). |
+
+**Successful response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "order_id": 12345,
+    "client_order_id": "my-order-001",
+    "status": "open",
+    "market_id": "ETH-USDC",
+    "side": "bid",
+    "price": 1580500000,
+    "quantity": 500000,
+    "filled_quantity": 0,
+    "created_at": "2024-04-13T12:00:00.000Z",
+    "maker_fee_bps": -1,
+    "taker_fee_bps": 5
+  }
+}
+```
+
+**Error response:**
+
+```json
+{
+  "ok": false,
+  "error": "InvalidSignature"
+}
+```
+
+---
+
+### Cancel an Order
+
+Cancel by engine order ID:
+
+```
+POST /orders/cancel
+```
+
+```json
+{
+  "order_id": 12345,
+  "user": "0xYourWalletAddress",
+  "nonce": 1713000000002,
+  "signature": "0x..."
+}
+```
+
+Cancel by your own client order ID:
+
+```json
+{
+  "client_order_id": "my-order-001",
+  "user": "0xYourWalletAddress",
+  "nonce": 1713000000002,
+  "signature": "0x..."
+}
+```
+
+For the cancel signature when using `client_order_id`, use `order_id = ""`:
+
+```python
+sig = sign_cancel("", "my-order-001", nonce)
+```
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "order_id": 12345,
+    "client_order_id": "my-order-001",
+    "status": "cancelled"
+  }
+}
+```
+
+---
+
+### Query Orders
+
+```
+GET /account/{address}/orders
+```
+
+Returns all open orders for the address. Optional query parameters:
+
+| Param | Description |
+|-------|-------------|
+| `market_id` | Filter by market |
+| `side` | Filter by `bid` or `ask` |
+| `limit` | Max results (default 100, max 500) |
+
+Look up a specific order by client order ID:
+
+```
+GET /account/{address}/orders/by-client-id/{client_order_id}
+```
+
+---
+
+## Client Order IDs
+
+Client order IDs let you assign your own identifiers to orders at placement time. This eliminates the round-trip latency of waiting for the engine's `order_id` before you can cancel.
+
+### Rules
+
+- Maximum 64 characters
+- Alphanumeric, hyphens (`-`), and underscores (`_`) only
+- Must be unique per user (not globally unique across all users)
+- Automatically released when the order is filled or cancelled — you can reuse the ID after that
+
+### Naming Convention for Market Makers
+
+A useful scheme that encodes enough context to debug without a lookup:
+
+```
+{strategy}-{market}-{side}-{level}-{nonce}
+mm-ETH-USDC-bid-0-1713000000001
+mm-ETH-USDC-ask-3-1713000000004
+```
+
+### Bulk Cancel by Prefix
+
+The engine does not natively support prefix cancellation, but you can track your own IDs and cancel in parallel:
+
+```python
+async def cancel_by_prefix(session, address, prefix, open_orders):
+    targets = [o for o in open_orders if o.get("client_order_id", "").startswith(prefix)]
+    tasks = []
+    for order in targets:
+        n = nonce_mgr.next()
+        sig = sign_cancel("", order["client_order_id"], n)
+        tasks.append(session.post(f"{API_URL}/orders/cancel", json={
+            "client_order_id": order["client_order_id"],
+            "user": address,
+            "nonce": n,
+            "signature": sig
+        }))
+    await asyncio.gather(*tasks, return_exceptions=True)
+```
+
+---
+
+## Credit System
+
+The credit system is Vela's most distinctive feature. It allows you to have more quoted notional than your deposited balance — up to a 1:1 ratio.
+
+### How It Works
+
+```
+credit_utilization = total_open_notional / deposited_balance
+
+where:
+  total_open_notional = Σ (price × quantity) for all open orders
+  limit:               credit_utilization ≤ 1.0 (100%)
+```
+
+**Example:**
+
+You deposit **10,000 USDC**.
+
+| Order | Side | Price | Qty | Notional |
+|-------|------|-------|-----|----------|
+| #1 | bid | $1,580 | 3 ETH | $4,740 |
+| #2 | ask | $1,582 | 2 ETH | $3,164 |
+| #3 | bid | $1,575 | 1 ETH | $1,575 |
+| **Total** | | | | **$9,479** |
+
+You have $521 of credit headroom remaining. You can add more orders as long as the running total stays ≤ $10,000.
+
+### Auto-Cancel on Breach
+
+When a new order would push utilization above 100%:
+
+1. The engine cancels your **oldest open orders** one at a time until there is room.
+2. The new order is then accepted.
+3. You receive `order_update` messages with `status: "cancelled"` for each auto-cancelled order on your private feed.
+
+This is **intentional behavior**, not an error. Design your strategy to handle unexpected cancellations gracefully — for example, by tracking your own open orders and reconciling on each `order_update`.
+
+### Monitoring Credit Utilization
+
+Your real-time credit utilization is visible on the dashboard at `vela.monolithsystematic.com/dashboard`. The private WebSocket feed also emits `balance_update` events whenever your utilization changes.
+
+---
+
+## Fees
+
+| Role | Fee |
+|------|-----|
+| Maker (resting order gets hit) | **−0.01%** (rebate) |
+| Taker (aggressive order) | **+0.05%** fee |
+
+Fees are applied to the **quote asset** (USDC) on each fill. Maker rebates are credited directly to your balance.
+
+Net exchange margin: 0.04% per matched pair.
+
+### Fee Calculation Example
+
+A fill of 1 ETH at $1,580:
+
+| Role | Calculation | Amount |
+|------|-------------|--------|
+| Maker | −0.01% × $1,580 | +$0.158 rebate |
+| Taker | +0.05% × $1,580 | −$0.790 fee |
+
+### Fill Response with Fees
+
+Fees in API responses are in fixed-point (÷1,000,000 for display):
+
+```json
+{
+  "fill_id": "fill_abc123",
+  "order_id": 12345,
+  "market_id": "ETH-USDC",
+  "side": "bid",
+  "price": 1580000000,
+  "quantity": 1000000,
+  "filled_at": "2024-04-13T12:00:01.000Z",
+  "maker_fee": -158000,
+  "taker_fee": 790000,
+  "role": "maker"
+}
+```
+
+`maker_fee: -158000` → divide by 1,000,000 → **+$0.158 rebate**
+
+---
+
+## Market Data Feeds
+
+### HTTP Endpoints (Public)
+
+No authentication required.
+
+```
+GET /orderbook/{market_id}       — full order book snapshot
+GET /markets                     — all markets with best bid/ask, 24h volume
+GET /trades/{market_id}          — recent public trades
+GET /markets/{market_id}/ticker  — OHLCV and 24h stats
+```
+
+### WebSocket (Public)
+
+Connect to `wss://vela-engine.fly.dev/ws` and subscribe:
+
+```json
+{ "type": "subscribe", "channel": "orderbook:ETH-USDC" }
+{ "type": "subscribe", "channel": "trades:ETH-USDC" }
+{ "type": "subscribe", "channel": "markets" }
+```
+
+**Order book snapshot:**
+
+```json
+{
+  "type": "snapshot",
+  "channel": "orderbook:ETH-USDC",
+  "seq": 1,
+  "data": {
+    "bids": [
+      [1580500000, 500000],
+      [1580000000, 1000000],
+      [1579500000, 750000]
+    ],
+    "asks": [
+      [1581000000, 300000],
+      [1581500000, 700000],
+      [1582000000, 1200000]
+    ]
+  }
+}
+```
+
+**Incremental update:**
+
+```json
+{
+  "type": "update",
+  "channel": "orderbook:ETH-USDC",
+  "seq": 2,
+  "data": {
+    "bids": [[1580500000, 0]],
+    "asks": []
+  }
+}
+```
+
+A quantity of `0` means the price level was removed. Apply updates in `seq` order; if you miss a sequence number, re-subscribe to get a fresh snapshot.
+
+### WebSocket (Private L3 Feed)
+
+Your order updates and fills are **not** visible on the public feed. To receive them, authenticate before subscribing:
+
+**Step 1 — Authenticate:**
+
+```json
+{
+  "type": "auth",
+  "address": "0xYourWalletAddress",
+  "signature": "0x...",
+  "timestamp": 1713000000
+}
+```
+
+The auth signature message is `vela:auth:{address}:{timestamp}` (timestamp is Unix seconds, must be within 30 seconds of server time).
+
+```python
+def sign_ws_auth(address, timestamp):
+    msg = f"vela:auth:{address}:{timestamp}"
+    message = encode_defunct(text=msg)
+    signed = account.sign_message(message)
+    return signed.signature.hex()
+```
+
+**Step 2 — Subscribe:**
+
+```json
+{ "type": "subscribe", "channel": "account:0xYourWalletAddress" }
+```
+
+**Private message types:**
+
+| Type | Trigger |
+|------|---------|
+| `order_update` | Order accepted, partially filled, fully filled, cancelled, or auto-cancelled by credit system |
+| `fill` | You received a fill (includes fee breakdown) |
+| `balance_update` | Your USDC balance or credit utilization changed |
+
+**Example `order_update`:**
+
+```json
+{
+  "type": "order_update",
+  "data": {
+    "order_id": 12345,
+    "client_order_id": "my-order-001",
+    "status": "partially_filled",
+    "filled_quantity": 250000,
+    "remaining_quantity": 250000
+  }
+}
+```
+
+**Example `fill`:**
+
+```json
+{
+  "type": "fill",
+  "data": {
+    "fill_id": "fill_abc123",
+    "order_id": 12345,
+    "client_order_id": "my-order-001",
+    "market_id": "ETH-USDC",
+    "side": "bid",
+    "price": 1580500000,
+    "quantity": 250000,
+    "role": "maker",
+    "maker_fee": -39512,
+    "taker_fee": 197563,
+    "filled_at": "2024-04-13T12:00:01.234Z"
+  }
+}
+```
+
+---
+
+## Rate Limits
+
+| Endpoint | Limit |
+|----------|-------|
+| `POST /orders` | 20 per minute per wallet |
+| `POST /orders/cancel` | 20 per minute per wallet |
+| `POST /deposit` | 5 per minute per wallet |
+| `GET` endpoints | 100 per minute per IP |
+| WebSocket messages | 60 per minute per connection |
+
+On breach — HTTP 429:
+
+```json
+{
+  "ok": false,
+  "error": "RateLimitExceeded",
+  "message": "Rate limit exceeded. Please slow down.",
+  "retry_after_ms": 3200
+}
+```
+
+Use `retry_after_ms` to back off for exactly the right duration rather than using a fixed sleep.
+
+<Note>
+The 20 orders/minute limit aligns with the 20-slot nonce window. You can send 20 orders in a burst and they will all be accepted if nonces are valid. The rate limit resets on a rolling 60-second window.
+</Note>
+
+---
+
+## Complete Python Market Maker
+
+A production-quality two-sided market maker that quotes 5 levels on ETH-USDC, manages its own order state, and handles auto-cancellations from the credit system.
+
+```python
+import asyncio
+import time
+import aiohttp
+from web3 import Web3
+from eth_account.messages import encode_defunct
+
+API_URL  = "https://vela-engine.fly.dev"
+PRIVATE_KEY = "0x..."          # never commit this
+MARKET   = "ETH-USDC"
+SPREAD_BPS  = 10               # 0.10% half-spread
+LEVELS      = 5                # price levels per side
+SIZE        = 100_000          # 0.1 ETH in fixed-point (0.1 × 1_000_000)
+REQUOTE_SEC = 10               # re-quote interval in seconds
+
+w3      = Web3()
+account = w3.eth.account.from_key(PRIVATE_KEY)
+address = account.address
+
+# ─── Nonce ──────────────────────────────────────────────────────────────────
+
+_nonce = int(time.time() * 1000)
+
+def next_nonce() -> int:
+    global _nonce
+    _nonce += 1
+    return _nonce
+
+# ─── Signing ────────────────────────────────────────────────────────────────
+
+def sign_order(market, side, price, qty, nonce, client_id=None) -> str:
+    msg = f"vela:order:{market}:{side}:{price}:{qty}:{nonce}"
+    if client_id:
+        msg += f":{client_id}"
+    return account.sign_message(encode_defunct(text=msg)).signature.hex()
+
+def sign_cancel(order_id, client_id, nonce) -> str:
+    cid = client_id or ""
+    oid = order_id or ""
+    msg = f"vela:cancel:{oid}:{cid}:{nonce}"
+    return account.sign_message(encode_defunct(text=msg)).signature.hex()
+
+# ─── Market data ────────────────────────────────────────────────────────────
+
+async def get_mid_price(session: aiohttp.ClientSession) -> int | None:
+    async with session.get(f"{API_URL}/markets") as r:
+        if r.status != 200:
+            return None
+        data = await r.json()
+        for m in data.get("data", []):
+            if m["id"] == MARKET and m.get("best_bid") and m.get("best_ask"):
+                bid = int(round(float(m["best_bid"]) * 1_000_000))
+                ask = int(round(float(m["best_ask"]) * 1_000_000))
+                return (bid + ask) // 2
+    return None
+
+# ─── Order management ───────────────────────────────────────────────────────
+
+async def cancel_order(session: aiohttp.ClientSession, order: dict) -> None:
+    n   = next_nonce()
+    cid = order.get("client_order_id", "")
+    oid = order.get("order_id", "")
+    sig = sign_cancel(oid, cid, n)
+    body = {"user": address, "nonce": n, "signature": sig}
+    if cid:
+        body["client_order_id"] = cid
+    else:
+        body["order_id"] = oid
+    async with session.post(f"{API_URL}/orders/cancel", json=body) as r:
+        pass  # fire and forget; credit system may cancel before we do
+
+async def cancel_all(session: aiohttp.ClientSession, open_orders: list[dict]) -> None:
+    if not open_orders:
+        return
+    await asyncio.gather(
+        *[cancel_order(session, o) for o in open_orders],
+        return_exceptions=True
+    )
+
+async def place_order(session: aiohttp.ClientSession, order: dict) -> dict | None:
+    async with session.post(f"{API_URL}/orders", json=order) as r:
+        body = await r.json()
+        if body.get("ok"):
+            return body["data"]
+        print(f"[order error] {body.get('error')} — {order.get('client_order_id')}")
+        return None
+
+# ─── Quoting logic ──────────────────────────────────────────────────────────
+
+def build_quotes(mid: int) -> list[dict]:
+    """Build LEVELS bid and ask orders around mid price."""
+    half_spread = max(1, mid * SPREAD_BPS // 20_000)
+    orders = []
+    for i in range(LEVELS):
+        step = mid * (i + 1) * 5 // 10_000
+        for side, price in [
+            ("bid", mid - half_spread - step),
+            ("ask", mid + half_spread + step),
+        ]:
+            n   = next_nonce()
+            cid = f"mm-{side}-{i}-{n}"
+            sig = sign_order(MARKET, side, price, SIZE, n, cid)
+            orders.append({
+                "user":            address,
+                "market_id":       MARKET,
+                "side":            side,
+                "price":           price,
+                "quantity":        SIZE,
+                "order_type":      "limit",
+                "time_in_force":   "post_only",
+                "nonce":           n,
+                "signature":       sig,
+                "client_order_id": cid,
+            })
+    return orders
+
+# ─── Main loop ──────────────────────────────────────────────────────────────
+
+async def main() -> None:
+    async with aiohttp.ClientSession() as session:
+        open_orders: list[dict] = []
+        while True:
+            try:
+                mid = await get_mid_price(session)
+                if mid is None:
+                    print("[warn] could not fetch mid price, skipping cycle")
+                    await asyncio.sleep(REQUOTE_SEC)
+                    continue
+
+                print(f"[cycle] mid={mid / 1_000_000:.6f}")
+                await cancel_all(session, open_orders)
+
+                quotes    = build_quotes(mid)
+                results   = await asyncio.gather(
+                    *[place_order(session, q) for q in quotes],
+                    return_exceptions=True,
+                )
+                open_orders = [r for r in results if isinstance(r, dict)]
+                print(f"[cycle] {len(open_orders)}/{len(quotes)} orders placed")
+
+            except Exception as e:
+                print(f"[error] {e}")
+
+            await asyncio.sleep(REQUOTE_SEC)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+<Tip>
+In production, replace the `cancel_all` + `place_order` cycle with a reconcile loop driven by the private WebSocket feed. Track `order_update` events in a local state dict keyed by `client_order_id`, and only cancel orders that have drifted more than a tick from the new mid. This reduces round-trips and avoids transient gaps in your quotes.
+</Tip>
+
+---
+
+## Error Codes
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `InsufficientBalance` | 422 | Balance too low to cover this order |
+| `CreditLimitExceeded` | 422 | Quoted notional would exceed deposited amount |
+| `InvalidSignature` | 401 | Signature does not match wallet address |
+| `DuplicateNonce` | 422 | Nonce already seen (replay attack prevention) |
+| `InvalidNonce` | 422 | Nonce ≤ rolling window minimum |
+| `MarketNotFound` | 404 | Market ID does not exist |
+| `OrderNotFound` | 404 | Order ID or client order ID does not exist |
+| `DuplicateClientOrderId` | 422 | Client order ID already in use by an open order |
+| `InvalidClientOrderId` | 422 | Client order ID format violation (length, chars) |
+| `FokNotFilled` | 422 | FOK order could not be completely filled |
+| `PostOnlyWouldMatch` | 422 | Post-only order would have matched immediately |
+| `RateLimitExceeded` | 429 | Too many requests in the rolling window |
+| `InvalidMarket` | 422 | Market is paused or not yet live |
+
+---
+
+## FAQ
+
+**Can I use the same nonce twice?**
+
+No. Nonces prevent replay attacks. Use a monotonically increasing counter — timestamp-based (`int(time.time() * 1000)`) survives restarts without risk of reuse.
+
+**What happens when I hit the credit limit?**
+
+The engine auto-cancels your oldest open orders until there is room for the new order, then processes the new order. You receive `order_update` cancellation events on your private feed. Design your strategy to handle unexpected cancellations — they are not errors, just credit management.
+
+**Can I quote multiple markets simultaneously?**
+
+Yes. The credit limit is computed across **all markets combined**. Your total quoted notional across all open orders on all markets must stay ≤ your deposited balance.
+
+**Is my order flow visible to other market makers?**
+
+No. The public trade feed shows fills (price, quantity, timestamp) but does not attribute them to specific orders or wallets beyond the matched price level. Your order placement, cancellations, and open order state are only visible on the authenticated private feed.
+
+**How do I exit if Vela goes offline?**
+
+Vela uses a 7-day forced exit mechanism. Call `initiateEmergencyExit()` on the `VelaSettlement` contract. After the 7-day delay, call `executeEmergencyExit()` to withdraw all your funds directly from the contract without any operator involvement.
+
+**What is the minimum deposit to market make?**
+
+There is no enforced minimum. Practically, a deposit of at least $1,000 USDC gives you enough headroom to quote meaningful size across multiple levels without hitting the credit limit on every cycle.
+
+**Do I need to run a keeper or rebalancer?**
+
+Not unless your strategy accumulates significant directional exposure. Because maker rebates are credited in USDC, a long-running two-sided strategy should stay relatively balanced. If you are making on a highly directional market, you may want to periodically net your inventory by placing taker orders or withdrawing and redepositing.
+
+**How do I get lower fees or higher credit limits?**
+
+Contact the Vela team at `team@monolithsystematic.com` to discuss institutional tiers. Volume-based rebate schedules and higher credit limits are available for qualifying market makers.
