@@ -11,11 +11,12 @@ pub mod ws;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use tokio::sync::Mutex;
 use engine::MatchingEngine;
 use feeds::FeedManager;
 use rate_limit::RateLimiter;
-use crate::types::{StoredFill, StoredOrder};
+use crate::types::{StoredFill, StoredOrder, WsEnvelope};
 
 pub struct OrderChannelItem {
     pub req: ::types::PostOrderRequest,
@@ -34,12 +35,15 @@ pub struct AppState {
     pub stored_orders: Arc<Mutex<HashMap<u64, StoredOrder>>>,
     pub order_tx: tokio::sync::mpsc::Sender<OrderChannelItem>,
     pub da: Arc<da::DaSubmitter>,
+    pub ws_tx: Arc<tokio::sync::broadcast::Sender<WsEnvelope>>,
+    pub ws_seqs: Arc<dashmap::DashMap<String, AtomicU64>>,
 }
 
 impl AppState {
     pub fn new(engine: MatchingEngine) -> Arc<Self> {
         let (order_tx, order_rx) = tokio::sync::mpsc::channel::<OrderChannelItem>(1024);
         let engine_arc = Arc::new(Mutex::new(engine));
+        let (ws_bcast_tx, _) = tokio::sync::broadcast::channel::<WsEnvelope>(4096);
 
         let da_dir = std::env::var("DA_DIR")
             .map(PathBuf::from)
@@ -56,9 +60,12 @@ impl AppState {
             stored_orders: Arc::new(Mutex::new(HashMap::new())),
             order_tx,
             da: Arc::new(da::DaSubmitter::new(Arc::new(da::LocalDaClient::new(da_dir)))),
+            ws_tx: Arc::new(ws_bcast_tx),
+            ws_seqs: Arc::new(dashmap::DashMap::new()),
         });
 
         tokio::spawn(engine_order_task(order_rx, engine_arc));
+        tokio::spawn(ws::run_background_task(Arc::clone(&state)));
 
         state
     }

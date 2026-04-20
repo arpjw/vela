@@ -52,8 +52,25 @@ pub enum WsClientMessage {
     Subscribe { channels: Vec<String> },
     Unsubscribe { channels: Vec<String> },
     RequestChallenge,
-    Auth { address: String, signature: String, nonce: String },
+    Auth {
+        address: String,
+        signature: String,
+        #[serde(default)]
+        nonce: Option<String>,
+        #[serde(default)]
+        timestamp: Option<u64>,
+    },
     Ping,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WsEnvelope {
+    #[serde(rename = "type")]
+    pub msg_type: String,
+    pub channel: String,
+    pub seq: u64,
+    pub data: serde_json::Value,
+    pub timestamp: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -9,7 +9,7 @@ import {
   type Order,
 } from '@/lib/api'
 import { signCancel } from '@/lib/signing'
-import { getWsClient } from '@/lib/ws'
+import { velaWs, getWsClient } from '@/lib/ws'
 import { useAuth } from '@/lib/auth'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -657,19 +657,51 @@ function MarketSummaryTable({ summaries }: { summaries: MarketSummaryRow[] }) {
   )
 }
 
+type AccountData = {
+  type: string
+  asset?: string
+  available?: string
+  locked?: string
+  order_id?: number
+  status?: string
+  filled_quantity?: string
+  maker_order_id?: number
+  taker_order_id?: number
+  price?: string
+  quantity?: string
+  side?: string
+  maker_fee?: string
+  taker_fee?: string
+  timestamp?: number
+  balances?: { asset: string; available: string; locked: string; total: string }[]
+  orders?: unknown[]
+}
+
 export default function DashboardPage() {
   const { address, isConnected, isAuthenticated, connect, signIn } = useAuth()
   const [state, dispatch] = useReducer(dashReducer, initState)
   const wsRef = useRef(getWsClient())
 
   const handleConnect = useCallback(async () => {
-    await connect()
-    const ws = wsRef.current
-    ws.connect()
+    const addr = await connect()
+    velaWs.connect()
     try {
-      await signIn(ws)
+      const timestamp = Date.now()
+      const message = `vela:ws:${addr}:${timestamp}`
+      const signature = (await window.ethereum!.request({
+        method: 'personal_sign',
+        params: [message, addr],
+      })) as string
+      velaWs.auth(addr, signature, timestamp)
     } catch {
-      // wallet connected; WS auth failed — private feed unavailable
+      // account WS auth failed — falling back to challenge-response
+      const ws = wsRef.current
+      ws.connect()
+      try {
+        await signIn(ws)
+      } catch {
+        // private feed unavailable
+      }
     }
   }, [connect, signIn])
 
@@ -689,42 +721,62 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!address) return
-    const ws = wsRef.current
-    ws.connect()
+    velaWs.connect()
 
-    const unsub = ws.onMessage((msg) => {
-      if (msg.type === 'balance_update') {
+    const unsub = velaWs.subscribe(`account:${address}`, (raw) => {
+      const data = raw as AccountData
+      if (data.type === 'account_snapshot') {
+        if (data.balances) {
+          data.balances.forEach((b) => {
+            dispatch({ type: 'BALANCE_UPDATE', asset: b.asset, available: b.available, locked: b.locked })
+          })
+        }
+        return
+      }
+      if (data.type === 'balance_update' && data.asset) {
         dispatch({
           type: 'BALANCE_UPDATE',
-          asset: msg.asset,
-          available: msg.available,
-          locked: msg.locked,
+          asset: data.asset,
+          available: data.available ?? '0',
+          locked: data.locked ?? '0',
         })
       }
-      if (msg.type === 'order_update') {
+      if (data.type === 'order_update' && data.order_id !== undefined) {
         dispatch({
           type: 'ORDER_UPDATE',
-          orderId: msg.order_id,
-          status: msg.status,
-          filledQty: msg.filled_quantity,
+          orderId: data.order_id,
+          status: data.status ?? '',
+          filledQty: data.filled_quantity ?? '0',
         })
       }
-      if (msg.type === 'fill') {
+      if (data.type === 'fill' && data.maker_order_id !== undefined) {
         dispatch({
           type: 'FILL',
-          makerOrderId: msg.maker_order_id,
-          takerOrderId: msg.taker_order_id,
-          price: msg.price,
-          qty: msg.quantity,
-          takerSide: msg.side,
-          makerFee: msg.maker_fee,
-          takerFee: msg.taker_fee,
-          ts: msg.timestamp,
+          makerOrderId: data.maker_order_id,
+          takerOrderId: data.taker_order_id ?? 0,
+          price: data.price ?? '0',
+          qty: data.quantity ?? '0',
+          takerSide: data.side ?? 'bid',
+          makerFee: data.maker_fee ?? '0',
+          takerFee: data.taker_fee ?? '0',
+          ts: data.timestamp ?? 0,
         })
       }
     })
 
-    return () => unsub()
+    const unsubLegacy = wsRef.current.onMessage((msg) => {
+      if (msg.type === 'balance_update') {
+        dispatch({ type: 'BALANCE_UPDATE', asset: msg.asset, available: msg.available, locked: msg.locked })
+      }
+      if (msg.type === 'order_update') {
+        dispatch({ type: 'ORDER_UPDATE', orderId: msg.order_id, status: msg.status, filledQty: msg.filled_quantity })
+      }
+      if (msg.type === 'fill') {
+        dispatch({ type: 'FILL', makerOrderId: msg.maker_order_id, takerOrderId: msg.taker_order_id, price: msg.price, qty: msg.quantity, takerSide: msg.side, makerFee: msg.maker_fee, takerFee: msg.taker_fee, ts: msg.timestamp })
+      }
+    })
+
+    return () => { unsub(); unsubLegacy() }
   }, [address])
 
   const handleCancel = useCallback(

@@ -2,7 +2,7 @@ export type WsClientMessage =
   | { type: 'subscribe'; channels: string[] }
   | { type: 'unsubscribe'; channels: string[] }
   | { type: 'request_challenge' }
-  | { type: 'auth'; address: string; signature: string; nonce: string }
+  | { type: 'auth'; address: string; signature: string; nonce?: string; timestamp?: number }
   | { type: 'ping' }
 
 export type WsServerMessage =
@@ -19,7 +19,6 @@ export type WsServerMessage =
 
 export type MessageHandler = (msg: WsServerMessage) => void
 export type StatusHandler = (status: WsStatus) => void
-
 export type WsStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'polling'
 
 const HEARTBEAT_INTERVAL_MS = 30_000
@@ -45,6 +44,8 @@ export class VelaWsClient {
   private ws: WebSocket | null = null
   private messageHandlers = new Set<MessageHandler>()
   private statusHandlers = new Set<StatusHandler>()
+  private subscriptions = new Map<string, Set<(data: unknown) => void>>()
+  private seqNums = new Map<string, number>()
   private reconnectDelay = INITIAL_RECONNECT_DELAY_MS
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null
   private heartbeatTimeout: ReturnType<typeof setTimeout> | null = null
@@ -82,32 +83,54 @@ export class VelaWsClient {
     this.setStatus('disconnected')
   }
 
+  subscribe(channel: string, callback: (data: unknown) => void): () => void {
+    if (!this.subscriptions.has(channel)) {
+      this.subscriptions.set(channel, new Set())
+    }
+    this.subscriptions.get(channel)!.add(callback)
+    this.subscribedChannels.add(channel)
+
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'subscribe', channels: [channel] }))
+    }
+
+    return () => {
+      const callbacks = this.subscriptions.get(channel)
+      if (callbacks) {
+        callbacks.delete(callback)
+        if (callbacks.size === 0) {
+          this.subscriptions.delete(channel)
+          this.subscribedChannels.delete(channel)
+          if (this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type: 'unsubscribe', channels: [channel] }))
+          }
+        }
+      }
+    }
+  }
+
+  auth(address: string, signature: string, timestamp: number): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'auth', address, signature, timestamp }))
+    }
+  }
+
+  authChallenge(address: string, signature: string, nonce: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'auth', address, signature, nonce }))
+    }
+  }
+
+  requestChallenge(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'request_challenge' }))
+    }
+  }
+
   send(msg: WsClientMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg))
     }
-  }
-
-  subscribe(channels: string[]): void {
-    channels.forEach((c) => this.subscribedChannels.add(c))
-    this.send({ type: 'subscribe', channels })
-  }
-
-  unsubscribe(channels: string[]): void {
-    channels.forEach((c) => this.subscribedChannels.delete(c))
-    this.send({ type: 'unsubscribe', channels })
-  }
-
-  requestChallenge(): void {
-    this.send({ type: 'request_challenge' })
-  }
-
-  auth(address: string, signature: string, nonce: string): void {
-    this.send({ type: 'auth', address, signature, nonce })
-  }
-
-  ping(): void {
-    this.send({ type: 'ping' })
   }
 
   onMessage(handler: MessageHandler): () => void {
@@ -120,13 +143,19 @@ export class VelaWsClient {
     return () => this.statusHandlers.delete(handler)
   }
 
+  ping(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'ping' }))
+    }
+  }
+
   private openSocket(): void {
     try {
       this.ws = new WebSocket(this.url)
       this.ws.onopen = () => this.handleOpen()
       this.ws.onclose = () => this.handleClose()
       this.ws.onerror = () => this.handleClose()
-      this.ws.onmessage = (e) => this.handleMessage(e)
+      this.ws.onmessage = (e) => this.handleRawMessage(e)
     } catch {
       this.handleClose()
     }
@@ -137,6 +166,10 @@ export class VelaWsClient {
     this.reconnectDelay = INITIAL_RECONNECT_DELAY_MS
     this.setStatus('connected')
     this.startHeartbeat()
+
+    for (const channel of this.subscribedChannels) {
+      this.ws?.send(JSON.stringify({ type: 'subscribe', channels: [channel] }))
+    }
   }
 
   private handleClose(): void {
@@ -155,17 +188,63 @@ export class VelaWsClient {
     this.scheduleReconnect()
   }
 
-  private handleMessage(event: MessageEvent): void {
-    let msg: WsServerMessage
+  subscribeChannels(channels: string[]): void {
+    channels.forEach((c) => this.subscribedChannels.add(c))
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'subscribe', channels }))
+    }
+  }
+
+  unsubscribeChannels(channels: string[]): void {
+    channels.forEach((c) => this.subscribedChannels.delete(c))
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'unsubscribe', channels }))
+    }
+  }
+
+  private handleRawMessage(event: MessageEvent): void {
+    let msg: Record<string, unknown>
     try {
-      msg = JSON.parse(event.data as string) as WsServerMessage
+      msg = JSON.parse(event.data as string) as Record<string, unknown>
     } catch {
       return
     }
-    if (msg.type === 'pong') {
+
+    if (msg['type'] === 'pong') {
       this.clearHeartbeatTimeout()
     }
-    this.messageHandlers.forEach((h) => h(msg))
+
+    if (typeof msg['channel'] === 'string' && typeof msg['seq'] === 'number') {
+      const channel = msg['channel'] as string
+      const seq = msg['seq'] as number
+      const data = msg['data'] as unknown
+
+      const lastSeq = this.seqNums.get(channel)
+      if (lastSeq !== undefined && seq !== lastSeq + 1 && seq !== 1) {
+        console.warn(`WS seq gap on ${channel}: expected ${lastSeq + 1}, got ${seq}`)
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: 'subscribe', channels: [channel] }))
+        }
+      }
+      this.seqNums.set(channel, seq)
+
+      const callbacks = this.subscriptions.get(channel)
+      if (callbacks) {
+        callbacks.forEach((cb) => cb(data))
+      }
+
+      const d = data as Record<string, unknown>
+      const flatMsg = {
+        ...d,
+        type: msg['type'],
+        market: d['market_id'] ?? d['market'],
+        timestamp: d['timestamp'] ?? msg['timestamp'],
+      }
+      this.messageHandlers.forEach((h) => h(flatMsg as unknown as WsServerMessage))
+      return
+    }
+
+    this.messageHandlers.forEach((h) => h(msg as unknown as WsServerMessage))
   }
 
   private scheduleReconnect(): void {
@@ -181,12 +260,12 @@ export class VelaWsClient {
   private startPolling(): void {
     this.setStatus('polling')
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
-    const bookMarkets = [...this.subscribedChannels]
-      .filter((c) => c.startsWith('book:'))
-      .map((c) => c.slice(5))
+    const bookChannels = [...this.subscribedChannels]
+      .filter((c) => c.startsWith('orderbook:') || c.startsWith('book:'))
+      .map((c) => c.replace(/^orderbook:/, '').replace(/^book:/, ''))
 
     this.pollInterval = setInterval(() => {
-      for (const market of bookMarkets) {
+      for (const market of bookChannels) {
         void fetch(`${apiUrl}/markets/${market}/book`)
           .then((res) => {
             if (!res.ok) return
@@ -194,13 +273,18 @@ export class VelaWsClient {
           })
           .then((data) => {
             if (!data) return
-            const msg: WsServerMessage = {
+            const callbacks = this.subscriptions.get(`orderbook:${market}`)
+              ?? this.subscriptions.get(`book:${market}`)
+            if (callbacks) {
+              callbacks.forEach((cb) => cb({ bids: data.bids, asks: data.asks }))
+            }
+            const legacyMsg: WsServerMessage = {
               type: 'book_snapshot',
               market,
               bids: data.bids,
               asks: data.asks,
             }
-            this.messageHandlers.forEach((h) => h(msg))
+            this.messageHandlers.forEach((h) => h(legacyMsg))
           })
           .catch(() => undefined)
       }
@@ -245,11 +329,15 @@ export class VelaWsClient {
   }
 }
 
+export const velaWs = new VelaWsClient(
+  process.env.NEXT_PUBLIC_WS_URL ?? 'wss://vela-engine.fly.dev/ws'
+)
+
 const clients = new Map<string, VelaWsClient>()
 
 export function getWsClient(url?: string): VelaWsClient {
-  const raw = url ?? process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:3001/ws'
-  const wsUrl = buildWsUrl(raw)
+  if (!url) return velaWs
+  const wsUrl = buildWsUrl(url)
   if (!clients.has(wsUrl)) {
     clients.set(wsUrl, new VelaWsClient(wsUrl))
   }

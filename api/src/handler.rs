@@ -456,6 +456,40 @@ async fn record_order_and_fills(
         }
     }
 
+    let ws_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    for (fill_id, f) in &fill_pairs {
+        use crate::types::WsEnvelope;
+        let channel = format!("trades:{}", body.market);
+        let seq = {
+            let entry = state.ws_seqs
+                .entry(channel.clone())
+                .or_insert_with(|| std::sync::atomic::AtomicU64::new(0));
+            entry.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
+        };
+        let envelope = WsEnvelope {
+            msg_type: "trade".to_string(),
+            channel,
+            seq,
+            data: serde_json::json!({
+                "id": fill_id,
+                "market_id": body.market,
+                "price": f.price.to_string(),
+                "quantity": f.quantity.to_string(),
+                "side": side_to_str(f.side),
+                "maker_order_id": f.maker_order_id,
+                "taker_order_id": f.taker_order_id,
+                "maker_address": f.maker.to_hex(),
+                "taker_address": f.taker.to_hex(),
+                "timestamp": f.timestamp,
+            }),
+            timestamp: ws_ts,
+        };
+        let _ = state.ws_tx.send(envelope);
+    }
+
     {
         let mut orders_guard = state.stored_orders.lock().await;
         for (fill_id, f) in &fill_pairs {

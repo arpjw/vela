@@ -740,7 +740,7 @@ export default function AnalyticsPage() {
     const ws = wsRef.current
     ws.connect()
     const channels = state.markets.map((m) => `trades:${m.id}`)
-    ws.subscribe(channels)
+    ws.subscribeChannels(channels)
 
     const unsub = ws.onMessage((msg) => {
       if (msg.type === 'trade') {
@@ -759,7 +759,7 @@ export default function AnalyticsPage() {
 
     return () => {
       unsub()
-      ws.unsubscribe(channels)
+      ws.unsubscribeChannels(channels)
     }
   }, [state.markets])
 

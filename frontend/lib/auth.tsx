@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 params: [message, address],
               })) as string
 
-              wsClient.auth(address, signature, nonce)
+              wsClient.authChallenge(address, signature, nonce)
             } catch (err) {
               settled = true
               unsubscribe()

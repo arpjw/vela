@@ -7,7 +7,6 @@ import Skeleton from '@/components/ui/Skeleton'
 import { createChart, CandlestickSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts'
 import {
-  getBook,
   getOrders,
   getBalances,
   listMarkets,
@@ -21,6 +20,7 @@ import {
 } from '@/lib/api'
 import { signOrder, signCancel } from '@/lib/signing'
 import { useAuth } from '@/lib/auth'
+import { velaWs } from '@/lib/ws'
 import { ORDERED_PAIRS, getMarketInfo, pairChange, getPriceDecimals } from '@/lib/markets'
 
 type OrderSide = 'buy' | 'sell'
@@ -977,18 +977,16 @@ export default function TradingPage({ params }: { params: { pair: string } }) {
   }, [bids, asks])
 
   useEffect(() => {
-    const fetchBook = () => {
-      getBook(pair).then((res) => {
-        if (res.ok && res.data) {
-          setBids(res.data.bids)
-          setAsks(res.data.asks)
-        }
+    velaWs.connect()
+    const unsub = velaWs.subscribe(`orderbook:${pair}`, (data) => {
+      const d = data as { bids?: [string, string][]; asks?: [string, string][] }
+      if (d.bids !== undefined && d.asks !== undefined) {
+        setBids(d.bids.map(([price, quantity]) => ({ price, quantity })))
+        setAsks(d.asks.map(([price, quantity]) => ({ price, quantity })))
         setBookLoaded(true)
-      }).catch(() => { setBookLoaded(true) })
-    }
-    fetchBook()
-    const interval = setInterval(fetchBook, 2000)
-    return () => clearInterval(interval)
+      }
+    })
+    return () => unsub()
   }, [pair])
 
   useEffect(() => {

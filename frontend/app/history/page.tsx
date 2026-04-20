@@ -660,7 +660,7 @@ export default function HistoryPage() {
     const ws = wsRef.current
     ws.connect()
     const channel = `trades:${state.publicMarket}`
-    ws.subscribe([channel])
+    ws.subscribeChannels([channel])
 
     const unsub = ws.onMessage((msg) => {
       if (msg.type === 'trade' && msg.market === state.publicMarket) {
@@ -679,7 +679,7 @@ export default function HistoryPage() {
 
     return () => {
       unsub()
-      ws.unsubscribe([channel])
+      ws.unsubscribeChannels([channel])
     }
   }, [state.publicMarket])
 
