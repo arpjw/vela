@@ -13,6 +13,7 @@ const LINKS = [
   { href: '/analytics',    label: 'Analytics'    },
   { href: '/history',      label: 'History'      },
   { href: '/transparency', label: 'Transparency' },
+  { href: '/leaderboard',  label: 'Leaderboard'  },
 ]
 
 const PF = "var(--font-playfair), 'Playfair Display', serif"

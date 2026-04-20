@@ -762,6 +762,9 @@ fn test_nonce_window_snapshot_restore() {
         credit_ratio: 1.0,
         total_quoted_notional: 0,
         actual_collateral: 0,
+        ref_by: None,
+        ref_earnings: 0,
+        referred_users: vec![],
     };
 
     let json = serde_json::to_string(&meta).unwrap();

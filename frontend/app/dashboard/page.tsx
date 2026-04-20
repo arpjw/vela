@@ -5,8 +5,11 @@ import {
   getBalances,
   getOrders,
   cancelOrder,
+  getReferral,
+  registerReferral,
   type BalanceResponse,
   type Order,
+  type ReferralData,
 } from '@/lib/api'
 import { signCancel } from '@/lib/signing'
 import { velaWs, getWsClient } from '@/lib/ws'
@@ -677,6 +680,136 @@ type AccountData = {
   orders?: unknown[]
 }
 
+function truncateAddr(addr: string): string {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`
+}
+
+function ReferralSection({ address }: { address: string }) {
+  const [referral, setReferral] = useState<ReferralData | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [refInput, setRefInput] = useState('')
+  const [applying, setApplying] = useState(false)
+  const [applyError, setApplyError] = useState<string | null>(null)
+  const fullLink = `https://vela.monolithsystematic.com?ref=${address}`
+
+  useEffect(() => {
+    getReferral(address).then((res) => {
+      if (res.ok && res.data) setReferral(res.data)
+    })
+  }, [address])
+
+  function handleCopy() {
+    navigator.clipboard.writeText(fullLink).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  async function handleApply() {
+    if (!refInput.trim()) return
+    setApplying(true)
+    setApplyError(null)
+    try {
+      const nonce = Date.now()
+      const msg = `vela:referral:${address.toLowerCase()}:${refInput.toLowerCase()}:${nonce}`
+      const signature = (await window.ethereum!.request({
+        method: 'personal_sign',
+        params: [msg, address],
+      })) as string
+      const res = await registerReferral({ user: address, ref: refInput, signature, nonce })
+      if (res.ok) {
+        const updated = await getReferral(address)
+        if (updated.ok && updated.data) setReferral(updated.data)
+      } else {
+        setApplyError(res.error ?? 'Failed to apply referral')
+      }
+    } catch {
+      setApplyError('Failed to apply referral')
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  return (
+    <Card padding="none">
+      <div className="px-6 py-4 border-b border-border">
+        <span className="text-[0.65rem] uppercase tracking-[0.15em] text-brown font-medium">Referral Program</span>
+      </div>
+      <div className="px-6 py-5 space-y-5">
+        <div>
+          <div className="text-[10px] text-brown uppercase tracking-[0.1em] mb-2">Your referral link</div>
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-xs text-ink bg-vellum px-3 py-2 flex-1 truncate">
+              {`vela.monolithsystematic.com?ref=${truncateAddr(address)}`}
+            </span>
+            <button
+              type="button"
+              onClick={handleCopy}
+              style={{ borderRadius: 0 }}
+              className="text-[11px] uppercase tracking-[0.1em] border border-border px-4 py-2 text-brown hover:text-ink hover:border-ink transition-colors font-medium shrink-0"
+            >
+              {copied ? 'COPIED!' : 'COPY LINK'}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="text-[10px] text-brown uppercase tracking-[0.1em] mb-1">Referred Users</div>
+            <div className="text-lg font-bold text-ink font-mono tabular-nums">
+              {referral?.referred_count ?? 0}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-brown uppercase tracking-[0.1em] mb-1">Total Earned</div>
+            <div className="text-lg font-bold text-ink font-mono tabular-nums">
+              {referral ? `${parseFloat(referral.total_earnings_usdc).toFixed(6)} USDC` : '0.000000 USDC'}
+            </div>
+          </div>
+        </div>
+
+        {referral && referral.referred_count === 0 && (
+          <p className="text-xs text-brown leading-relaxed">
+            Share your link to earn 20% of your referrals&apos; taker fees for 90 days.
+          </p>
+        )}
+
+        <div className="pt-2 border-t border-border">
+          <div className="text-[10px] text-brown uppercase tracking-[0.1em] mb-2">Your Referrer</div>
+          {referral?.referrer ? (
+            <span className="font-mono text-xs text-ink">
+              Referred by: {truncateAddr(referral.referrer)}
+            </span>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={refInput}
+                onChange={(e) => setRefInput(e.target.value)}
+                placeholder="Enter referral address (0x...)"
+                style={{ borderRadius: 0 }}
+                className="flex-1 text-xs font-mono bg-transparent border border-border px-3 py-2 text-ink placeholder:text-brown focus:outline-none focus:border-ink"
+              />
+              <button
+                type="button"
+                onClick={handleApply}
+                disabled={applying || !refInput.trim()}
+                style={{ borderRadius: 0 }}
+                className="text-[11px] uppercase tracking-[0.1em] border border-border px-4 py-2 text-brown hover:text-ink hover:border-ink transition-colors font-medium shrink-0 disabled:opacity-40"
+              >
+                {applying ? '…' : 'APPLY'}
+              </button>
+            </div>
+          )}
+          {applyError && (
+            <p className="text-xs text-terra mt-2">{applyError}</p>
+          )}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 export default function DashboardPage() {
   const { address, isConnected, isAuthenticated, connect, signIn } = useAuth()
   const [state, dispatch] = useReducer(dashReducer, initState)
@@ -1024,6 +1157,12 @@ export default function DashboardPage() {
 
         <MarketSummaryTable summaries={marketSummaries} />
       </div>
+
+      {address && (
+        <div className="mb-6">
+          <ReferralSection address={address} />
+        </div>
+      )}
 
       <div className="mb-6">
         <OpenOrdersTable

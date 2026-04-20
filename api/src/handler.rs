@@ -10,8 +10,8 @@ use k256::ecdsa::SigningKey;
 use sha3::{Digest, Keccak256};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use types::{
-    AssetId, CancelOrderRequest, DepositRequest, Fill, MarketId, OrderSide, OrderStatus,
-    OrderType, PostOrderRequest, Request as EngineRequest, Response as EngineResponse, UserId, WithdrawalRequest,
+    AssetId, CancelOrderRequest, DepositRequest, Fill, MarketId, NonceWindow, OrderSide, OrderStatus,
+    OrderType, PostOrderRequest, Request as EngineRequest, Response as EngineResponse, UserId, UserMetadata, WithdrawalRequest,
     PRICE_DECIMALS, QUANTITY_DECIMALS,
 };
 use std::collections::{BTreeMap, HashSet};
@@ -151,6 +151,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/batches/:batch_id", get(get_batch))
         .route("/state-root", get(get_state_root))
         .route("/ohlcv/:market_id", get(ohlcv_handler))
+        .route("/referral/register", post(register_referral))
+        .route("/referral/:address", get(get_referral_handler))
+        .route("/leaderboard", get(get_leaderboard))
         .with_state(state)
         .layer(cors)
 }
@@ -1346,6 +1349,144 @@ async fn list_fees(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         })
     }).collect();
     Json(ApiResponse::ok(fees))
+}
+
+#[derive(serde::Deserialize)]
+struct ReferralRegisterBody {
+    user: String,
+    #[serde(rename = "ref")]
+    referrer: String,
+    signature: String,
+    nonce: u64,
+}
+
+fn default_user_metadata(user: &UserId) -> UserMetadata {
+    UserMetadata {
+        user: user.clone(),
+        nonce_window: NonceWindow::new(),
+        open_order_ids: vec![],
+        credit_ratio: 1.0,
+        total_quoted_notional: 0,
+        actual_collateral: 0,
+        ref_by: None,
+        ref_earnings: 0,
+        referred_users: vec![],
+    }
+}
+
+async fn register_referral(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ReferralRegisterBody>,
+) -> impl IntoResponse {
+    let user = match UserId::from_hex(&body.user) {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid user address"))).into_response(),
+    };
+    let ref_user = match UserId::from_hex(&body.referrer) {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid ref address"))).into_response(),
+    };
+    if user == ref_user {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("cannot refer yourself"))).into_response();
+    }
+    let msg = format!("vela:referral:{}:{}:{}", body.user.to_lowercase(), body.referrer.to_lowercase(), body.nonce).into_bytes();
+    if verify_matches_async(msg, body.signature.clone(), body.user.clone()).await.is_err() {
+        return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("invalid signature"))).into_response();
+    }
+    let mut engine = state.engine.lock().await;
+    let ref_exists = engine.metadata.contains_key(&ref_user)
+        || engine.balances.keys().any(|(u, _)| u == &ref_user);
+    if !ref_exists {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("referrer not found"))).into_response();
+    }
+    {
+        let existing = engine.metadata.get(&user);
+        if existing.map(|m| m.ref_by.is_some()).unwrap_or(false) {
+            return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("referrer already set"))).into_response();
+        }
+    }
+    let mut user_meta = engine.metadata.get(&user).cloned().unwrap_or_else(|| default_user_metadata(&user));
+    user_meta.ref_by = Some(body.referrer.to_lowercase());
+    engine.metadata.insert(user.clone(), user_meta);
+    let mut ref_meta = engine.metadata.get(&ref_user).cloned().unwrap_or_else(|| default_user_metadata(&ref_user));
+    let user_hex = body.user.to_lowercase();
+    if !ref_meta.referred_users.contains(&user_hex) {
+        ref_meta.referred_users.push(user_hex);
+    }
+    engine.metadata.insert(ref_user, ref_meta);
+    (StatusCode::OK, Json(ApiResponse::ok(serde_json::json!({"registered": true})))).into_response()
+}
+
+async fn get_referral_handler(
+    Path(address): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let user = match UserId::from_hex(&address) {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid address"))).into_response(),
+    };
+    let engine = state.engine.lock().await;
+    let meta = engine.metadata.get(&user).cloned().unwrap_or_else(|| default_user_metadata(&user));
+    let earnings_usdc = format!("{:.6}", meta.ref_earnings as f64 / 1_000_000.0);
+    (StatusCode::OK, Json(ApiResponse::ok(serde_json::json!({
+        "address": address.to_lowercase(),
+        "referrer": meta.ref_by,
+        "referred_count": meta.referred_users.len(),
+        "total_earnings_usdc": earnings_usdc,
+        "referred_users": meta.referred_users,
+    })))).into_response()
+}
+
+async fn get_leaderboard(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let fills = state.fills.lock().await;
+    let mut volume_map: std::collections::HashMap<String, (f64, u64, u64)> = std::collections::HashMap::new();
+    for fill in fills.iter() {
+        let notional = fill.price as f64 * fill.quantity as f64 / 1_000_000_000_000.0;
+        let taker = fill.taker_address.to_lowercase();
+        let maker = fill.maker_address.to_lowercase();
+        let e = volume_map.entry(taker).or_insert((0.0, 0, 0));
+        e.0 += notional;
+        e.1 += 1;
+        let e2 = volume_map.entry(maker).or_insert((0.0, 0, 0));
+        e2.0 += notional;
+        e2.2 += 1;
+    }
+    drop(fills);
+    let mut traders: Vec<serde_json::Value> = volume_map.into_iter().map(|(addr, (vol, taker_count, maker_count))| {
+        serde_json::json!({
+            "address": addr,
+            "volume_usdc": format!("{:.2}", vol),
+            "fill_count": taker_count + maker_count,
+            "maker_count": maker_count,
+            "taker_count": taker_count,
+        })
+    }).collect();
+    traders.sort_by(|a, b| {
+        let va: f64 = a["volume_usdc"].as_str().unwrap_or("0").parse().unwrap_or(0.0);
+        let vb: f64 = b["volume_usdc"].as_str().unwrap_or("0").parse().unwrap_or(0.0);
+        vb.partial_cmp(&va).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    traders.truncate(20);
+    let engine = state.engine.lock().await;
+    let mut referrers: Vec<serde_json::Value> = engine.metadata.iter()
+        .filter(|(_, m)| !m.referred_users.is_empty() || m.ref_earnings > 0)
+        .map(|(user, m)| serde_json::json!({
+            "address": user.to_hex(),
+            "referred_count": m.referred_users.len(),
+            "earnings_usdc": format!("{:.6}", m.ref_earnings as f64 / 1_000_000.0),
+        }))
+        .collect();
+    referrers.sort_by(|a, b| {
+        let ra = a["referred_count"].as_u64().unwrap_or(0);
+        let rb = b["referred_count"].as_u64().unwrap_or(0);
+        rb.cmp(&ra)
+    });
+    referrers.truncate(10);
+    (StatusCode::OK, Json(ApiResponse::ok(serde_json::json!({
+        "top_traders": traders,
+        "top_referrers": referrers,
+        "period": "all_time",
+    })))).into_response()
 }
 
 async fn admin_fees_handler(

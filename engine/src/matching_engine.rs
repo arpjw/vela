@@ -75,6 +75,9 @@ impl MatchingEngine {
             credit_ratio: 1.0,
             total_quoted_notional: 0,
             actual_collateral: 0,
+            ref_by: None,
+            ref_earnings: 0,
+            referred_users: vec![],
         })
     }
 
@@ -472,6 +475,22 @@ impl MatchingEngine {
         // net = taker_fee - abs(maker_fee); when maker_fee<0, taker_fee+maker_fee = taker_fee - abs(maker_fee)
         let net_exchange_fee = fill.taker_fee + fill.maker_fee;
         delta.add_exchange_fee(&market.quote.0, net_exchange_fee);
+
+        if fill.taker_fee > 0 {
+            let taker_meta = delta.get_metadata(&fill.taker, &self.metadata);
+            if let Some(ref_hex) = taker_meta.ref_by {
+                if let Ok(ref_user) = UserId::from_hex(&ref_hex) {
+                    let referral_amount = (fill.taker_fee as u64) / 5;
+                    if referral_amount > 0 {
+                        delta.credit_available(&ref_user, &market.quote, referral_amount, &self.balances);
+                        delta.add_exchange_fee(&market.quote.0, -(referral_amount as i64));
+                        let mut ref_meta = delta.get_metadata(&ref_user, &self.metadata);
+                        ref_meta.ref_earnings = ref_meta.ref_earnings.saturating_add(referral_amount);
+                        delta.set_metadata(ref_meta);
+                    }
+                }
+            }
+        }
     }
 
     fn process_cancel_order(&mut self, req: CancelOrderRequest) -> Vec<Response> {

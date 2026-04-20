@@ -149,6 +149,12 @@ pub struct UserMetadata {
     /// Actual quote-asset collateral: deposits minus fills consumed (excludes credit ghost).
     /// Used by the credit auto-cancel check to avoid ghost-balance inflation.
     pub actual_collateral: u64,
+    #[serde(default)]
+    pub ref_by: Option<String>,
+    #[serde(default)]
+    pub ref_earnings: u64,
+    #[serde(default)]
+    pub referred_users: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

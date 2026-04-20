@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import HexCanvas from '@/components/HexCanvas'
 import HeroOrderBook from '@/components/HeroOrderBook'
@@ -55,6 +55,14 @@ export default function HomePage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [submitted, setSubmitted] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const ref = params.get('ref')
+    if (ref) {
+      localStorage.setItem('vela_referrer', ref)
+    }
+  }, [])
 
   function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault()

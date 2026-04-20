@@ -238,6 +238,54 @@ export async function fetchOHLCV(
   }
 }
 
+export interface ReferralData {
+  address: string
+  referrer: string | null
+  referred_count: number
+  total_earnings_usdc: string
+  referred_users: string[]
+}
+
+export interface LeaderboardTrader {
+  address: string
+  volume_usdc: string
+  fill_count: number
+  maker_count: number
+  taker_count: number
+}
+
+export interface LeaderboardReferrer {
+  address: string
+  referred_count: number
+  earnings_usdc: string
+}
+
+export interface LeaderboardData {
+  top_traders: LeaderboardTrader[]
+  top_referrers: LeaderboardReferrer[]
+  period: string
+}
+
+export function getReferral(address: string): Promise<ApiResponse<ReferralData>> {
+  return apiFetch(`/referral/${encodeURIComponent(address)}`)
+}
+
+export function registerReferral(body: {
+  user: string
+  ref: string
+  signature: string
+  nonce: number
+}): Promise<ApiResponse<{ registered: boolean }>> {
+  return apiFetch('/referral/register', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function getLeaderboard(): Promise<ApiResponse<LeaderboardData>> {
+  return apiFetch('/leaderboard')
+}
+
 /** POST /deposit */
 export async function deposit(
   user: string,
