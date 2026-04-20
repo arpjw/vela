@@ -11,6 +11,31 @@ import {
 } from '@/lib/markets'
 import Skeleton from '@/components/ui/Skeleton'
 
+interface SparklineBar {
+  height: number
+  up: boolean
+}
+
+async function fetchSparkline(marketId: string): Promise<SparklineBar[]> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
+  try {
+    const res = await fetch(`${apiUrl}/ohlcv/${marketId}?timeframe=1H&limit=12`, { cache: 'no-store' })
+    const data = await res.json()
+    if (!data.ok || !data.data?.candles || data.data.candles.length < 3) return []
+    const candles: { open: number; close: number }[] = data.data.candles
+    const closes = candles.map((c) => c.close)
+    const minClose = Math.min(...closes)
+    const maxClose = Math.max(...closes)
+    const range = maxClose - minClose
+    return candles.map((c) => ({
+      height: range > 0 ? ((c.close - minClose) / range) * 80 + 20 : 50,
+      up: c.close >= c.open,
+    }))
+  } catch {
+    return []
+  }
+}
+
 const PF = "'Playfair Display', serif"
 const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
@@ -37,11 +62,13 @@ function MarketCard({
   pair,
   market,
   book,
+  sparkline,
   onClick,
 }: {
   pair: string
   market: MarketResponse | undefined
   book: { bids: BookLevel[]; asks: BookLevel[] } | undefined
+  sparkline: SparklineBar[]
   onClick: () => void
 }) {
   const [hovered, setHovered] = useState(false)
@@ -49,7 +76,7 @@ function MarketCard({
   const change = pairChange(pair)
   const changeStr = (change >= 0 ? '+' : '') + change.toFixed(2) + '%'
   const isPositive = change >= 0
-  const bars = sparklineBars(pair)
+  const bars = sparkline.length >= 3 ? sparkline : sparklineBars(pair)
 
   const topBids = book?.bids.slice(0, 3) ?? []
   const topAsks = book?.asks.slice(0, 3) ?? []
@@ -164,6 +191,7 @@ export default function MarketsPage() {
   const router = useRouter()
   const [markets, setMarkets] = useState<MarketResponse[] | null>(null)
   const [books, setBooks] = useState<Record<string, { bids: BookLevel[]; asks: BookLevel[] }>>({})
+  const [sparklines, setSparklines] = useState<Record<string, SparklineBar[]>>({})
 
   const fetchMarkets = useCallback(async () => {
     try {
@@ -187,16 +215,28 @@ export default function MarketsPage() {
     } catch {}
   }, [])
 
+  const fetchSparklines = useCallback(async () => {
+    try {
+      const results = await Promise.all(ORDERED_PAIRS.map((pair) => fetchSparkline(pair)))
+      const next: Record<string, SparklineBar[]> = {}
+      ORDERED_PAIRS.forEach((pair, i) => { next[pair] = results[i] })
+      setSparklines(next)
+    } catch {}
+  }, [])
+
   useEffect(() => {
     fetchMarkets()
     fetchBooks()
+    fetchSparklines()
     const mi = setInterval(fetchMarkets, 3000)
     const bi = setInterval(fetchBooks, 5000)
+    const si = setInterval(fetchSparklines, 5 * 60 * 1000)
     return () => {
       clearInterval(mi)
       clearInterval(bi)
+      clearInterval(si)
     }
-  }, [fetchMarkets, fetchBooks])
+  }, [fetchMarkets, fetchBooks, fetchSparklines])
 
   const marketsById = Object.fromEntries((markets ?? []).map((m) => [m.id, m]))
 
@@ -236,6 +276,7 @@ export default function MarketsPage() {
                   pair={pair}
                   market={marketsById[pair]}
                   book={books[pair]}
+                  sparkline={sparklines[pair] ?? []}
                   onClick={() => router.push(`/markets/${pair}`)}
                 />
               ))}

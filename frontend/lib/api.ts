@@ -207,6 +207,37 @@ export async function withdraw(
   }
 }
 
+export interface OHLCVCandle {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export async function fetchOHLCV(
+  marketId: string,
+  timeframe: string = '1H',
+  limit: number = 200,
+): Promise<{ candles: OHLCVCandle[]; hasRealData: boolean }> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
+  try {
+    const res = await fetch(
+      `${apiUrl}/ohlcv/${marketId}?timeframe=${timeframe}&limit=${limit}`,
+      { cache: 'no-store' },
+    )
+    const data = await res.json()
+    if (!data.ok) return { candles: [], hasRealData: false }
+    return {
+      candles: data.data.candles,
+      hasRealData: data.data.has_real_data,
+    }
+  } catch {
+    return { candles: [], hasRealData: false }
+  }
+}
+
 /** POST /deposit */
 export async function deposit(
   user: string,

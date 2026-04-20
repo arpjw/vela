@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use axum::{
-    extract::{Path, State, WebSocketUpgrade},
+    extract::{Path, Query, State, WebSocketUpgrade},
     http::{HeaderMap, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Json, Response},
     routing::{get, post},
@@ -150,6 +150,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/batches", get(list_batches))
         .route("/batches/:batch_id", get(get_batch))
         .route("/state-root", get(get_state_root))
+        .route("/ohlcv/:market_id", get(ohlcv_handler))
         .with_state(state)
         .layer(cors)
 }
@@ -1155,6 +1156,81 @@ async fn get_state_root(State(state): State<Arc<AppState>>) -> impl IntoResponse
         user_count,
         block_number: None,
     }))
+}
+
+#[derive(serde::Deserialize)]
+struct OhlcvQuery {
+    timeframe: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Serialize)]
+struct OhlcvCandle {
+    time: u64,
+    open: f64,
+    high: f64,
+    low: f64,
+    close: f64,
+    volume: f64,
+}
+
+async fn ohlcv_handler(
+    Path(market_id): Path<String>,
+    Query(query): Query<OhlcvQuery>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let timeframe = query.timeframe.as_deref().unwrap_or("1H");
+    let limit = query.limit.unwrap_or(100).min(500);
+
+    let interval_secs: u64 = match timeframe {
+        "1m" => 60,
+        "5m" => 300,
+        "15m" => 900,
+        "1H" => 3600,
+        "4H" => 14400,
+        "1D" => 86400,
+        _ => 3600,
+    };
+
+    let fills = state.fills.lock().await;
+    let mut market_fills: Vec<&StoredFill> = fills
+        .iter()
+        .filter(|f| f.market_id == market_id)
+        .collect();
+    market_fills.sort_by_key(|f| f.timestamp);
+
+    let has_real_data = !market_fills.is_empty();
+
+    let mut buckets: BTreeMap<u64, Vec<&StoredFill>> = BTreeMap::new();
+    for fill in &market_fills {
+        let ts_s = fill.timestamp / 1_000_000;
+        let bucket = (ts_s / interval_secs) * interval_secs;
+        buckets.entry(bucket).or_default().push(fill);
+    }
+
+    let mut candles: Vec<OhlcvCandle> = buckets
+        .into_iter()
+        .map(|(bucket_time, bucket_fills)| {
+            let open = bucket_fills.first().unwrap().price as f64 / 1_000_000.0;
+            let close = bucket_fills.last().unwrap().price as f64 / 1_000_000.0;
+            let high = bucket_fills.iter().map(|f| f.price).max().unwrap() as f64 / 1_000_000.0;
+            let low = bucket_fills.iter().map(|f| f.price).min().unwrap() as f64 / 1_000_000.0;
+            let volume = bucket_fills.iter().map(|f| f.quantity as f64).sum::<f64>() / 1_000_000.0;
+            OhlcvCandle { time: bucket_time, open, high, low, close, volume }
+        })
+        .collect();
+
+    candles.sort_by(|a, b| b.time.cmp(&a.time));
+    let count = candles.len().min(limit);
+    candles.truncate(limit);
+
+    Json(ApiResponse::ok(serde_json::json!({
+        "market_id": market_id,
+        "timeframe": timeframe,
+        "candles": candles,
+        "count": count,
+        "has_real_data": has_real_data,
+    })))
 }
 
 fn parse_decimal_amount(s: &str) -> Option<u64> {
