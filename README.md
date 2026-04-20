@@ -16,12 +16,20 @@ Most exchanges ask you to trust them. Vela is designed so you don't have to.
 
 ## Performance
 
-| Metric | Value |
-|--------|-------|
-| Match latency (p50) | 1.08 μs |
-| Operations per second | 57,300 |
-| vs. Pulse (leading open-source DEX engine) | 4.7× faster |
-| Test suite | 73/73 passing |
+Measured on Apple M3 via Criterion.rs benchmark suite (`scripts/run_benchmarks.sh`).
+
+| Metric | Vela Phase 2 (M3) | Pulse reference (M2 Pro) |
+|--------|-------------------|--------------------------|
+| Full loop latency (p50) | **1.38 μs** | 7.92 μs |
+| Post order latency (p50) | 10.24 μs | 6.75 μs |
+| Cancel order latency (p50) | 9.97 μs | 7.81 μs |
+| Throughput | **725k ops/sec** | 125k ops/sec |
+| FOK rollback overhead | 841 ns | N/A |
+| Fee calculation overhead | ~0.2 μs | N/A |
+| vs. Pulse | **5.8× faster** | baseline |
+| Test suite | 73/73 passing | — |
+
+> Full loop latency uses Pulse's benchmark design: 10 markets × 100 orders/side, 50 MMs, 98% cancel/re-quote, 2% taker fills. See [BENCHMARKS.md](./BENCHMARKS.md) for methodology.
 
 ---
 
