@@ -91,6 +91,65 @@ impl MatchingEngine {
         }
     }
 
+    fn make_room_for_order(
+        &self,
+        user: &UserId,
+        meta: &mut UserMetadata,
+        deposited: u64,
+        order_notional: u64,
+        delta: &mut DeltaBuffer,
+    ) -> Vec<Response> {
+        let ratio = self.credit_system.ratio(user);
+        let max_quoted = (deposited as f64 * ratio) as u64;
+
+        if meta.total_quoted_notional.saturating_add(order_notional) <= max_quoted {
+            return vec![];
+        }
+
+        // Collect open orders with timestamps for oldest-first cancellation
+        let mut candidates: Vec<(Timestamp, OrderId, u64, MarketId, OrderSide, u64, u64, Option<String>)> =
+            meta.open_order_ids.iter().filter_map(|&oid| {
+                for (mid, book) in &self.order_books {
+                    if let Some(o) = book.get_order(oid) {
+                        let notional = CreditSystem::compute_notional(o.price, o.remaining_quantity());
+                        return Some((
+                            o.timestamp, oid, notional, mid.clone(),
+                            o.side, o.price, o.remaining_quantity(), o.client_order_id.clone(),
+                        ));
+                    }
+                }
+                None
+            })
+            .collect();
+        candidates.sort_by_key(|(ts, ..)| *ts);
+
+        let mut responses = vec![];
+
+        for (_, oid, notional, market_id, side, price, remaining, coid) in candidates {
+            if meta.total_quoted_notional.saturating_add(order_notional) <= max_quoted {
+                break;
+            }
+            let market = match self.markets.get(&market_id) {
+                Some(m) => m,
+                None => continue,
+            };
+            let (cancel_asset, unlock_amount) = match side {
+                OrderSide::Bid => (market.quote.clone(), CreditSystem::compute_notional(price, remaining)),
+                OrderSide::Ask => (market.base.clone(), remaining),
+            };
+            delta.record_remove(market_id, oid);
+            delta.unlock_to_available(user, &cancel_asset, unlock_amount, &self.balances);
+            meta.open_order_ids.retain(|&id| id != oid);
+            meta.total_quoted_notional = meta.total_quoted_notional.saturating_sub(notional);
+            responses.push(Response::OrderCanceled(OrderCanceledResponse {
+                order_id: oid,
+                client_order_id: coid,
+            }));
+        }
+
+        responses
+    }
+
     fn try_post_order(
         &self,
         req: PostOrderRequest,
@@ -138,10 +197,13 @@ impl MatchingEngine {
         };
 
         let deposited = spend_balance.total();
+        let mut room_cancels: Vec<Response> = vec![];
         if order_notional > deposited {
             return Err(VelaError::InsufficientBalance);
         }
         if spend_balance.available < order_notional {
+            let cancels = self.make_room_for_order(&req.user, &mut meta, deposited, order_notional, delta);
+            room_cancels.extend(cancels);
             self.credit_system.check_credit(
                 &req.user,
                 deposited,
@@ -203,7 +265,8 @@ impl MatchingEngine {
 
         let _ = receive_asset;
 
-        let mut responses: Vec<Response> = fills.into_iter().map(Response::OrderFilled).collect();
+        let mut responses: Vec<Response> = room_cancels;
+        responses.extend(fills.into_iter().map(Response::OrderFilled));
         for canceled in auto_canceled {
             responses.push(Response::OrderCanceled(canceled));
         }

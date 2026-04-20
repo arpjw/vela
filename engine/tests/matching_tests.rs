@@ -493,29 +493,43 @@ fn test_asset_backing_invariant_holds() {
     );
 }
 
-/// set_credit_ratio persists and is reflected in subsequent check_credit calls.
+/// set_credit_ratio persists: with ratio=1.0 the engine auto-cancels to make room; upgrading
+/// the ratio to 2.0 gives enough headroom that no auto-cancel is needed for the same order.
 #[test]
 fn test_set_ratio_per_user() {
-    let mut e = credit_engine(1.0); // default: no credit
+    let mut e = credit_engine(1.0); // default: ratio 1.0
     let maker = user(1);
 
     e.process(deposit(maker.clone(), usdc(), 100 * PRICE_SCALE), 1);
 
-    // With ratio 1.0 (default) trying to over-quote should fail
-    // (order notional = 50, available = 100 — this is within available, so it rests)
-    e.process(post_bid(maker.clone(), 50, 1, 1), 2); // locks 50, available = 50
-    let fail = e.process(post_bid(maker.clone(), 80, 1, 2), 3); // notional 80 > available 50, credit limit 100
-    // 50 + 80 = 130 > 100 * 1.0 → CreditLimitExceeded
-    let err = fail.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
-    assert_eq!(err.code, ErrorCode::CreditLimitExceeded);
+    // First bid: 1 BTC @ 50 USDC. Locks 50. available=50, total_quoted=50.
+    e.process(post_bid(maker.clone(), 50, 1, 1), 2);
 
-    // Upgrade maker's ratio to 2.0 → max = 200
+    // Second bid at 80: available=50 < 80. total_quoted+80=130 > 100*1.0=100.
+    // With ratio=1.0, engine auto-cancels the first order to make room.
+    let second = e.process(post_bid(maker.clone(), 80, 1, 2), 3);
+    assert!(
+        second.iter().any(|r| matches!(r, Response::OrderPosted(p) if p.status == OrderStatus::Open)),
+        "second bid must succeed via auto-cancel"
+    );
+    assert!(
+        second.iter().any(|r| matches!(r, Response::OrderCanceled(_))),
+        "ratio=1.0 must trigger auto-cancel to make room"
+    );
+
+    // Upgrade maker's ratio to 2.0 → max = 200. State: total_quoted=80, available≥0.
     e.set_credit_ratio(maker.clone(), 2.0);
 
-    // Now the same order should succeed (50 + 80 = 130 ≤ 200)
-    let ok = e.process(post_bid(maker.clone(), 80, 1, 3), 4);
-    let posted = ok.iter().find_map(|r| if let Response::OrderPosted(p) = r { Some(p) } else { None }).unwrap();
-    assert_eq!(posted.status, OrderStatus::Open);
+    // Third bid at 80: total_quoted+80=160 ≤ 200 → no auto-cancel needed.
+    let third = e.process(post_bid(maker.clone(), 80, 1, 3), 4);
+    assert!(
+        third.iter().any(|r| matches!(r, Response::OrderPosted(p) if p.status == OrderStatus::Open)),
+        "third bid must succeed with ratio=2.0"
+    );
+    assert!(
+        !third.iter().any(|r| matches!(r, Response::OrderCanceled(_))),
+        "ratio=2.0 must allow quoting without auto-cancel"
+    );
 }
 
 // ─── VEL-P2-04: CoW delta buffer correctness tests ────────────────────────────
@@ -937,6 +951,155 @@ fn test_coid_exactly_64_chars_accepted() {
     let id_64 = "a".repeat(64);
     let resp = e.process(post_bid_with_coid(u.clone(), 50_000, 1, 1, Some(&id_64)), 2);
     assert!(resp.iter().any(|r| matches!(r, Response::OrderPosted(p) if p.status == OrderStatus::Open)));
+}
+
+// ─── VEL-P2-06: Auto-cancel on credit ratio breach ────────────────────────────
+
+/// MM submits an order that would breach credit → oldest open order auto-cancelled
+/// to make room, new order accepted. Cancel response must be emitted.
+#[test]
+fn test_credit_breach_auto_cancel_oldest_first() {
+    let mut e = credit_engine(1.0);
+    let maker = user(1);
+
+    e.process(deposit(maker.clone(), usdc(), 100 * PRICE_SCALE), 1);
+
+    // Bid at 70: notional=70. Locks 70. available=30, total_quoted=70. (oldest)
+    let r_old = e.process(post_bid(maker.clone(), 70, 1, 1), 2);
+    let oid_old = r_old.iter()
+        .find_map(|r| if let Response::OrderPosted(p) = r { Some(p.order_id) } else { None })
+        .unwrap();
+
+    // Bid at 20: notional=20. Locks 20. available=10, total_quoted=90.
+    let r_mid = e.process(post_bid(maker.clone(), 20, 1, 2), 3);
+    let oid_mid = r_mid.iter()
+        .find_map(|r| if let Response::OrderPosted(p) = r { Some(p.order_id) } else { None })
+        .unwrap();
+
+    // New bid at 50: notional=50. available=10 < 50. 90+50=140 > 100.
+    // Auto-cancel oid_old (notional=70, oldest): total_quoted=20. 20+50=70 ≤ 100. Done.
+    let r_in = e.process(post_bid(maker.clone(), 50, 1, 3), 4);
+
+    let canceled_ids: Vec<_> = r_in.iter()
+        .filter_map(|r| if let Response::OrderCanceled(c) = r { Some(c.order_id) } else { None })
+        .collect();
+    assert!(canceled_ids.contains(&oid_old), "oldest order must be auto-cancelled");
+    assert!(!canceled_ids.contains(&oid_mid), "newer order must NOT be auto-cancelled");
+
+    let posted = r_in.iter()
+        .find_map(|r| if let Response::OrderPosted(p) = r { Some(p) } else { None })
+        .unwrap();
+    assert_eq!(posted.status, OrderStatus::Open, "incoming order must be accepted after auto-cancel");
+}
+
+/// Multiple orders auto-cancelled (oldest first) until ratio satisfied.
+#[test]
+fn test_credit_breach_multiple_cancels_until_ratio_satisfied() {
+    let mut e = credit_engine(1.0);
+    let maker = user(1);
+
+    e.process(deposit(maker.clone(), usdc(), 90 * PRICE_SCALE), 1);
+
+    // Three bids of 30 each. total_quoted=90, available=0.
+    let r1 = e.process(post_bid(maker.clone(), 30, 1, 1), 2);
+    let oid1 = r1.iter()
+        .find_map(|r| if let Response::OrderPosted(p) = r { Some(p.order_id) } else { None })
+        .unwrap();
+    let r2 = e.process(post_bid(maker.clone(), 30, 1, 2), 3);
+    let oid2 = r2.iter()
+        .find_map(|r| if let Response::OrderPosted(p) = r { Some(p.order_id) } else { None })
+        .unwrap();
+    let r3 = e.process(post_bid(maker.clone(), 30, 1, 3), 4);
+    let oid3 = r3.iter()
+        .find_map(|r| if let Response::OrderPosted(p) = r { Some(p.order_id) } else { None })
+        .unwrap();
+
+    // New bid at 50: 90+50=140 > 90.
+    // Cancel oid1 (30): total=60, 60+50=110 > 90. Still over.
+    // Cancel oid2 (30): total=30, 30+50=80 ≤ 90. Done.
+    let r_in = e.process(post_bid(maker.clone(), 50, 1, 4), 5);
+
+    let canceled_ids: Vec<_> = r_in.iter()
+        .filter_map(|r| if let Response::OrderCanceled(c) = r { Some(c.order_id) } else { None })
+        .collect();
+    assert_eq!(canceled_ids.len(), 2, "two orders must be auto-cancelled");
+    assert!(canceled_ids.contains(&oid1));
+    assert!(canceled_ids.contains(&oid2));
+    assert!(!canceled_ids.contains(&oid3), "third (newest) order must survive");
+
+    let posted = r_in.iter()
+        .find_map(|r| if let Response::OrderPosted(p) = r { Some(p) } else { None })
+        .unwrap();
+    assert_eq!(posted.status, OrderStatus::Open);
+
+    let meta = e.metadata.get(&maker).unwrap();
+    assert_eq!(meta.open_order_ids.len(), 2, "two orders remain (oid3 + new order)");
+}
+
+/// If the incoming order fails after auto-cancels, the delta rollback undoes the auto-cancels.
+#[test]
+fn test_credit_breach_auto_cancel_rolled_back_on_order_failure() {
+    let mut e = credit_engine(1.0);
+    let maker = user(1);
+
+    e.process(deposit(maker.clone(), usdc(), 100 * PRICE_SCALE), 1);
+
+    // Resting bid at 80: locks 80. available=20. total_quoted=80.
+    let r_rest = e.process(post_bid(maker.clone(), 80, 1, 1), 2);
+    let oid_rest = r_rest.iter()
+        .find_map(|r| if let Response::OrderPosted(p) = r { Some(p.order_id) } else { None })
+        .unwrap();
+
+    // FillOrKill bid at 30: notional=30. available=20 < 30.
+    // 80+30=110 > 100 → auto-cancel oid_rest. total_quoted=0, 0+30=30 ≤ 100.
+    // FillOrKill: no counterparty → FokNotFilled → delta rollback (undoes auto-cancel).
+    let r_fok = e.process(
+        Request::PostOrder(PostOrderRequest {
+            user: maker.clone(),
+            market: btc_usdc(),
+            side: OrderSide::Bid,
+            order_type: OrderType::FillOrKill,
+            price: 30 * PRICE_SCALE,
+            quantity: 1 * QUANTITY_SCALE,
+            nonce: 2,
+            client_order_id: None,
+            signature: vec![0u8; 65],
+        }),
+        3,
+    );
+
+    let err = r_fok.iter()
+        .find_map(|r| if let Response::Error(e) = r { Some(e) } else { None })
+        .unwrap();
+    assert_eq!(err.code, ErrorCode::FokNotFilled);
+
+    // Original order must still exist (auto-cancel was rolled back with delta)
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    assert!(book.get_order(oid_rest).is_some(), "auto-cancelled order must be restored on rollback");
+
+    let meta = e.metadata.get(&maker).unwrap();
+    assert!(meta.open_order_ids.contains(&oid_rest));
+    let expected_notional = CreditSystem::compute_notional(80 * PRICE_SCALE, QUANTITY_SCALE);
+    assert_eq!(meta.total_quoted_notional, expected_notional, "total_quoted_notional must be unchanged after rollback");
+}
+
+/// MM with no open orders but notional > deposited → InsufficientBalance (hard floor, not auto-cancel).
+#[test]
+fn test_credit_breach_no_open_orders_insufficient_balance() {
+    let mut e = credit_engine(1.0);
+    let maker = user(1);
+
+    e.process(deposit(maker.clone(), usdc(), 50 * PRICE_SCALE), 1);
+
+    // notional=80 > deposited=50 → hard floor rejection before credit path
+    let r = e.process(post_bid(maker.clone(), 80, 1, 1), 2);
+    let err = r.iter()
+        .find_map(|r| if let Response::Error(e) = r { Some(e) } else { None })
+        .unwrap();
+    assert_eq!(err.code, ErrorCode::InsufficientBalance);
+
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    assert!(book.best_bid().is_none());
 }
 
 /// client_order_ids survive a JSON snapshot/restore cycle.
