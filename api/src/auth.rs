@@ -47,8 +47,12 @@ pub fn order_signing_message(
     price: u64,
     quantity: u64,
     nonce: u64,
+    client_order_id: Option<&str>,
 ) -> Vec<u8> {
-    format!("vela:order:{}:{}:{}:{}:{}", market, side, price, quantity, nonce).into_bytes()
+    match client_order_id {
+        None => format!("vela:order:{}:{}:{}:{}:{}", market, side, price, quantity, nonce).into_bytes(),
+        Some(coid) => format!("vela:order:{}:{}:{}:{}:{}:{}", market, side, price, quantity, nonce, coid).into_bytes(),
+    }
 }
 
 pub fn cancel_signing_message(order_id: Option<u64>, client_order_id: Option<&str>, nonce: u64) -> Vec<u8> {

@@ -130,6 +130,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/markets/:market/book", get(get_book))
         .route("/account/:address/balances", get(get_balances))
         .route("/account/:address/orders", get(get_open_orders))
+        .route("/account/:address/orders/by-client-id/:client_id", get(get_order_by_client_id))
         .route("/orders", post(post_order))
         .route("/orders/cancel", post(cancel_order))
         .route("/orders/:order_id", get(get_order_by_id))
@@ -253,6 +254,43 @@ async fn get_open_orders(
     (StatusCode::OK, Json(ApiResponse::ok(orders))).into_response()
 }
 
+async fn get_order_by_client_id(
+    Path((address, client_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let user = match UserId::from_hex(&address) {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid address"))).into_response(),
+    };
+
+    let engine = state.engine.lock().await;
+    let order_id = engine.order_books.values()
+        .find_map(|b| b.find_by_client_order_id(&user, &client_id));
+
+    match order_id {
+        Some(oid) => {
+            let order = engine.order_books.values().find_map(|b| b.get_order(oid));
+            match order {
+                Some(o) => (StatusCode::OK, Json(ApiResponse::ok(serde_json::json!({
+                    "id": o.id,
+                    "market": o.market.0,
+                    "side": format!("{:?}", o.side).to_lowercase(),
+                    "order_type": format!("{:?}", o.order_type).to_lowercase(),
+                    "price": format_amount(o.price, PRICE_DECIMALS),
+                    "quantity": format_amount(o.quantity, QUANTITY_DECIMALS),
+                    "filled_quantity": format_amount(o.filled_quantity, QUANTITY_DECIMALS),
+                    "status": format!("{:?}", o.status).to_lowercase(),
+                    "nonce": o.nonce,
+                    "client_order_id": o.client_order_id,
+                    "timestamp": o.timestamp,
+                })))).into_response(),
+                None => (StatusCode::NOT_FOUND, Json(ApiResponse::<()>::err("order not found"))).into_response(),
+            }
+        }
+        None => (StatusCode::NOT_FOUND, Json(ApiResponse::<()>::err("order not found"))).into_response(),
+    }
+}
+
 async fn post_order(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PostOrderBody>,
@@ -284,7 +322,7 @@ async fn post_order(
     }
 
     let side_str = format!("{:?}", body.side).to_lowercase();
-    let msg = order_signing_message(&body.market, &side_str, body.price, body.quantity, body.nonce);
+    let msg = order_signing_message(&body.market, &side_str, body.price, body.quantity, body.nonce, body.client_order_id.as_deref());
     if verify_matches_async(msg, body.signature.clone(), body.address.clone()).await.is_err() {
         return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("invalid signature"))).into_response();
     }
@@ -388,6 +426,7 @@ async fn record_order_and_fills(
         order_type: order_type_to_str(body.order_type).to_string(),
         time_in_force: order_type_to_tif(body.order_type).to_string(),
         nonce: body.nonce,
+        client_order_id: body.client_order_id.clone(),
         signature: body.signature.clone(),
         created_at: ts,
         updated_at: ts,

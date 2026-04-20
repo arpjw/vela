@@ -361,6 +361,7 @@ pub enum ErrorCode {
     InvalidPrice,
     InvalidQuantity,
     DuplicateClientOrderId,
+    InvalidClientOrderId,
     InternalError,
 }
 
@@ -388,6 +389,8 @@ pub enum VelaError {
     InvalidSignature,
     #[error("duplicate client order id")]
     DuplicateClientOrderId,
+    #[error("invalid client order id")]
+    InvalidClientOrderId,
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -405,6 +408,7 @@ impl From<VelaError> for ErrorResponse {
             VelaError::FokNotFilled => ErrorCode::FokNotFilled,
             VelaError::InvalidSignature => ErrorCode::InvalidSignature,
             VelaError::DuplicateClientOrderId => ErrorCode::DuplicateClientOrderId,
+            VelaError::InvalidClientOrderId => ErrorCode::InvalidClientOrderId,
             VelaError::InvalidAddress | VelaError::Internal(_) => ErrorCode::InternalError,
         };
         ErrorResponse {

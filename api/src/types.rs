@@ -38,6 +38,7 @@ pub struct StoredOrder {
     pub order_type: String,
     pub time_in_force: String,
     pub nonce: u64,
+    pub client_order_id: Option<String>,
     pub signature: String,
     pub created_at: u64,
     pub updated_at: u64,

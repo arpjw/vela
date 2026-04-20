@@ -107,6 +107,19 @@ impl MatchingEngine {
             .get(&req.market)
             .ok_or_else(|| VelaError::MarketNotFound(req.market.to_string()))?;
 
+        if let Some(coid) = &req.client_order_id {
+            if coid.len() > 64 {
+                return Err(VelaError::InvalidClientOrderId);
+            }
+            if !coid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+                return Err(VelaError::InvalidClientOrderId);
+            }
+            let duplicate = self.order_books.values().any(|b| b.find_by_client_order_id(&req.user, coid).is_some());
+            if duplicate {
+                return Err(VelaError::DuplicateClientOrderId);
+            }
+        }
+
         let mut meta = delta.get_metadata(&req.user, &self.metadata);
         if !meta.nonce_window.accept(req.nonce) {
             return Err(VelaError::InvalidNonce);

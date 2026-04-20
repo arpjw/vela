@@ -759,3 +759,222 @@ fn test_nonce_window_snapshot_restore() {
     // A fresh nonce above the window contents is accepted
     assert!(w.accept(300), "new nonce 300 must be accepted after restore");
 }
+
+// ─── VEL-P2-03: Client order ID tests ─────────────────────────────────────────
+
+fn post_bid_with_coid(user: UserId, price: u64, qty: u64, nonce: u64, coid: Option<&str>) -> Request {
+    Request::PostOrder(PostOrderRequest {
+        user,
+        market: btc_usdc(),
+        side: OrderSide::Bid,
+        order_type: OrderType::GoodTillCanceled,
+        price: price * PRICE_SCALE,
+        quantity: qty * QUANTITY_SCALE,
+        nonce,
+        client_order_id: coid.map(|s| s.to_string()),
+        signature: vec![0u8; 65],
+    })
+}
+
+fn cancel_by_coid(user: UserId, coid: &str, nonce: u64) -> Request {
+    Request::CancelOrder(CancelOrderRequest {
+        user,
+        order_id: None,
+        client_order_id: Some(coid.to_string()),
+        nonce,
+        signature: vec![0u8; 65],
+    })
+}
+
+/// Submit order with client_order_id → accepted, mapping stored in book index.
+#[test]
+fn test_coid_submit_accepted_and_stored() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 100_000 * PRICE_SCALE), 1);
+
+    let resp = e.process(post_bid_with_coid(u.clone(), 50_000, 1, 1, Some("my-order-1")), 2);
+    let posted = resp.iter().find_map(|r| if let Response::OrderPosted(p) = r { Some(p) } else { None }).unwrap();
+    assert_eq!(posted.status, OrderStatus::Open);
+    assert_eq!(posted.client_order_id.as_deref(), Some("my-order-1"));
+
+    // The book should be able to find the order by client_order_id
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    let found = book.find_by_client_order_id(&u, "my-order-1");
+    assert!(found.is_some(), "client_order_id mapping must be stored in order book");
+    assert_eq!(found.unwrap(), posted.order_id);
+}
+
+/// Submit duplicate client_order_id for same user → rejected.
+#[test]
+fn test_coid_duplicate_same_user_rejected() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 200_000 * PRICE_SCALE), 1);
+
+    e.process(post_bid_with_coid(u.clone(), 50_000, 1, 1, Some("dup-id")), 2);
+    let resp = e.process(post_bid_with_coid(u.clone(), 50_000, 1, 2, Some("dup-id")), 3);
+    let err = resp.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err.code, ErrorCode::DuplicateClientOrderId);
+}
+
+/// Same client_order_id for different users → both accepted (not global).
+#[test]
+fn test_coid_same_id_different_users_both_accepted() {
+    let mut e = engine();
+    let u1 = user(1);
+    let u2 = user(2);
+    e.process(deposit(u1.clone(), usdc(), 100_000 * PRICE_SCALE), 1);
+    e.process(deposit(u2.clone(), usdc(), 100_000 * PRICE_SCALE), 2);
+
+    let r1 = e.process(post_bid_with_coid(u1.clone(), 50_000, 1, 1, Some("shared-id")), 3);
+    let r2 = e.process(post_bid_with_coid(u2.clone(), 50_000, 1, 1, Some("shared-id")), 4);
+
+    assert!(r1.iter().any(|r| matches!(r, Response::OrderPosted(_))), "user 1 order should be accepted");
+    assert!(r2.iter().any(|r| matches!(r, Response::OrderPosted(_))), "user 2 order should be accepted");
+}
+
+/// Cancel by client_order_id → order cancelled, mapping removed.
+#[test]
+fn test_coid_cancel_by_coid() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 100_000 * PRICE_SCALE), 1);
+
+    let resp = e.process(post_bid_with_coid(u.clone(), 50_000, 1, 1, Some("cancel-me")), 2);
+    let order_id = resp.iter().find_map(|r| if let Response::OrderPosted(p) = r { Some(p.order_id) } else { None }).unwrap();
+
+    let cancel_resp = e.process(cancel_by_coid(u.clone(), "cancel-me", 2), 3);
+    let canceled = cancel_resp.iter().find_map(|r| if let Response::OrderCanceled(c) = r { Some(c) } else { None }).unwrap();
+    assert_eq!(canceled.order_id, order_id);
+    assert_eq!(canceled.client_order_id.as_deref(), Some("cancel-me"));
+
+    // Mapping must be gone
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    assert!(book.find_by_client_order_id(&u, "cancel-me").is_none(), "mapping must be removed after cancel");
+}
+
+/// Cancel by client_order_id that doesn't exist → clear error.
+#[test]
+fn test_coid_cancel_nonexistent_returns_error() {
+    let mut e = engine();
+    let u = user(1);
+
+    let resp = e.process(cancel_by_coid(u.clone(), "ghost-id", 1), 1);
+    let err = resp.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err.code, ErrorCode::OrderNotFound);
+}
+
+/// Order fill removes client_order_id mapping from book index.
+#[test]
+fn test_coid_fill_removes_mapping() {
+    let mut e = engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 1 * QUANTITY_SCALE), 1);
+    e.process(deposit(taker.clone(), usdc(), 100_000 * PRICE_SCALE), 2);
+
+    e.process(
+        Request::PostOrder(PostOrderRequest {
+            user: maker.clone(),
+            market: btc_usdc(),
+            side: OrderSide::Ask,
+            order_type: OrderType::GoodTillCanceled,
+            price: 50_000 * PRICE_SCALE,
+            quantity: 1 * QUANTITY_SCALE,
+            nonce: 1,
+            client_order_id: Some("maker-ask-1".to_string()),
+            signature: vec![0u8; 65],
+        }),
+        3,
+    );
+
+    // Verify mapping exists before fill
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    assert!(book.find_by_client_order_id(&maker, "maker-ask-1").is_some());
+
+    // Taker fills the maker's order completely
+    e.process(post_bid(taker.clone(), 50_000, 1, 1), 4);
+
+    // Mapping must be gone after fill
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    assert!(book.find_by_client_order_id(&maker, "maker-ask-1").is_none(), "mapping removed after fill");
+}
+
+/// client_order_id with invalid characters → rejected.
+#[test]
+fn test_coid_invalid_characters_rejected() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 100_000 * PRICE_SCALE), 1);
+
+    let resp = e.process(post_bid_with_coid(u.clone(), 50_000, 1, 1, Some("bad id!")), 2);
+    let err = resp.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err.code, ErrorCode::InvalidClientOrderId);
+}
+
+/// client_order_id > 64 chars → rejected.
+#[test]
+fn test_coid_too_long_rejected() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 100_000 * PRICE_SCALE), 1);
+
+    let long_id = "a".repeat(65);
+    let resp = e.process(post_bid_with_coid(u.clone(), 50_000, 1, 1, Some(&long_id)), 2);
+    let err = resp.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err.code, ErrorCode::InvalidClientOrderId);
+}
+
+/// client_order_id exactly 64 chars with valid chars → accepted.
+#[test]
+fn test_coid_exactly_64_chars_accepted() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 100_000 * PRICE_SCALE), 1);
+
+    let id_64 = "a".repeat(64);
+    let resp = e.process(post_bid_with_coid(u.clone(), 50_000, 1, 1, Some(&id_64)), 2);
+    assert!(resp.iter().any(|r| matches!(r, Response::OrderPosted(p) if p.status == OrderStatus::Open)));
+}
+
+/// client_order_ids survive a JSON snapshot/restore cycle.
+#[test]
+fn test_coid_survives_snapshot_restore() {
+    use engine::MatchingEngine;
+    use types::{FeeConfig, Market, MarketId};
+
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 100_000 * PRICE_SCALE), 1);
+    let resp = e.process(post_bid_with_coid(u.clone(), 50_000, 1, 1, Some("persist-me")), 2);
+    let original_id = resp.iter().find_map(|r| if let Response::OrderPosted(p) = r { Some(p.order_id) } else { None }).unwrap();
+
+    // Serialize the order book state (orders contain client_order_id)
+    let orders: Vec<types::Order> = e.order_books.values().flat_map(|b| b.all_orders()).collect();
+    let json = serde_json::to_string(&orders).unwrap();
+    let restored_orders: Vec<types::Order> = serde_json::from_str(&json).unwrap();
+
+    // Build a fresh engine and restore
+    let mut e2 = MatchingEngine::new(FeeConfig::default(), 5.0);
+    e2.add_market(Market {
+        id: MarketId::new("BTC", "USDC"),
+        base: btc(),
+        quote: usdc(),
+        max_orders: 10_000,
+        min_order_size: 1,
+        price_tick: 1,
+        quantity_tick: 1,
+    });
+    let book2 = e2.order_books.get_mut(&btc_usdc()).unwrap();
+    for o in restored_orders {
+        book2.insert_resting(o).unwrap();
+    }
+
+    // The client_order_id index must be rebuilt
+    let book2 = e2.order_books.get(&btc_usdc()).unwrap();
+    let found = book2.find_by_client_order_id(&u, "persist-me");
+    assert!(found.is_some(), "client_order_id must survive snapshot/restore");
+    assert_eq!(found.unwrap(), original_id);
+}

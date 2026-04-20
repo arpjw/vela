@@ -3,7 +3,7 @@ use api::AppState;
 use axum_test::TestServer;
 use engine::MatchingEngine;
 use serde_json::{json, Value};
-use types::{AssetId, DepositRequest, FeeConfig, Market, MarketId, Request, PRICE_SCALE, QUANTITY_SCALE};
+use types::{AssetId, DepositRequest, FeeConfig, Market, MarketId, OrderSide, OrderType, PostOrderRequest, Request, PRICE_SCALE, QUANTITY_SCALE};
 
 fn user_addr() -> String {
     "0x0000000000000000000000000000000000000001".to_string()
@@ -156,6 +156,56 @@ async fn test_format_amount() {
     assert_eq!(format_amount(150_000_000, 8), "1.5");
     assert_eq!(format_amount(0, 8), "0");
     assert_eq!(format_amount(1, 8), "0.00000001");
+}
+
+// ─── VEL-P2-03: GET /account/:address/orders/by-client-id/:client_id ─────────
+
+#[tokio::test]
+async fn test_get_order_by_client_id_found() {
+    let user_id = types::UserId::from_hex(&user_addr()).unwrap();
+    let mut e = engine_with_market();
+
+    // Deposit funds and place a resting order with a client_order_id directly through the engine.
+    e.process(Request::Deposit(DepositRequest {
+        user: user_id.clone(),
+        asset: AssetId("USDC".into()),
+        amount: 100_000 * PRICE_SCALE,
+        l1_tx_hash: [0u8; 32],
+    }), 1);
+
+    let resp = e.process(Request::PostOrder(PostOrderRequest {
+        user: user_id.clone(),
+        market: MarketId::new("BTC", "USDC"),
+        side: OrderSide::Bid,
+        order_type: OrderType::GoodTillCanceled,
+        price: 50_000 * PRICE_SCALE,
+        quantity: 1 * QUANTITY_SCALE,
+        nonce: 42,
+        client_order_id: Some("test-coid-api".to_string()),
+        signature: vec![0u8; 65],
+    }), 2);
+
+    let order_id = resp.iter().find_map(|r| {
+        if let types::Response::OrderPosted(p) = r { Some(p.order_id) } else { None }
+    }).expect("order must be posted");
+
+    let server = test_server(e);
+    let endpoint = format!("/account/{}/orders/by-client-id/test-coid-api", user_addr());
+    let res = server.get(&endpoint).await;
+    res.assert_status_ok();
+
+    let body: Value = res.json();
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["data"]["id"], order_id);
+    assert_eq!(body["data"]["client_order_id"], "test-coid-api");
+}
+
+#[tokio::test]
+async fn test_get_order_by_client_id_not_found() {
+    let server = test_server(engine_with_market());
+    let endpoint = format!("/account/{}/orders/by-client-id/nonexistent", user_addr());
+    let res = server.get(&endpoint).await;
+    res.assert_status(axum::http::StatusCode::NOT_FOUND);
 }
 
 // ── WebSocket private-feed tests ─────────────────────────────────────────────
