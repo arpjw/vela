@@ -19,6 +19,8 @@ fn default_market() -> Market {
         min_order_size: 1,
         price_tick: 1,
         quantity_tick: 1,
+        maker_fee_bps: -1,
+        taker_fee_bps: 5,
     }
 }
 
@@ -485,7 +487,7 @@ fn test_asset_backing_invariant_holds() {
 
     // 1:1 USDC backing invariant: total USDC in system ≤ 100 USDC deposited by maker.
     // USDC flows from maker's locked balance to taker; fees are net-consumed by exchange.
-    // (taker pays 7bps, maker gets 2bps rebate → exchange earns 5bps net → USDC decreases)
+    // (taker pays 5bps, maker gets 1bps rebate → exchange earns 4bps net → USDC decreases)
     assert!(
         maker_usdc + taker_usdc <= 100 * PRICE_SCALE,
         "total USDC must not exceed deposit: {} + {} = {} > {}",
@@ -1129,6 +1131,8 @@ fn test_coid_survives_snapshot_restore() {
         min_order_size: 1,
         price_tick: 1,
         quantity_tick: 1,
+        maker_fee_bps: -1,
+        taker_fee_bps: 5,
     });
     let book2 = e2.order_books.get_mut(&btc_usdc()).unwrap();
     for o in restored_orders {
@@ -1140,4 +1144,242 @@ fn test_coid_survives_snapshot_restore() {
     let found = book2.find_by_client_order_id(&u, "persist-me");
     assert!(found.is_some(), "client_order_id must survive snapshot/restore");
     assert_eq!(found.unwrap(), original_id);
+}
+
+// ─── VEL-P2-07: Maker/taker fee tests ─────────────────────────────────────────
+
+fn zero_fee_market() -> Market {
+    Market {
+        id: btc_usdc(),
+        base: btc(),
+        quote: usdc(),
+        max_orders: 10_000,
+        min_order_size: 1,
+        price_tick: 1,
+        quantity_tick: 1,
+        maker_fee_bps: 0,
+        taker_fee_bps: 0,
+    }
+}
+
+fn fee_engine() -> MatchingEngine {
+    let mut e = MatchingEngine::new(FeeConfig::default(), 5.0);
+    e.add_market(default_market());
+    e
+}
+
+/// On an ask fill (taker sells BTC against resting bid), taker's USDC proceeds are
+/// reduced by taker_fee: taker receives fill_notional - taker_fee net.
+#[test]
+fn test_fee_taker_deducted_from_taker_balance_bid() {
+    let mut e = fee_engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    // Maker places resting bid (locks USDC), taker is the incoming ask (seller).
+    e.process(deposit(maker.clone(), usdc(), 100_000 * PRICE_SCALE), 1);
+    e.process(deposit(taker.clone(), btc(), 1 * QUANTITY_SCALE), 2);
+
+    e.process(post_bid(maker.clone(), 50_000, 1, 1), 3);
+
+    let taker_usdc_before = e.balances.get(&(taker.clone(), usdc())).map(|b| b.available).unwrap_or(0);
+    let responses = e.process(post_ask(taker.clone(), 50_000, 1, 1), 4);
+
+    let fill = responses.iter().find_map(|r| if let Response::OrderFilled(f) = r { Some(f) } else { None }).unwrap();
+    let taker_usdc_after = e.balances.get(&(taker.clone(), usdc())).unwrap().available;
+
+    let fill_notional = CreditSystem::compute_notional(fill.price, fill.quantity);
+    let expected_taker_fee = (fill_notional as i64 * 5) / 10_000;
+    assert!(expected_taker_fee > 0, "taker fee must be positive");
+    assert_eq!(fill.taker_fee, expected_taker_fee, "fill.taker_fee must match computed fee");
+    // Ask taker receives fill_notional credited then taker_fee debited from available
+    assert_eq!(
+        taker_usdc_after - taker_usdc_before,
+        (fill_notional as i64 - expected_taker_fee) as u64,
+        "ask taker net USDC = fill_notional - taker_fee"
+    );
+}
+
+/// On a bid fill, maker receives a rebate in addition to the fill notional.
+#[test]
+fn test_fee_maker_rebate_credited_bid() {
+    let mut e = fee_engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 1 * QUANTITY_SCALE), 1);
+    e.process(deposit(taker.clone(), usdc(), 100_000 * PRICE_SCALE), 2);
+
+    e.process(post_ask(maker.clone(), 50_000, 1, 1), 3);
+
+    let responses = e.process(post_bid(taker.clone(), 50_000, 1, 1), 4);
+    let fill = responses.iter().find_map(|r| if let Response::OrderFilled(f) = r { Some(f) } else { None }).unwrap();
+
+    let fill_notional = fill.price / PRICE_SCALE * fill.quantity / QUANTITY_SCALE * PRICE_SCALE;
+    let expected_maker_fee = (fill_notional as i64 * -1) / 10_000; // negative = rebate
+    assert!(expected_maker_fee < 0, "maker fee must be negative (rebate)");
+
+    let maker_usdc = e.balances.get(&(maker.clone(), usdc())).unwrap().available;
+    let expected_maker_usdc = fill_notional + expected_maker_fee.unsigned_abs();
+    assert_eq!(maker_usdc, expected_maker_usdc, "maker USDC must equal fill_notional + rebate");
+    assert_eq!(fill.maker_fee, expected_maker_fee, "fill.maker_fee must match computed rebate");
+}
+
+/// Exchange fee_balances["USDC"] accumulates net fees (taker_fee - abs(maker_rebate)) after fills.
+#[test]
+fn test_exchange_fee_balance_increases() {
+    let mut e = fee_engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 1 * QUANTITY_SCALE), 1);
+    e.process(deposit(taker.clone(), usdc(), 100_000 * PRICE_SCALE), 2);
+    e.process(post_ask(maker.clone(), 50_000, 1, 1), 3);
+
+    let responses = e.process(post_bid(taker.clone(), 50_000, 1, 1), 4);
+    let fill = responses.iter().find_map(|r| if let Response::OrderFilled(f) = r { Some(f) } else { None }).unwrap();
+
+    let net_fee = fill.taker_fee + fill.maker_fee;
+    assert!(net_fee > 0, "net exchange fee must be positive with default rates");
+
+    let fee_balance = e.fee_balances.get("USDC").copied().unwrap_or(0);
+    assert_eq!(fee_balance, net_fee as u64, "fee_balances[USDC] must equal net exchange fee");
+}
+
+/// Fill response includes correct maker_fee and taker_fee amounts.
+#[test]
+fn test_fill_response_includes_fee_amounts() {
+    let mut e = fee_engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 2 * QUANTITY_SCALE), 1);
+    e.process(deposit(taker.clone(), usdc(), 200_000 * PRICE_SCALE), 2);
+    e.process(post_ask(maker.clone(), 50_000, 1, 1), 3);
+    e.process(post_ask(maker.clone(), 51_000, 1, 2), 4);
+
+    let responses = e.process(post_bid(taker.clone(), 51_000, 2, 1), 5);
+    let fills: Vec<_> = responses.iter()
+        .filter_map(|r| if let Response::OrderFilled(f) = r { Some(f) } else { None })
+        .collect();
+
+    assert_eq!(fills.len(), 2);
+    for fill in fills {
+        let notional = fill.price / PRICE_SCALE * fill.quantity / QUANTITY_SCALE * PRICE_SCALE;
+        let expected_taker_fee = (notional as i64 * 5) / 10_000;
+        let expected_maker_fee = (notional as i64 * -1) / 10_000;
+        assert_eq!(fill.taker_fee, expected_taker_fee);
+        assert_eq!(fill.maker_fee, expected_maker_fee);
+    }
+}
+
+/// With zero fee config, no fees are deducted from balances and fee_balances stays empty.
+#[test]
+fn test_zero_fee_config_no_fees() {
+    let mut e = MatchingEngine::new(FeeConfig::default(), 5.0);
+    e.add_market(zero_fee_market());
+
+    let maker = user(1);
+    let taker = user(2);
+
+    // Maker places resting bid (locks USDC), taker is ask (seller).
+    e.process(deposit(maker.clone(), usdc(), 100_000 * PRICE_SCALE), 1);
+    e.process(deposit(taker.clone(), btc(), 1 * QUANTITY_SCALE), 2);
+    e.process(post_bid(maker.clone(), 50_000, 1, 1), 3);
+
+    let taker_usdc_before = e.balances.get(&(taker.clone(), usdc())).map(|b| b.available).unwrap_or(0);
+    let responses = e.process(post_ask(taker.clone(), 50_000, 1, 1), 4);
+    let fill = responses.iter().find_map(|r| if let Response::OrderFilled(f) = r { Some(f) } else { None }).unwrap();
+
+    assert_eq!(fill.taker_fee, 0, "taker fee must be 0 with zero fee config");
+    assert_eq!(fill.maker_fee, 0, "maker fee must be 0 with zero fee config");
+
+    let taker_usdc_after = e.balances.get(&(taker.clone(), usdc())).unwrap().available;
+    let fill_notional = CreditSystem::compute_notional(fill.price, fill.quantity);
+    // Ask taker receives full fill_notional with no fee deduction
+    assert_eq!(taker_usdc_after - taker_usdc_before, fill_notional, "no fee deducted with zero config");
+
+    assert_eq!(e.fee_balances.get("USDC").copied().unwrap_or(0), 0, "fee_balances stays zero");
+}
+
+/// Fee balances survive serialization and deserialization (snapshot/restore simulation).
+#[test]
+fn test_fee_accumulation_snapshot_restore() {
+    let mut e = fee_engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 1 * QUANTITY_SCALE), 1);
+    e.process(deposit(taker.clone(), usdc(), 100_000 * PRICE_SCALE), 2);
+    e.process(post_ask(maker.clone(), 50_000, 1, 1), 3);
+    e.process(post_bid(taker.clone(), 50_000, 1, 1), 4);
+
+    let fee_before = e.fee_balances.get("USDC").copied().unwrap_or(0);
+    assert!(fee_before > 0, "fee_balances must be non-zero after fill");
+
+    let serialized = serde_json::to_string(&e.fee_balances).unwrap();
+    let restored: std::collections::HashMap<String, u64> = serde_json::from_str(&serialized).unwrap();
+
+    assert_eq!(restored.get("USDC").copied().unwrap_or(0), fee_before, "fee_balances survive serde round-trip");
+}
+
+/// Multiple fills accumulate fees correctly in fee_balances.
+#[test]
+fn test_fee_multiple_fills_accumulate() {
+    let mut e = fee_engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 3 * QUANTITY_SCALE), 1);
+    e.process(deposit(taker.clone(), usdc(), 500_000 * PRICE_SCALE), 2);
+    e.process(post_ask(maker.clone(), 50_000, 1, 1), 3);
+    e.process(post_ask(maker.clone(), 50_000, 1, 2), 4);
+    e.process(post_ask(maker.clone(), 50_000, 1, 3), 5);
+
+    e.process(post_bid(taker.clone(), 50_000, 1, 1), 6);
+    let after_first = e.fee_balances.get("USDC").copied().unwrap_or(0);
+
+    e.process(post_bid(taker.clone(), 50_000, 1, 2), 7);
+    let after_second = e.fee_balances.get("USDC").copied().unwrap_or(0);
+
+    e.process(post_bid(taker.clone(), 50_000, 1, 3), 8);
+    let after_third = e.fee_balances.get("USDC").copied().unwrap_or(0);
+
+    assert!(after_second > after_first, "fee_balances must increase after second fill");
+    assert!(after_third > after_second, "fee_balances must increase after third fill");
+    assert_eq!(after_third, after_first * 3, "fee_balances must be 3x single fill (identical fills)");
+}
+
+/// Negative net fee (rebate > taker fee) does not panic — handled gracefully.
+#[test]
+fn test_negative_net_fee_handled_gracefully() {
+    let mut e = MatchingEngine::new(FeeConfig::default(), 5.0);
+    e.add_market(Market {
+        id: btc_usdc(),
+        base: btc(),
+        quote: usdc(),
+        max_orders: 10_000,
+        min_order_size: 1,
+        price_tick: 1,
+        quantity_tick: 1,
+        maker_fee_bps: -10,  // large rebate: 10bps
+        taker_fee_bps: 1,    // small fee: 1bps
+    });
+
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 1 * QUANTITY_SCALE), 1);
+    // Give taker plenty of USDC to cover fee
+    e.process(deposit(taker.clone(), usdc(), 100_000 * PRICE_SCALE), 2);
+    e.process(post_ask(maker.clone(), 50_000, 1, 1), 3);
+
+    // Should not panic — net exchange fee is negative (exchange subsidizes)
+    let responses = e.process(post_bid(taker.clone(), 50_000, 1, 1), 4);
+    let fill = responses.iter().find_map(|r| if let Response::OrderFilled(f) = r { Some(f) } else { None });
+    assert!(fill.is_some(), "fill must complete even with negative net fee");
+
+    // fee_balances saturates at 0 if net is negative
+    let fee_balance = e.fee_balances.get("USDC").copied().unwrap_or(0);
+    assert_eq!(fee_balance, 0, "fee_balances saturates at 0 on negative net fee");
 }

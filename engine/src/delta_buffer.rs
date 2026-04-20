@@ -13,6 +13,7 @@ pub struct DeltaBuffer {
     balance_overlay: HashMap<(UserId, AssetId), Balance>,
     metadata_overlay: HashMap<UserId, UserMetadata>,
     entries: Vec<DeltaEntry>,
+    fee_delta: HashMap<String, i64>,
 }
 
 impl DeltaBuffer {
@@ -134,9 +135,21 @@ impl DeltaBuffer {
         self.entries.push(DeltaEntry::PartialFill { market, order_id, additional_filled });
     }
 
+    pub fn add_exchange_fee(&mut self, asset: &str, amount: i64) {
+        *self.fee_delta.entry(asset.to_string()).or_insert(0) += amount;
+    }
+
     pub fn commit(self, engine: &mut crate::MatchingEngine) {
         engine.balances.extend(self.balance_overlay);
         engine.metadata.extend(self.metadata_overlay);
+        for (asset, delta) in self.fee_delta {
+            let entry = engine.fee_balances.entry(asset).or_insert(0);
+            if delta >= 0 {
+                *entry = entry.saturating_add(delta as u64);
+            } else {
+                *entry = entry.saturating_sub(delta.unsigned_abs());
+            }
+        }
         for entry in self.entries {
             match entry {
                 DeltaEntry::Insert { market, order } => {

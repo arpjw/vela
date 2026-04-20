@@ -13,6 +13,7 @@ pub struct MatchingEngine {
     pub metadata: HashMap<UserId, UserMetadata>,
     pub markets: HashMap<MarketId, Market>,
     pub fee_config: FeeConfig,
+    pub fee_balances: HashMap<String, u64>,
     pub credit_system: CreditSystem,
     pub timestamp: Timestamp,
     next_order_id: OrderId,
@@ -26,6 +27,7 @@ impl MatchingEngine {
             metadata: HashMap::new(),
             markets: HashMap::new(),
             fee_config,
+            fee_balances: HashMap::new(),
             credit_system: CreditSystem::new(default_credit_ratio),
             timestamp: 0,
             next_order_id: 1,
@@ -312,8 +314,8 @@ impl MatchingEngine {
                 let fill_qty = taker_remaining.min(resting_remaining);
                 let fill_notional = CreditSystem::compute_notional(fill_price, fill_qty);
 
-                let taker_fee = (fill_notional as i64 * self.fee_config.taker_fee_bps as i64) / 10_000;
-                let maker_fee = (fill_notional as i64 * self.fee_config.maker_fee_bps as i64) / 10_000;
+                let taker_fee = (fill_notional as i64 * market.taker_fee_bps) / 10_000;
+                let maker_fee = (fill_notional as i64 * market.maker_fee_bps) / 10_000;
 
                 let fill = Fill {
                     maker_order_id: resting.id,
@@ -466,6 +468,10 @@ impl MatchingEngine {
                 }
             }
         }
+
+        // net = taker_fee - abs(maker_fee); when maker_fee<0, taker_fee+maker_fee = taker_fee - abs(maker_fee)
+        let net_exchange_fee = fill.taker_fee + fill.maker_fee;
+        delta.add_exchange_fee(&market.quote.0, net_exchange_fee);
     }
 
     fn process_cancel_order(&mut self, req: CancelOrderRequest) -> Vec<Response> {
@@ -631,6 +637,10 @@ impl MatchingEngine {
 
     pub fn snapshot_metadata(&self) -> &std::collections::HashMap<UserId, UserMetadata> {
         &self.metadata
+    }
+
+    pub fn snapshot_fee_balances(&self) -> &std::collections::HashMap<String, u64> {
+        &self.fee_balances
     }
 
     pub fn next_order_id(&self) -> OrderId {

@@ -200,11 +200,14 @@ pub struct FeeConfig {
 impl Default for FeeConfig {
     fn default() -> Self {
         FeeConfig {
-            maker_fee_bps: -2,
-            taker_fee_bps: 7,
+            maker_fee_bps: -1,
+            taker_fee_bps: 5,
         }
     }
 }
+
+fn default_maker_fee_bps() -> i64 { -1 }
+fn default_taker_fee_bps() -> i64 { 5 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Market {
@@ -215,6 +218,10 @@ pub struct Market {
     pub min_order_size: Quantity,
     pub price_tick: Price,
     pub quantity_tick: Quantity,
+    #[serde(default = "default_maker_fee_bps")]
+    pub maker_fee_bps: i64,
+    #[serde(default = "default_taker_fee_bps")]
+    pub taker_fee_bps: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

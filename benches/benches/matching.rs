@@ -176,6 +176,8 @@ impl SimState {
                 min_order_size: QUANTITY_SCALE / 100,
                 price_tick:    TICK,
                 quantity_tick: 1,
+                maker_fee_bps: -1,
+                taker_fee_bps: 5,
             });
         }
 

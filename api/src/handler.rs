@@ -142,6 +142,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/deposit", post(deposit_handler))
         .route("/force-include", post(force_include_handler))
         .route("/ws", get(ws_handler))
+        .route("/fees", get(list_fees))
+        .route("/markets/:market_id/fees", get(get_market_fees))
+        .route("/admin/fees", get(admin_fees_handler))
         .route("/admin/state", get(admin_state_handler))
         .route("/admin/reserves", get(admin_reserves_handler))
         .route("/batches", get(list_batches))
@@ -1197,4 +1200,65 @@ fn first_engine_error(responses: &[EngineResponse]) -> Option<String> {
             None
         }
     })
+}
+
+async fn get_market_fees(
+    Path(market_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let engine = state.engine.lock().await;
+    let mid = MarketId(market_id.clone());
+    match engine.markets.get(&mid) {
+        Some(m) => {
+            let maker_fee_pct = m.maker_fee_bps as f64 / 100.0;
+            let taker_fee_pct = m.taker_fee_bps as f64 / 100.0;
+            (StatusCode::OK, Json(ApiResponse::ok(serde_json::json!({
+                "market": market_id,
+                "maker_fee_bps": m.maker_fee_bps,
+                "taker_fee_bps": m.taker_fee_bps,
+                "maker_fee_pct": maker_fee_pct,
+                "taker_fee_pct": taker_fee_pct,
+            })))).into_response()
+        }
+        None => (StatusCode::NOT_FOUND, Json(ApiResponse::<()>::err("market not found"))).into_response(),
+    }
+}
+
+async fn list_fees(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let engine = state.engine.lock().await;
+    let fees: Vec<serde_json::Value> = engine.markets.values().map(|m| {
+        serde_json::json!({
+            "market": m.id.0,
+            "maker_fee_bps": m.maker_fee_bps,
+            "taker_fee_bps": m.taker_fee_bps,
+            "maker_fee_pct": m.maker_fee_bps as f64 / 100.0,
+            "taker_fee_pct": m.taker_fee_bps as f64 / 100.0,
+        })
+    }).collect();
+    Json(ApiResponse::ok(fees))
+}
+
+async fn admin_fees_handler(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let expected = std::env::var("ADMIN_TOKEN").unwrap_or_else(|_| "vela-admin-2026".to_string());
+    let provided = headers
+        .get("x-admin-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if provided != expected {
+        return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("unauthorized"))).into_response();
+    }
+
+    let engine = state.engine.lock().await;
+    let fee_balances: std::collections::HashMap<String, u64> = engine.fee_balances.clone();
+    let total_usdc = fee_balances.get("USDC").copied().unwrap_or(0);
+    let total_fees_collected_usdc = format_amount(total_usdc, PRICE_DECIMALS);
+
+    (StatusCode::OK, Json(ApiResponse::ok(serde_json::json!({
+        "fee_balances": fee_balances,
+        "total_fees_collected_usdc": total_fees_collected_usdc,
+    })))).into_response()
 }

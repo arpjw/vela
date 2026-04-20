@@ -28,6 +28,8 @@ pub struct EngineSnapshot {
     pub markets: Vec<Market>,
     pub sequence: u64,
     pub metadata: HashMap<String, UserMetadata>,
+    #[serde(default)]
+    pub fee_balances: HashMap<String, u64>,
 }
 
 pub async fn save_snapshot(engine: Arc<Mutex<MatchingEngine>>) -> Result<()> {
@@ -56,6 +58,8 @@ pub async fn save_snapshot(engine: Arc<Mutex<MatchingEngine>>) -> Result<()> {
     let n_orders: usize = orders.values().map(|v| v.len()).sum();
     let n_users = balances.len();
 
+    let fee_balances = engine.fee_balances.clone();
+
     let snapshot = EngineSnapshot {
         version: 1,
         timestamp: engine.timestamp,
@@ -64,6 +68,7 @@ pub async fn save_snapshot(engine: Arc<Mutex<MatchingEngine>>) -> Result<()> {
         markets,
         sequence: engine.next_order_id(),
         metadata,
+        fee_balances,
     };
 
     let json = serde_json::to_vec(&snapshot)?;
@@ -137,6 +142,8 @@ pub fn restore_engine_from_snapshot(
     }
 
     engine.set_next_order_id(snapshot.sequence);
+
+    engine.fee_balances = snapshot.fee_balances;
 
     tracing::info!("Engine restored from snapshot: {}", snapshot.timestamp);
 

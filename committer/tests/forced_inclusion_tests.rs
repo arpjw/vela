@@ -36,6 +36,8 @@ fn funded_engine() -> MatchingEngine {
         min_order_size: 1,
         price_tick: 1,
         quantity_tick: 1,
+        maker_fee_bps: -1,
+        taker_fee_bps: 5,
     });
     e.process(
         Request::Deposit(DepositRequest {
