@@ -1,16 +1,63 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { deposit, getBalances, type BalanceResponse } from '@/lib/api'
-import { depositETH, switchToSepolia } from '@/lib/contract'
+import {
+  depositETH,
+  switchToSepolia,
+  approveUSDC,
+  depositToken,
+  checkUSDCAllowance,
+  getUSDCBalance,
+  SEPOLIA_USDC,
+} from '@/lib/contract'
 import { Spinner } from '@/components/ui/Spinner'
 
 const ASSETS = [
   'USDC', 'ETH', 'BTC', 'SOL', 'AVAX', 'MATIC',
   'LINK', 'UNI', 'ARB', 'OP', 'AAVE', 'DOGE',
 ]
+
+const ON_CHAIN_ASSETS = new Set(['ETH', 'USDC'])
+
+function AssetBadge({ asset }: { asset: string }) {
+  if (ON_CHAIN_ASSETS.has(asset)) {
+    return (
+      <span
+        style={{
+          fontSize: 8,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: '#6B8A5A',
+          border: '1px solid rgba(107,138,90,0.3)',
+          padding: '1px 5px',
+          marginLeft: 6,
+          borderRadius: 0,
+        }}
+      >
+        On-chain
+      </span>
+    )
+  }
+  return (
+    <span
+      style={{
+        fontSize: 8,
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        color: 'rgba(232,228,216,0.25)',
+        border: '1px solid rgba(232,228,216,0.08)',
+        padding: '1px 5px',
+        marginLeft: 6,
+        borderRadius: 0,
+      }}
+    >
+      Trust-based
+    </span>
+  )
+}
 
 function ConnectGate() {
   const { connect } = useAuth()
@@ -86,6 +133,10 @@ export default function DepositPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<SuccessState | null>(null)
+  const [stepLabel, setStepLabel] = useState<string | null>(null)
+  const [usdcWalletBalance, setUsdcWalletBalance] = useState<string | null>(null)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!address) return
@@ -93,6 +144,26 @@ export default function DepositPage() {
       if (res.ok && res.data) setBalances(res.data)
     })
   }, [address])
+
+  useEffect(() => {
+    if (!address || selectedAsset !== 'USDC') {
+      setUsdcWalletBalance(null)
+      return
+    }
+    getUSDCBalance(address).then(setUsdcWalletBalance).catch(() => setUsdcWalletBalance(null))
+  }, [address, selectedAsset])
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [dropdownOpen])
 
   const currentBalance = balances.find(
     (b) => b.asset.toUpperCase() === selectedAsset.toUpperCase(),
@@ -103,6 +174,7 @@ export default function DepositPage() {
     if (!address || !amount) return
     setSubmitting(true)
     setError(null)
+    setStepLabel(null)
 
     try {
       if (selectedAsset === 'ETH') {
@@ -118,6 +190,35 @@ export default function DepositPage() {
         const newBal = updated.find(
           (b) => b.asset.toUpperCase() === selectedAsset.toUpperCase(),
         )
+        setSuccess({
+          amount,
+          asset: selectedAsset,
+          newBalance: String(Number(newBal?.available ?? '0') / 1_000_000),
+          txHash,
+        })
+      } else if (selectedAsset === 'USDC') {
+        await switchToSepolia()
+        const amountWei = Math.round(parseFloat(amount) * 1_000_000).toString()
+        const allowance = await checkUSDCAllowance(address)
+
+        if (allowance < BigInt(amountWei)) {
+          setStepLabel('Step 1 of 2: Approving USDC...')
+          await approveUSDC(amount)
+          setStepLabel('Approval confirmed. Proceeding to deposit...')
+        }
+
+        setStepLabel('Step 2 of 2: Depositing USDC...')
+        const txHash = await depositToken(SEPOLIA_USDC, amountWei)
+
+        const res = await deposit(address, selectedAsset, amount)
+        setSubmitting(false)
+        setStepLabel(null)
+
+        const updated = res.ok && res.data ? res.data : balances
+        if (!res.ok) {
+          setError(res.error ?? 'Engine credit failed — on-chain tx sent: ' + txHash)
+        }
+        const newBal = updated.find((b) => b.asset.toUpperCase() === 'USDC')
         setSuccess({
           amount,
           asset: selectedAsset,
@@ -146,6 +247,7 @@ export default function DepositPage() {
       }
     } catch (err) {
       setSubmitting(false)
+      setStepLabel(null)
       setError(err instanceof Error ? err.message : 'Deposit failed')
     }
   }
@@ -174,8 +276,7 @@ export default function DepositPage() {
           }}
         >
           <p className="text-[0.8rem] text-ink leading-relaxed">
-            Vela is in public beta. Deposits are trust-based and not settled
-            on-chain. Only deposit amounts you are comfortable with.
+            Vela is in public beta. Only deposit amounts you are comfortable with.
           </p>
         </div>
 
@@ -204,8 +305,9 @@ export default function DepositPage() {
               Deposit successful
             </p>
             <p className="text-sm text-brown mb-5">
-              Your {success.amount} {success.asset} has been credited to your
-              account.
+              {success.txHash && success.asset === 'USDC'
+                ? `Your ${success.amount} USDC has been deposited on-chain.`
+                : `Your ${success.amount} ${success.asset} has been credited to your account.`}
             </p>
             <p className="text-[0.7rem] uppercase tracking-[0.12em] text-brown mb-1">
               NEW BALANCE
@@ -258,22 +360,48 @@ export default function DepositPage() {
               <label className="block text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-2">
                 ASSET
               </label>
-              <select
-                value={selectedAsset}
-                onChange={(e) => setSelectedAsset(e.target.value)}
-                className="w-full h-10 px-3 bg-vellum border border-border text-sm text-ink appearance-none focus:outline-none focus:border-ink"
-                style={{ borderRadius: 0, fontFamily: 'var(--font-mono)' }}
-              >
-                {ASSETS.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setDropdownOpen((o) => !o)}
+                  className="w-full h-10 px-3 bg-vellum border border-border text-sm text-ink flex items-center justify-between focus:outline-none focus:border-ink"
+                  style={{ borderRadius: 0, fontFamily: 'var(--font-mono)' }}
+                >
+                  <span className="flex items-center">
+                    {selectedAsset}
+                    <AssetBadge asset={selectedAsset} />
+                  </span>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ opacity: 0.4 }}>
+                    <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                {dropdownOpen && (
+                  <div
+                    className="absolute z-10 w-full bg-vellum border border-border"
+                    style={{ borderRadius: 0, top: '100%', left: 0 }}
+                  >
+                    {ASSETS.map((a) => (
+                      <button
+                        key={a}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAsset(a)
+                          setDropdownOpen(false)
+                        }}
+                        className="w-full px-3 h-9 text-left text-sm text-ink flex items-center hover:bg-canvas transition-colors"
+                        style={{ borderRadius: 0, fontFamily: 'var(--font-mono)' }}
+                      >
+                        {a}
+                        <AssetBadge asset={a} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="mb-5">
-              {selectedAsset === 'ETH' ? (
+              {ON_CHAIN_ASSETS.has(selectedAsset) ? (
                 <p className="text-[0.72rem] font-medium" style={{ color: '#00D2D2' }}>
                   ● Ethereum Sepolia — on-chain settlement
                 </p>
@@ -282,9 +410,37 @@ export default function DepositPage() {
                   ● Trust-based beta deposit
                 </p>
               )}
-              {selectedAsset !== 'ETH' && (
+              {selectedAsset === 'USDC' && (
+                <div className="mt-2">
+                  <p className="text-[0.7rem] font-medium uppercase tracking-[0.12em] text-brown mb-1">
+                    WALLET USDC BALANCE
+                  </p>
+                  <p
+                    className="text-sm text-ink mb-1"
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    {usdcWalletBalance !== null ? `${usdcWalletBalance} USDC` : '—'}
+                  </p>
+                  <a
+                    href="https://faucet.circle.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontFamily: 'var(--font-inter)',
+                      fontSize: 10,
+                      color: 'rgba(232,228,216,0.3)',
+                      marginTop: 4,
+                      display: 'inline-block',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    Get Sepolia USDC from Circle faucet →
+                  </a>
+                </div>
+              )}
+              {!ON_CHAIN_ASSETS.has(selectedAsset) && (
                 <p className="text-[0.7rem] text-brown mt-1">
-                  ERC20 on-chain deposits coming soon
+                  This asset uses trust-based deposits during beta.
                 </p>
               )}
             </div>
@@ -327,6 +483,15 @@ export default function DepositPage() {
             {error && (
               <p className="text-xs mb-4" style={{ color: '#00D2D2' }}>
                 {error}
+              </p>
+            )}
+
+            {stepLabel && (
+              <p
+                className="text-xs mb-3"
+                style={{ color: 'rgba(232,228,216,0.35)', fontSize: 10, fontFamily: 'var(--font-inter)' }}
+              >
+                {stepLabel}
               </p>
             )}
 

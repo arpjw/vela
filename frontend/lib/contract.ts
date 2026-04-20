@@ -1,6 +1,7 @@
 const CONTRACT_ADDRESS = '0xAa8E680c11a883F9bf6eb980B2D4E9D18DD25686'
 const SEPOLIA_CHAIN_ID = 11155111
 const ETH_ASSET = '0x0000000000000000000000000000000000000000'
+export const SEPOLIA_USDC = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'
 
 function encodeDepositETH(): string {
   return '0xf9a06f72'
@@ -128,6 +129,66 @@ export async function requestWithdrawalSignature(
     amountWei: data.data.amount_wei,
     assetAddress: data.data.asset,
   }
+}
+
+export async function getUSDCBalance(address: string): Promise<string> {
+  const ethereum = (window as any).ethereum
+  const paddedAddr = address.toLowerCase().replace('0x', '').padStart(64, '0')
+  const result: string = await ethereum.request({
+    method: 'eth_call',
+    params: [{ to: SEPOLIA_USDC, data: '0x70a08231' + paddedAddr }, 'latest'],
+  })
+  if (!result || result === '0x') return '0'
+  return (Number(BigInt(result)) / 1e6).toString()
+}
+
+export async function approveUSDC(amount: string): Promise<string> {
+  await switchToSepolia()
+  const ethereum = (window as any).ethereum
+  const accounts: string[] = await ethereum.request({ method: 'eth_accounts' })
+  if (!accounts.length) throw new Error('No connected account')
+
+  const amountWei = BigInt(Math.round(parseFloat(amount) * 1_000_000))
+  const paddedSpender = CONTRACT_ADDRESS.toLowerCase().replace('0x', '').padStart(64, '0')
+  const paddedAmount = amountWei.toString(16).padStart(64, '0')
+  const data = '0x095ea7b3' + paddedSpender + paddedAmount
+
+  const txHash: string = await ethereum.request({
+    method: 'eth_sendTransaction',
+    params: [{ from: accounts[0], to: SEPOLIA_USDC, data }],
+  })
+  return txHash
+}
+
+export async function depositToken(assetAddress: string, amountWei: string): Promise<string> {
+  await switchToSepolia()
+  const ethereum = (window as any).ethereum
+  const accounts: string[] = await ethereum.request({ method: 'eth_accounts' })
+  if (!accounts.length) throw new Error('No connected account')
+
+  const paddedAsset = assetAddress.toLowerCase().replace('0x', '').padStart(64, '0')
+  const paddedAmount = BigInt(amountWei).toString(16).padStart(64, '0')
+  const data = '0x338b5dea' + paddedAsset + paddedAmount
+
+  const txHash: string = await ethereum.request({
+    method: 'eth_sendTransaction',
+    params: [{ from: accounts[0], to: CONTRACT_ADDRESS, data, value: '0x0' }],
+  })
+  return txHash
+}
+
+export async function checkUSDCAllowance(ownerAddress: string): Promise<bigint> {
+  const ethereum = (window as any).ethereum
+  const paddedOwner = ownerAddress.toLowerCase().replace('0x', '').padStart(64, '0')
+  const paddedSpender = CONTRACT_ADDRESS.toLowerCase().replace('0x', '').padStart(64, '0')
+  const data = '0xdd62ed3e' + paddedOwner + paddedSpender
+
+  const result: string = await ethereum.request({
+    method: 'eth_call',
+    params: [{ to: SEPOLIA_USDC, data }, 'latest'],
+  })
+  if (!result || result === '0x') return 0n
+  return BigInt(result)
 }
 
 export async function getOnChainBalance(userAddress: string): Promise<string> {
