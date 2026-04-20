@@ -15,6 +15,11 @@ static MARKETS: &[(&str, &str, f64)] = &[
     ("OP-USDC", "optimism", 200.0),
     ("AAVE-USDC", "aave", 1.0),
     ("DOGE-USDC", "dogecoin", 10000.0),
+    ("PEPE-USDC", "pepe", 50_000_000.0),
+    ("WIF-USDC", "dogwifcoin", 500.0),
+    ("JUP-USDC", "jupiter-exchange-solana", 1000.0),
+    ("PENDLE-USDC", "pendle", 100.0),
+    ("EIGEN-USDC", "eigenlayer", 200.0),
 ];
 
 pub async fn run_mm_bot(engine: Arc<Mutex<MatchingEngine>>) {

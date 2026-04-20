@@ -101,9 +101,9 @@ The operator can sign withdrawals. The operator cannot steal funds.
 
 ## Markets
 
-11 spot markets, all vs. USDC:
+16 spot markets, all vs. USDC:
 
-`BTC-USDC` `ETH-USDC` `SOL-USDC` `AVAX-USDC` `LINK-USDC` `UNI-USDC` `ARB-USDC` `OP-USDC` `AAVE-USDC` `MATIC-USDC` `DOGE-USDC`
+`BTC-USDC` `ETH-USDC` `SOL-USDC` `AVAX-USDC` `LINK-USDC` `UNI-USDC` `ARB-USDC` `OP-USDC` `AAVE-USDC` `MATIC-USDC` `DOGE-USDC` `PEPE-USDC` `WIF-USDC` `JUP-USDC` `PENDLE-USDC` `EIGEN-USDC`
 
 Order books are maintained by an internal market maker bot that pulls live prices from CoinGecko every 60 seconds and places 10 bid + 10 ask levels per market at 0.05% spread around mid.
 
@@ -163,7 +163,7 @@ cargo build --release --bin api
 SNAPSHOT_DIR=./data cargo run --release --bin api
 ```
 
-The engine starts on port 3001 and seeds all 11 markets on startup.
+The engine starts on port 3001 and seeds all 16 markets on startup.
 
 ### Frontend
 

@@ -8,6 +8,7 @@ use types::{
 fn seed_markets(engine: &mut MatchingEngine) {
     for ticker in &[
         "ETH", "BTC", "SOL", "ARB", "OP", "AVAX", "MATIC", "LINK", "UNI", "AAVE", "DOGE",
+        "PEPE", "WIF", "JUP", "PENDLE", "EIGEN",
     ] {
         engine.add_market(Market {
             id: MarketId(format!("{ticker}-USDC")),
@@ -25,7 +26,8 @@ fn seed_markets(engine: &mut MatchingEngine) {
     let test_user = UserId([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
 
     for (i, asset) in [
-        "ETH", "BTC", "SOL", "ARB", "OP", "AVAX", "MATIC", "LINK", "UNI", "AAVE", "DOGE", "USDC",
+        "ETH", "BTC", "SOL", "ARB", "OP", "AVAX", "MATIC", "LINK", "UNI", "AAVE", "DOGE",
+        "PEPE", "WIF", "JUP", "PENDLE", "EIGEN", "USDC",
     ]
     .iter()
     .enumerate()
@@ -68,6 +70,7 @@ fn seed_order_books(engine: &mut MatchingEngine) {
 
     for (i, asset) in [
         "BTC", "ETH", "SOL", "AVAX", "MATIC", "LINK", "UNI", "ARB", "OP", "AAVE", "DOGE",
+        "PEPE", "WIF", "JUP", "PENDLE", "EIGEN",
     ]
     .iter()
     .enumerate()
@@ -95,6 +98,11 @@ fn seed_order_books(engine: &mut MatchingEngine) {
         ("OP-USDC", 2_400_000, 200_000_000),
         ("AAVE-USDC", 280 * 100_000_000, 1_000_000),
         ("DOGE-USDC", 180_000, 10_000_000_000),
+        ("PEPE-USDC", 8, 50_000_000_000_000),
+        ("WIF-USDC", 1_200_000, 500_000_000),
+        ("JUP-USDC", 500_000, 1_000_000_000),
+        ("PENDLE-USDC", 3_500_000, 100_000_000),
+        ("EIGEN-USDC", 2_000_000, 200_000_000),
     ];
 
     let mut nonce: u64 = 1000;

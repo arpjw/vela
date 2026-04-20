@@ -9,7 +9,12 @@ export const MARKET_DATA: Record<string, { name: string; ticker: string; quoteTi
   'UNI-USDC':  { name: 'Uniswap',   ticker: 'UNI',  quoteTicker: 'USDC', vol: '$24M'   },
   'AAVE-USDC': { name: 'Aave',      ticker: 'AAVE', quoteTicker: 'USDC', vol: '$18M'   },
   'MATIC-USDC':{ name: 'Polygon',   ticker: 'MATIC',quoteTicker: 'USDC', vol: '$14M'   },
-  'DOGE-USDC': { name: 'Dogecoin',  ticker: 'DOGE', quoteTicker: 'USDC', vol: '$11M'   },
+  'DOGE-USDC':  { name: 'Dogecoin',   ticker: 'DOGE',   quoteTicker: 'USDC', vol: '$11M'   },
+  'PEPE-USDC':  { name: 'Pepe',       ticker: 'PEPE',   quoteTicker: 'USDC', vol: '$8M'    },
+  'WIF-USDC':   { name: 'dogwifhat',  ticker: 'WIF',    quoteTicker: 'USDC', vol: '$6M'    },
+  'JUP-USDC':   { name: 'Jupiter',    ticker: 'JUP',    quoteTicker: 'USDC', vol: '$5M'    },
+  'PENDLE-USDC':{ name: 'Pendle',     ticker: 'PENDLE', quoteTicker: 'USDC', vol: '$4M'    },
+  'EIGEN-USDC': { name: 'EigenLayer', ticker: 'EIGEN',  quoteTicker: 'USDC', vol: '$3M'    },
 }
 
 export const ORDERED_PAIRS = Object.keys(MARKET_DATA)

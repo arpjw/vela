@@ -253,7 +253,7 @@ export default function MarketsPage() {
               <span style={{ fontFamily: PF, fontStyle: 'italic', fontWeight: 400, fontSize: 22, color: 'rgba(232,228,216,0.25)' }}>Live</span>
             </div>
             <div style={{ fontFamily: IN, fontSize: 9, letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', textTransform: 'uppercase', marginTop: 4 }} className="hidden sm:block">
-              11 markets · Ethereum Sepolia · Updating every 3s
+              16 markets · Ethereum Sepolia · Updating every 3s
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -286,7 +286,7 @@ export default function MarketsPage() {
         <div style={{ flexShrink: 0, borderTop: '1px solid rgba(232,228,216,0.06)' }} className="hidden lg:flex h-[44px] px-10 items-center justify-between">
           <div style={{ display: 'flex', gap: 40 }}>
             {[
-              { label: 'TOTAL MARKETS', value: '11' },
+              { label: 'TOTAL MARKETS', value: '16' },
               { label: 'ENGINE LATENCY', value: '1.38 μs' },
               { label: 'OPS / SEC', value: '725,000' },
               { label: 'NETWORK', value: 'Sepolia' },
