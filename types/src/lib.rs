@@ -169,7 +169,7 @@ impl NonceWindow {
                 Some(m) => m,
                 None => return false,
             };
-            if nonce <= min {
+            if nonce <= min || self.window.contains(&nonce) {
                 return false;
             }
             self.window.remove(&min);

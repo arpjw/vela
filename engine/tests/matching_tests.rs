@@ -1,8 +1,8 @@
 use engine::{CreditSystem, MatchingEngine};
 use types::{
     AssetId, CancelOrderRequest, DepositRequest, ErrorCode, FeeConfig, Market,
-    MarketId, OrderSide, OrderStatus, OrderType, PostOrderRequest, Request,
-    Response, UserId, PRICE_SCALE, QUANTITY_SCALE,
+    MarketId, NonceWindow, OrderSide, OrderStatus, OrderType, PostOrderRequest, Request,
+    Response, UserMetadata, UserId, PRICE_SCALE, QUANTITY_SCALE,
 };
 
 fn btc_usdc() -> MarketId { MarketId::new("BTC", "USDC") }
@@ -644,4 +644,118 @@ fn test_cow_failed_order_does_not_corrupt_subsequent_order() {
 
     let taker_btc = e.balances.get(&(taker, btc())).unwrap().available;
     assert_eq!(taker_btc, QUANTITY_SCALE, "taker receives BTC from the successful GTC fill");
+}
+
+// ─── VEL-P2-02: Rolling 20-window nonce tests ─────────────────────────────────
+
+/// 20 concurrent bids with non-sequential nonces all accepted — no strict ordering required.
+#[test]
+fn test_nonce_window_20_concurrent_non_sequential() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 10_000_000 * PRICE_SCALE), 1);
+
+    let nonces: [u64; 20] = [100, 5, 999, 3, 42, 77, 200, 1, 50, 88,
+                              300, 6, 400, 17, 501, 23, 600, 11, 700, 99];
+    for &n in &nonces {
+        let resp = e.process(post_bid(u.clone(), 1, 1, n), 2);
+        assert!(
+            resp.iter().any(|r| matches!(r, Response::OrderPosted(_))),
+            "nonce {} should be accepted",
+            n
+        );
+    }
+    let meta = e.metadata.get(&u).unwrap();
+    assert_eq!(meta.open_order_ids.len(), 20, "all 20 orders must be resting");
+}
+
+/// 21st order with nonce at or below the window minimum is rejected.
+#[test]
+fn test_nonce_window_21st_below_minimum_rejected() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 10_000_000 * PRICE_SCALE), 1);
+
+    for n in 1u64..=20 {
+        e.process(post_bid(u.clone(), 1, 1, n), 2);
+    }
+    // min=1, window full — nonce == min is rejected
+    let resp = e.process(post_bid(u.clone(), 1, 1, 1), 3);
+    let err = resp.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err.code, ErrorCode::InvalidNonce, "nonce equal to min must be rejected");
+
+    // nonce 0 is below min — also rejected
+    let resp2 = e.process(post_bid(u.clone(), 1, 1, 0), 3);
+    let err2 = resp2.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err2.code, ErrorCode::InvalidNonce, "nonce below min must be rejected");
+}
+
+/// Duplicate nonce is rejected even when the window is full (replay protection).
+#[test]
+fn test_nonce_window_duplicate_rejected_when_full() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 10_000_000 * PRICE_SCALE), 1);
+
+    for n in 1u64..=20 {
+        e.process(post_bid(u.clone(), 1, 1, n), 2);
+    }
+    // nonce 15 is still in the window (> min=1) but already used
+    let resp = e.process(post_bid(u.clone(), 1, 1, 15), 3);
+    let err = resp.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err.code, ErrorCode::InvalidNonce, "duplicate nonce must be rejected");
+
+    // The rejected replay must not have evicted the minimum — window still has 20 entries
+    let meta = e.metadata.get(&u).unwrap();
+    assert_eq!(meta.open_order_ids.len(), 20, "window size must not shrink on replay attempt");
+}
+
+/// After the window slides forward, nonces that fell below the new minimum are permanently rejected.
+#[test]
+fn test_nonce_window_evicted_nonce_below_new_min_rejected() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 10_000_000 * PRICE_SCALE), 1);
+
+    // Fill window with nonces 1..=20 (min=1)
+    for n in 1u64..=20 {
+        e.process(post_bid(u.clone(), 1, 1, n), 2);
+    }
+    // Submit nonce 21 — evicts min=1, window becomes {2..=21}, min=2
+    let resp = e.process(post_bid(u.clone(), 1, 1, 21), 3);
+    assert!(resp.iter().any(|r| matches!(r, Response::OrderPosted(_))), "nonce 21 must be accepted");
+
+    // Nonce 1 is now below the new min=2 — must be rejected even though it's no longer in the set
+    let resp2 = e.process(post_bid(u.clone(), 1, 1, 1), 3);
+    let err = resp2.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err.code, ErrorCode::InvalidNonce, "evicted nonce below new minimum must be rejected");
+}
+
+/// NonceWindow serializes and deserializes correctly — nonce state survives a snapshot/restore cycle.
+#[test]
+fn test_nonce_window_snapshot_restore() {
+    let mut window = NonceWindow::new();
+    for &n in &[1u64, 5, 10, 99, 200] {
+        assert!(window.accept(n));
+    }
+
+    let meta = UserMetadata {
+        user: user(1),
+        nonce_window: window,
+        open_order_ids: vec![],
+        credit_ratio: 1.0,
+        total_quoted_notional: 0,
+        actual_collateral: 0,
+    };
+
+    let json = serde_json::to_string(&meta).unwrap();
+    let restored: UserMetadata = serde_json::from_str(&json).unwrap();
+    let mut w = restored.nonce_window;
+
+    // Previously accepted nonces are still in the restored window — rejected
+    assert!(!w.accept(1), "nonce 1 must be rejected after restore");
+    assert!(!w.accept(5), "nonce 5 must be rejected after restore");
+    assert!(!w.accept(200), "nonce 200 must be rejected after restore");
+    // A fresh nonce above the window contents is accepted
+    assert!(w.accept(300), "new nonce 300 must be accepted after restore");
 }
