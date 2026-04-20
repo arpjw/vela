@@ -42,6 +42,7 @@ pub struct StoredOrder {
     pub created_at: u64,
     pub updated_at: u64,
     pub fills: Vec<OrderFillRecord>,
+    pub da_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

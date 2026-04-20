@@ -11,7 +11,7 @@ use sha3::{Digest, Keccak256};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use types::{
     AssetId, CancelOrderRequest, DepositRequest, Fill, MarketId, OrderSide, OrderStatus,
-    OrderType, PostOrderRequest, Request, Response as EngineResponse, UserId, WithdrawalRequest,
+    OrderType, PostOrderRequest, Request as EngineRequest, Response as EngineResponse, UserId, WithdrawalRequest,
     PRICE_DECIMALS, QUANTITY_DECIMALS,
 };
 use std::collections::{BTreeMap, HashSet};
@@ -133,11 +133,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/orders", post(post_order))
         .route("/orders/cancel", post(cancel_order))
         .route("/orders/:order_id", get(get_order_by_id))
+        .route("/orders/:order_id/da-proof", get(get_da_proof))
         .route("/trades", get(list_trades))
         .route("/trades/:market_id", get(list_trades_by_market))
         .route("/withdrawals", post(initiate_withdrawal))
         .route("/withdrawal-signature", post(withdrawal_signature_handler))
         .route("/deposit", post(deposit_handler))
+        .route("/force-include", post(force_include_handler))
         .route("/ws", get(ws_handler))
         .route("/admin/state", get(admin_state_handler))
         .route("/admin/reserves", get(admin_reserves_handler))
@@ -304,13 +306,21 @@ async fn post_order(
         .unwrap_or_default()
         .as_micros() as u64;
 
-    let market_id = req.market.clone();
-    let responses = {
-        let mut engine = state.engine.lock().await;
-        if !engine.markets.contains_key(&market_id) {
+    {
+        let engine = state.engine.lock().await;
+        if !engine.markets.contains_key(&req.market) {
             return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("Market not found."))).into_response();
         }
-        engine.process(Request::PostOrder(req), ts)
+    }
+
+    let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+    let channel_item = crate::OrderChannelItem { req, ts, response_tx: resp_tx };
+    if state.order_tx.send(channel_item).await.is_err() {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::<()>::err("engine unavailable"))).into_response();
+    }
+    let responses = match resp_rx.await {
+        Ok(r) => r,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::<()>::err("engine error"))).into_response(),
     };
 
     state.feeds.lock().await.dispatch_response_batch(&user, &responses);
@@ -382,6 +392,7 @@ async fn record_order_and_fills(
         created_at: ts,
         updated_at: ts,
         fills: self_fills,
+        da_hash: None,
     };
 
     {
@@ -423,8 +434,21 @@ async fn record_order_and_fills(
                 });
             }
         }
-        orders_guard.insert(posted.order_id, new_order);
+        orders_guard.insert(posted.order_id, new_order.clone());
     }
+
+    let da_order_id = new_order.id;
+    let da_bytes = serde_json::to_vec(&new_order).unwrap_or_default();
+    let state_da = Arc::clone(state);
+    tokio::spawn(async move {
+        let seq = state_da.da.next_seq();
+        let da = Arc::clone(&state_da.da);
+        if let Ok(Ok((hash_hex, _url))) = tokio::task::spawn_blocking(move || da.submit_order(seq, &da_bytes)).await {
+            if let Some(o) = state_da.stored_orders.lock().await.get_mut(&da_order_id) {
+                o.da_hash = Some(hash_hex);
+            }
+        }
+    });
 }
 
 fn side_to_str(side: OrderSide) -> &'static str {
@@ -459,6 +483,24 @@ fn status_to_str(status: OrderStatus) -> &'static str {
         OrderStatus::Filled => "filled",
         OrderStatus::Canceled => "cancelled",
         OrderStatus::Rejected => "rejected",
+    }
+}
+
+async fn get_da_proof(
+    Path(order_id): Path<u64>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let orders = state.stored_orders.lock().await;
+    match orders.get(&order_id) {
+        Some(order) => {
+            let da_hash = order.da_hash.clone();
+            (StatusCode::OK, Json(ApiResponse::ok(serde_json::json!({
+                "order_id": order_id,
+                "da_hash": da_hash,
+                "backend": "local",
+            })))).into_response()
+        }
+        None => (StatusCode::NOT_FOUND, Json(ApiResponse::<()>::err("order not found"))).into_response(),
     }
 }
 
@@ -750,6 +792,149 @@ async fn withdrawal_signature_handler(
         amount_wei: amount_wei_str,
         nonce,
     }))).into_response()
+}
+
+
+// ---------------------------------------------------------------------------
+// VEL-P2-10: Forced-inclusion endpoint
+// ---------------------------------------------------------------------------
+//
+// Users who believe the sequencer is censoring their transactions can submit
+// them through this endpoint with an L1 proof.  In production the endpoint
+// will verify a Merkle proof against the VelaSettlement.sol contract's delayed
+// inbox root.  For the beta this is gated behind the admin token, since full
+// L1 proof verification requires the on-chain integration (mainnet-only).
+//
+// Flow:
+//  1. User submits transaction to L1 VelaSettlement.delayedInbox().
+//  2. After timeout (1 hour on mainnet), user calls this endpoint with the
+//     L1 tx hash and optional Merkle proof.
+//  3. Engine processes the request immediately, bypassing signature checks
+//     (the L1 submission is the proof of user intent).
+//  4. Response mirrors the normal engine response format.
+
+#[derive(serde::Deserialize)]
+struct ForceIncludeBody {
+    /// Hex-encoded L1 transaction hash (0x-prefixed, 32 bytes).
+    l1_tx_hash: String,
+    /// Type of the forced transaction.
+    #[serde(flatten)]
+    request: ForceIncludeRequest,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ForceIncludeRequest {
+    /// Force-credit a deposit that the sequencer refused to process.
+    Deposit {
+        user: String,
+        asset: String,
+        amount: u64,
+    },
+    /// Force-include a withdrawal request.
+    Withdrawal {
+        user: String,
+        asset: String,
+        amount: u64,
+        nonce: u64,
+    },
+}
+
+async fn force_include_handler(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ForceIncludeBody>,
+) -> impl IntoResponse {
+    // Gate behind admin token in beta — production will verify an L1 Merkle proof.
+    let expected = std::env::var("ADMIN_TOKEN").unwrap_or_else(|_| "vela-admin-2026".to_string());
+    let provided = headers
+        .get("x-admin-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if provided != expected {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiResponse::<()>::err(
+                "forced inclusion requires x-admin-token in beta;                  mainnet will verify L1 Merkle proof against VelaSettlement.delayedInbox()",
+            )),
+        )
+            .into_response();
+    }
+
+    // Decode and validate the L1 tx hash — provides replay protection.
+    let hash_str = body.l1_tx_hash.strip_prefix("0x").unwrap_or(&body.l1_tx_hash);
+    let hash_bytes = match hex::decode(hash_str) {
+        Ok(b) if b.len() == 32 => {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&b);
+            arr
+        }
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<()>::err("l1_tx_hash must be a 0x-prefixed 32-byte hex string")),
+            )
+                .into_response();
+        }
+    };
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_micros() as u64;
+
+    let (request, req_user) = match body.request {
+        ForceIncludeRequest::Deposit { ref user, ref asset, amount } => {
+            let uid = match UserId::from_hex(user) {
+                Ok(u) => u,
+                Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid user address"))).into_response(),
+            };
+            let req = EngineRequest::Deposit(DepositRequest {
+                user: uid.clone(),
+                asset: AssetId(asset.clone()),
+                amount,
+                l1_tx_hash: hash_bytes,
+            });
+            (req, uid)
+        }
+        ForceIncludeRequest::Withdrawal { ref user, ref asset, amount, nonce } => {
+            let uid = match UserId::from_hex(user) {
+                Ok(u) => u,
+                Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid user address"))).into_response(),
+            };
+            let req = EngineRequest::Withdrawal(WithdrawalRequest {
+                user: uid.clone(),
+                asset: AssetId(asset.clone()),
+                amount,
+                nonce,
+                signature: vec![], // bypassed — L1 tx hash is the proof of intent
+            });
+            (req, uid)
+        }
+    };
+
+    // Process directly through the engine — bypasses rate limiting, signature
+    // verification, and the order channel (forced requests are not PostOrder).
+    let responses = {
+        let mut engine = state.engine.lock().await;
+        engine.process(request, ts)
+    };
+
+    state
+        .feeds
+        .lock()
+        .await
+        .dispatch_response_batch(&req_user, &responses);
+
+    if let Some(msg) = first_engine_error(&responses) {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(msg))).into_response();
+    }
+
+    (StatusCode::OK, Json(ApiResponse::ok(serde_json::json!({
+        "l1_tx_hash": body.l1_tx_hash,
+        "responses": responses,
+        "note": "forced inclusion processed; committer will include in next batch",
+    })))).into_response()
 }
 
 async fn admin_state_handler(

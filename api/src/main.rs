@@ -192,6 +192,7 @@ async fn main() {
     tokio::spawn(async move {
         api::snapshot::run_snapshot_task(snapshot_engine).await;
     });
+    // Note: engine_order_task (P2-01 batch pipeline) is spawned inside AppState::new
 
     let router = api::build_router(state);
 
