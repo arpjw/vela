@@ -609,7 +609,7 @@ async fn cancel_order(
 
     let responses = {
         let mut engine = state.engine.lock().await;
-        engine.process(Request::CancelOrder(req), ts)
+        engine.process(EngineRequest::CancelOrder(req), ts)
     };
 
     state.feeds.lock().await.dispatch_response_batch(&user, &responses);
@@ -650,7 +650,7 @@ async fn initiate_withdrawal(
 
     let responses = {
         let mut engine = state.engine.lock().await;
-        engine.process(Request::Withdrawal(req), ts)
+        engine.process(EngineRequest::Withdrawal(req), ts)
     };
 
     state.feeds.lock().await.dispatch_response_batch(&user, &responses);
@@ -718,7 +718,7 @@ async fn deposit_handler(
 
     let responses = {
         let mut engine = state.engine.lock().await;
-        engine.process(Request::Deposit(req), ts)
+        engine.process(EngineRequest::Deposit(req), ts)
     };
 
     state.feeds.lock().await.dispatch_response_batch(&user, &responses);

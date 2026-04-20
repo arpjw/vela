@@ -298,26 +298,25 @@ impl SmtStore {
             let mut current_hash = leaf_h;
             let mut current_path = path;
             for d in 0..SMT_DEPTH {
-                // Sibling is at path with bit `d` flipped.
-                let sibling_path = current_path ^ (1u32 << d);
+                // Sibling differs from current node only in the LSB at this level.
+                let sibling_path = current_path ^ 1;
                 let sibling_hash = self
                     .node_cache
                     .get(&(d, sibling_path))
                     .copied()
                     .unwrap_or(self.empty_hashes[d]);
 
-                let parent_hash = if (current_path >> d) & 1 == 0 {
+                let parent_hash = if current_path & 1 == 0 {
                     node_hash(&current_hash, &sibling_hash)
                 } else {
                     node_hash(&sibling_hash, &current_hash)
                 };
 
-                let parent_prefix = current_path >> (d + 1);
-                self.node_cache.insert((d + 1, parent_prefix), parent_hash);
-                self.delta.insert((d + 1, parent_prefix), parent_hash);
+                current_path >>= 1;
+                self.node_cache.insert((d + 1, current_path), parent_hash);
+                self.delta.insert((d + 1, current_path), parent_hash);
 
                 current_hash = parent_hash;
-                current_path = parent_prefix;
             }
         }
 
@@ -355,7 +354,7 @@ impl SmtStore {
         let mut siblings = [[0u8; 32]; SMT_DEPTH];
         let mut current_path = path;
         for d in 0..SMT_DEPTH {
-            let sibling_path = current_path ^ (1u32 << d);
+            let sibling_path = current_path ^ 1;
             siblings[d] = self
                 .node_cache
                 .get(&(d, sibling_path))
