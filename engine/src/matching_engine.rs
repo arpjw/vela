@@ -5,7 +5,7 @@ use types::{
     OrderStatus, OrderType, PostOrderRequest, Request, Response, Timestamp, UserId, UserMetadata,
     VelaError, WithdrawalRequest,
 };
-use crate::{CowCache, CreditSystem, OrderBook};
+use crate::{DeltaBuffer, CreditSystem, OrderBook};
 
 pub struct MatchingEngine {
     pub order_books: HashMap<MarketId, OrderBook>,
@@ -78,14 +78,14 @@ impl MatchingEngine {
 
     fn process_post_order(&mut self, req: PostOrderRequest) -> Vec<Response> {
         let order_id = self.alloc_order_id();
-        let mut cow = CowCache::new();
-        match self.try_post_order(req, order_id, &mut cow) {
+        let mut delta = DeltaBuffer::new();
+        match self.try_post_order(req, order_id, &mut delta) {
             Ok(responses) => {
-                cow.commit(&mut self.balances, &mut self.metadata, &mut self.order_books);
+                delta.commit(self);
                 responses
             }
             Err(e) => {
-                cow.rollback();
+                delta.rollback();
                 vec![Response::Error(e.into())]
             }
         }
@@ -95,7 +95,7 @@ impl MatchingEngine {
         &self,
         req: PostOrderRequest,
         order_id: OrderId,
-        cow: &mut CowCache,
+        delta: &mut DeltaBuffer,
     ) -> Result<Vec<Response>, VelaError> {
         let market = self
             .markets
@@ -107,7 +107,7 @@ impl MatchingEngine {
             .get(&req.market)
             .ok_or_else(|| VelaError::MarketNotFound(req.market.to_string()))?;
 
-        let mut meta = cow.get_metadata(&req.user, &self.metadata);
+        let mut meta = delta.get_metadata(&req.user, &self.metadata);
         if !meta.nonce_window.accept(req.nonce) {
             return Err(VelaError::InvalidNonce);
         }
@@ -117,7 +117,7 @@ impl MatchingEngine {
             OrderSide::Ask => (market.base.clone(), market.quote.clone()),
         };
 
-        let spend_balance = cow.get_balance(&req.user, &spend_asset, &self.balances);
+        let spend_balance = delta.get_balance(&req.user, &spend_asset, &self.balances);
 
         let order_notional = match req.side {
             OrderSide::Bid => CreditSystem::compute_notional(req.price, req.quantity),
@@ -156,7 +156,7 @@ impl MatchingEngine {
             status: OrderStatus::Open,
         };
 
-        let (fills, auto_canceled) = self.match_order(&order, market, cow)?;
+        let (fills, auto_canceled) = self.match_order(&order, market, delta)?;
 
         let total_filled: u64 = fills.iter().map(|f| f.quantity).sum();
         order.filled_quantity = total_filled;
@@ -177,16 +177,18 @@ impl MatchingEngine {
                 OrderSide::Bid => CreditSystem::compute_notional(req.price, remaining),
                 OrderSide::Ask => remaining,
             };
-            cow.lock_available(&req.user, &spend_asset, resting_spend, &self.balances);
+            delta.lock_available(&req.user, &spend_asset, resting_spend, &self.balances);
             order.status = if total_filled > 0 { OrderStatus::PartiallyFilled } else { OrderStatus::Open };
             meta.open_order_ids.push(order.id);
             meta.total_quoted_notional += CreditSystem::compute_notional(req.price, remaining);
-            cow.set_metadata(meta);
-            cow.record_insert(req.market.clone(), order.clone());
+            delta.set_metadata(meta);
+            delta.record_insert(req.market.clone(), order.clone());
         } else {
             order.status = if total_filled >= req.quantity { OrderStatus::Filled } else { OrderStatus::Canceled };
-            cow.set_metadata(meta);
+            delta.set_metadata(meta);
         }
+
+        let _ = receive_asset;
 
         let mut responses: Vec<Response> = fills.into_iter().map(Response::OrderFilled).collect();
         for canceled in auto_canceled {
@@ -205,7 +207,7 @@ impl MatchingEngine {
         &self,
         order: &Order,
         market: &Market,
-        cow: &mut CowCache,
+        delta: &mut DeltaBuffer,
     ) -> Result<(Vec<Fill>, Vec<OrderCanceledResponse>), VelaError> {
         let book = match self.order_books.get(&order.market) {
             Some(b) => b,
@@ -251,18 +253,16 @@ impl MatchingEngine {
                     timestamp: self.timestamp,
                 };
 
-                self.apply_fill_balances(&fill, market, cow);
+                self.apply_fill_balances(&fill, market, delta);
 
                 let new_consumed = consumed + fill_qty;
                 locally_consumed.insert(resting.id, new_consumed);
 
                 let fully_consumed = new_consumed >= resting.quantity;
-                // For bid makers (resting.side == Bid), fills consume their real quote collateral.
-                // Decrement actual_collateral so the post-fill credit check uses the true amount.
                 let is_bid_maker = resting.side == OrderSide::Bid;
                 if fully_consumed {
-                    cow.record_remove(order.market.clone(), resting.id);
-                    let mut maker_meta = cow.get_metadata(&resting.user, &self.metadata);
+                    delta.record_remove(order.market.clone(), resting.id);
+                    let mut maker_meta = delta.get_metadata(&resting.user, &self.metadata);
                     maker_meta.open_order_ids.retain(|&id| id != resting.id);
                     let resting_notional = CreditSystem::compute_notional(resting.price, resting.remaining_quantity());
                     maker_meta.total_quoted_notional =
@@ -271,17 +271,17 @@ impl MatchingEngine {
                         maker_meta.actual_collateral =
                             maker_meta.actual_collateral.saturating_sub(fill_notional);
                     }
-                    cow.set_metadata(maker_meta);
+                    delta.set_metadata(maker_meta);
                 } else {
-                    cow.record_partial_fill(order.market.clone(), resting.id, fill_qty);
-                    let mut maker_meta = cow.get_metadata(&resting.user, &self.metadata);
+                    delta.record_partial_fill(order.market.clone(), resting.id, fill_qty);
+                    let mut maker_meta = delta.get_metadata(&resting.user, &self.metadata);
                     maker_meta.total_quoted_notional = maker_meta.total_quoted_notional
                         .saturating_sub(CreditSystem::compute_notional(resting.price, fill_qty));
                     if is_bid_maker {
                         maker_meta.actual_collateral =
                             maker_meta.actual_collateral.saturating_sub(fill_notional);
                     }
-                    cow.set_metadata(maker_meta);
+                    delta.set_metadata(maker_meta);
                 }
 
                 affected_makers.insert(resting.user.clone());
@@ -290,19 +290,13 @@ impl MatchingEngine {
             }
         }
 
-        // Credit auto-cancel: only applies to bid makers (taker is Ask, resting are Bids).
-        // Ask makers lock base asset (BTC), which uses a separate backing invariant.
-        // Bid makers lock quote asset (USDC) and may use credit beyond their available balance.
-        // After fills reduce actual_collateral, check if total_quoted_notional > actual_collateral * ratio.
         let mut auto_canceled: Vec<OrderCanceledResponse> = vec![];
 
         if order.side == OrderSide::Ask {
             for maker_user in &affected_makers {
-                let mut maker_meta = cow.get_metadata(maker_user, &self.metadata);
+                let mut maker_meta = delta.get_metadata(maker_user, &self.metadata);
                 let maker_deposited = maker_meta.actual_collateral;
 
-                // Collect (order_id, remaining_notional) for each still-open order,
-                // accounting for fills already applied in this match loop.
                 let open_orders: Vec<(OrderId, u64)> = maker_meta
                     .open_order_ids
                     .iter()
@@ -334,11 +328,10 @@ impl MatchingEngine {
                             let consumed = locally_consumed.get(&oid).copied().unwrap_or(0);
                             let remaining = o.remaining_quantity().saturating_sub(consumed);
                             let notional = CreditSystem::compute_notional(o.price, remaining);
-                            // Bid orders lock quote; unlock the notional amount.
                             let unlock_amt = CreditSystem::compute_notional(o.price, remaining);
 
-                            cow.record_remove(o.market.clone(), oid);
-                            cow.unlock_to_available(
+                            delta.record_remove(o.market.clone(), oid);
+                            delta.unlock_to_available(
                                 maker_user,
                                 &market.quote,
                                 unlock_amt,
@@ -357,43 +350,43 @@ impl MatchingEngine {
                     }
                 }
 
-                cow.set_metadata(maker_meta);
+                delta.set_metadata(maker_meta);
             }
         }
 
         Ok((fills, auto_canceled))
     }
 
-    fn apply_fill_balances(&self, fill: &Fill, market: &Market, cow: &mut CowCache) {
+    fn apply_fill_balances(&self, fill: &Fill, market: &Market, delta: &mut DeltaBuffer) {
         let fill_notional = CreditSystem::compute_notional(fill.price, fill.quantity);
 
         match fill.side {
             OrderSide::Bid => {
-                cow.debit_locked(&fill.taker, &market.quote, fill_notional, &self.balances);
-                cow.credit_available(&fill.taker, &market.base, fill.quantity, &self.balances);
+                delta.debit_locked(&fill.taker, &market.quote, fill_notional, &self.balances);
+                delta.credit_available(&fill.taker, &market.base, fill.quantity, &self.balances);
                 if fill.taker_fee > 0 {
-                    cow.debit_available(&fill.taker, &market.quote, fill.taker_fee as u64, &self.balances);
+                    delta.debit_available(&fill.taker, &market.quote, fill.taker_fee as u64, &self.balances);
                 }
-                cow.debit_locked(&fill.maker, &market.base, fill.quantity, &self.balances);
-                cow.credit_available(&fill.maker, &market.quote, fill_notional, &self.balances);
+                delta.debit_locked(&fill.maker, &market.base, fill.quantity, &self.balances);
+                delta.credit_available(&fill.maker, &market.quote, fill_notional, &self.balances);
                 if fill.maker_fee < 0 {
-                    cow.credit_available(&fill.maker, &market.quote, fill.maker_fee.unsigned_abs() as u64, &self.balances);
+                    delta.credit_available(&fill.maker, &market.quote, fill.maker_fee.unsigned_abs() as u64, &self.balances);
                 } else if fill.maker_fee > 0 {
-                    cow.debit_available(&fill.maker, &market.quote, fill.maker_fee as u64, &self.balances);
+                    delta.debit_available(&fill.maker, &market.quote, fill.maker_fee as u64, &self.balances);
                 }
             }
             OrderSide::Ask => {
-                cow.debit_locked(&fill.taker, &market.base, fill.quantity, &self.balances);
-                cow.credit_available(&fill.taker, &market.quote, fill_notional, &self.balances);
+                delta.debit_locked(&fill.taker, &market.base, fill.quantity, &self.balances);
+                delta.credit_available(&fill.taker, &market.quote, fill_notional, &self.balances);
                 if fill.taker_fee > 0 {
-                    cow.debit_available(&fill.taker, &market.quote, fill.taker_fee as u64, &self.balances);
+                    delta.debit_available(&fill.taker, &market.quote, fill.taker_fee as u64, &self.balances);
                 }
-                cow.debit_locked(&fill.maker, &market.quote, fill_notional, &self.balances);
-                cow.credit_available(&fill.maker, &market.base, fill.quantity, &self.balances);
+                delta.debit_locked(&fill.maker, &market.quote, fill_notional, &self.balances);
+                delta.credit_available(&fill.maker, &market.base, fill.quantity, &self.balances);
                 if fill.maker_fee < 0 {
-                    cow.credit_available(&fill.maker, &market.quote, fill.maker_fee.unsigned_abs() as u64, &self.balances);
+                    delta.credit_available(&fill.maker, &market.quote, fill.maker_fee.unsigned_abs() as u64, &self.balances);
                 } else if fill.maker_fee > 0 {
-                    cow.debit_available(&fill.maker, &market.quote, fill.maker_fee as u64, &self.balances);
+                    delta.debit_available(&fill.maker, &market.quote, fill.maker_fee as u64, &self.balances);
                 }
             }
         }
@@ -470,7 +463,6 @@ impl MatchingEngine {
     }
 
     fn process_deposit(&mut self, req: DepositRequest) -> Vec<Response> {
-        // Track actual collateral for credit auto-cancel: only quote assets back bid credit.
         let is_quote = self.markets.values().any(|m| m.quote == req.asset);
         if is_quote {
             let mut meta = self.get_metadata(&req.user);

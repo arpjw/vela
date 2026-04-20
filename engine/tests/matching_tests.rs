@@ -517,3 +517,131 @@ fn test_set_ratio_per_user() {
     let posted = ok.iter().find_map(|r| if let Response::OrderPosted(p) = r { Some(p) } else { None }).unwrap();
     assert_eq!(posted.status, OrderStatus::Open);
 }
+
+// ─── VEL-P2-04: CoW delta buffer correctness tests ────────────────────────────
+
+#[test]
+fn test_cow_fok_full_fill_commits() {
+    let mut e = engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 1 * QUANTITY_SCALE), 1);
+    e.process(deposit(taker.clone(), usdc(), 100_000 * PRICE_SCALE), 2);
+    e.process(post_ask(maker.clone(), 50_000, 1, 1), 3);
+
+    let responses = e.process(post_fok_bid(taker.clone(), 50_000, 1, 1), 4);
+    let fill = responses.iter().find_map(|r| if let Response::OrderFilled(f) = r { Some(f) } else { None });
+    assert!(fill.is_some(), "FOK should produce a fill when fully fillable");
+
+    let taker_btc = e.balances.get(&(taker, btc())).unwrap();
+    assert_eq!(taker_btc.available, QUANTITY_SCALE, "taker should have received BTC");
+
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    assert!(book.best_ask().is_none(), "maker ask consumed by FOK fill");
+}
+
+#[test]
+fn test_cow_fok_partial_fail_no_state_change() {
+    let mut e = engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 1 * QUANTITY_SCALE), 1);
+    e.process(deposit(taker.clone(), usdc(), 200_000 * PRICE_SCALE), 2);
+    e.process(post_ask(maker.clone(), 50_000, 1, 1), 3);
+
+    let taker_usdc_before = e.balances.get(&(taker.clone(), usdc())).unwrap().available;
+
+    let responses = e.process(post_fok_bid(taker.clone(), 50_000, 2, 1), 4);
+    let err = responses.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err.code, ErrorCode::FokNotFilled);
+
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    assert!(book.best_ask().is_some(), "maker ask must still exist after FOK rollback");
+
+    let taker_usdc_after = e.balances.get(&(taker.clone(), usdc())).unwrap().available;
+    assert_eq!(taker_usdc_before, taker_usdc_after, "taker balance unchanged after FOK failure");
+
+    let taker_btc = e.balances.get(&(taker, btc())).map(|b| b.available).unwrap_or(0);
+    assert_eq!(taker_btc, 0, "taker receives no BTC after failed FOK");
+}
+
+#[test]
+fn test_cow_ioc_partial_fill_commits_filled_portion() {
+    let mut e = engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 1 * QUANTITY_SCALE), 1);
+    e.process(deposit(taker.clone(), usdc(), 200_000 * PRICE_SCALE), 2);
+    e.process(post_ask(maker.clone(), 50_000, 1, 1), 3);
+
+    let responses = e.process(post_ioc_bid(taker.clone(), 50_000, 2, 1), 4);
+    let fill = responses.iter().find_map(|r| if let Response::OrderFilled(f) = r { Some(f) } else { None }).unwrap();
+    assert_eq!(fill.quantity, QUANTITY_SCALE, "only available 1 BTC should be filled");
+
+    let taker_btc = e.balances.get(&(taker, btc())).unwrap().available;
+    assert_eq!(taker_btc, QUANTITY_SCALE, "taker receives exactly the filled quantity");
+
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    assert!(book.best_ask().is_none(), "maker ask fully consumed");
+    assert!(book.best_bid().is_none(), "IOC remainder does not rest on book");
+}
+
+#[test]
+fn test_cow_ioc_no_fill_leaves_state_clean() {
+    let mut e = engine();
+    let taker = user(1);
+    e.process(deposit(taker.clone(), usdc(), 100_000 * PRICE_SCALE), 1);
+
+    let available_before = e.balances.get(&(taker.clone(), usdc())).unwrap().available;
+
+    let responses = e.process(post_ioc_bid(taker.clone(), 50_000, 1, 1), 2);
+    let posted = responses.iter().find_map(|r| if let Response::OrderPosted(p) = r { Some(p) } else { None }).unwrap();
+    assert_eq!(posted.status, OrderStatus::Canceled);
+
+    let available_after = e.balances.get(&(taker.clone(), usdc())).unwrap().available;
+    assert_eq!(available_before, available_after, "no balance change when IOC finds nothing");
+
+    let book = e.order_books.get(&btc_usdc()).unwrap();
+    assert!(book.best_bid().is_none(), "IOC must not rest on book");
+}
+
+#[test]
+fn test_cow_validation_failure_leaves_state_clean() {
+    let mut e = engine();
+    let u = user(1);
+    e.process(deposit(u.clone(), usdc(), 100 * PRICE_SCALE), 1);
+
+    e.process(post_bid(u.clone(), 50, 1, 1), 2);
+    let locked_after_first = e.balances.get(&(u.clone(), usdc())).unwrap().locked;
+
+    let responses = e.process(post_bid(u.clone(), 50_000, 1, 2), 3);
+    let err = responses.iter().find_map(|r| if let Response::Error(e) = r { Some(e) } else { None }).unwrap();
+    assert_eq!(err.code, ErrorCode::InsufficientBalance);
+
+    let locked_after_fail = e.balances.get(&(u.clone(), usdc())).unwrap().locked;
+    assert_eq!(locked_after_first, locked_after_fail, "failed order must not mutate locked balance");
+}
+
+#[test]
+fn test_cow_failed_order_does_not_corrupt_subsequent_order() {
+    let mut e = engine();
+    let maker = user(1);
+    let taker = user(2);
+
+    e.process(deposit(maker.clone(), btc(), 1 * QUANTITY_SCALE), 1);
+    e.process(deposit(taker.clone(), usdc(), 200_000 * PRICE_SCALE), 2);
+    e.process(post_ask(maker.clone(), 50_000, 1, 1), 3);
+
+    let fail_resp = e.process(post_fok_bid(taker.clone(), 50_000, 2, 1), 4);
+    assert!(fail_resp.iter().any(|r| matches!(r, Response::Error(_))), "first FOK should fail");
+
+    let ok_resp = e.process(post_bid(taker.clone(), 50_000, 1, 2), 5);
+    let fill = ok_resp.iter().find_map(|r| if let Response::OrderFilled(f) = r { Some(f) } else { None });
+    assert!(fill.is_some(), "subsequent GTC bid should still fill against maker");
+
+    let taker_btc = e.balances.get(&(taker, btc())).unwrap().available;
+    assert_eq!(taker_btc, QUANTITY_SCALE, "taker receives BTC from the successful GTC fill");
+}
