@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 use engine::MatchingEngine;
 use feeds::FeedManager;
 use rate_limit::RateLimiter;
-use crate::types::{AnchorRecord, StoredFill, StoredOrder, WsEnvelope};
+use crate::types::{AnchorRecord, Decision, Incident, RegisteredMM, StoredFill, StoredOrder, WsEnvelope};
 
 pub struct OrderChannelItem {
     pub req: ::types::PostOrderRequest,
@@ -52,6 +52,9 @@ pub struct AppState {
     pub anchor_count: Arc<AtomicU64>,
     pub last_anchor_tx: Arc<Mutex<Option<String>>>,
     pub last_anchor_time: Arc<AtomicU64>,
+    pub incidents: Arc<Mutex<Vec<Incident>>>,
+    pub decisions: Arc<Mutex<Vec<Decision>>>,
+    pub registered_mms: Arc<Mutex<Vec<RegisteredMM>>>,
 }
 
 impl AppState {
@@ -91,6 +94,9 @@ impl AppState {
             anchor_count: Arc::new(AtomicU64::new(0)),
             last_anchor_tx: Arc::new(Mutex::new(None)),
             last_anchor_time: Arc::new(AtomicU64::new(0)),
+            incidents: Arc::new(Mutex::new(Vec::new())),
+            decisions: Arc::new(Mutex::new(Vec::new())),
+            registered_mms: Arc::new(Mutex::new(Vec::new())),
         });
 
         tokio::spawn(engine_order_task(order_rx, engine_arc));

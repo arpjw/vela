@@ -6,8 +6,24 @@ import Skeleton from '@/components/ui/Skeleton'
 
 const PF = "'Playfair Display', serif"
 const IN = 'Inter, sans-serif'
+const CN = "'Courier New', monospace"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
+
+interface Incident {
+  id: number
+  incident_type: string
+  started_at: number
+  resolved_at: number | null
+  description: string
+  impact: string
+}
+
+interface IncidentData {
+  incidents: Incident[]
+  total: number
+  all_clear: boolean
+}
 
 interface StatusData {
   status: 'operational' | 'degraded' | 'starting'
@@ -32,6 +48,22 @@ function formatUptime(secs: number): string {
   return `${d}d ${h}h`
 }
 
+function formatIncidentDate(tsMs: number): string {
+  const d = new Date(tsMs)
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const h = d.getHours().toString().padStart(2, '0')
+  const m = d.getMinutes().toString().padStart(2, '0')
+  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} ${h}:${m}`
+}
+
+function formatResolution(startMs: number, endMs: number): string {
+  const diffSecs = Math.floor((endMs - startMs) / 1000)
+  if (diffSecs < 60) return `Resolved in ${diffSecs}s`
+  const mins = Math.floor(diffSecs / 60)
+  const secs = diffSecs % 60
+  return `Resolved in ${mins}m ${secs}s`
+}
+
 function formatRelativeTime(tsMs: number): string {
   if (!tsMs) return 'Never'
   const diff = Math.floor((Date.now() - tsMs) / 1000)
@@ -46,7 +78,9 @@ export default function StatusPage() {
   const [data, setData] = useState<StatusData | null>(null)
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [incidentData, setIncidentData] = useState<IncidentData | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const incidentIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -63,11 +97,27 @@ export default function StatusPage() {
     }
   }, [])
 
+  const fetchIncidents = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/incidents`)
+      const json = await res.json()
+      if (json.ok) setIncidentData(json.data)
+    } catch {
+      // silently ignore
+    }
+  }, [])
+
   useEffect(() => {
     fetchStatus()
     intervalRef.current = setInterval(fetchStatus, 30_000)
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [fetchStatus])
+
+  useEffect(() => {
+    fetchIncidents()
+    incidentIntervalRef.current = setInterval(fetchIncidents, 60_000)
+    return () => { if (incidentIntervalRef.current) clearInterval(incidentIntervalRef.current) }
+  }, [fetchIncidents])
 
   const status = data?.status ?? null
 
@@ -201,16 +251,52 @@ export default function StatusPage() {
             Every engine restart, snapshot restore, and degraded performance event is logged here permanently. This record starts from Vela&apos;s first deployment.
           </p>
 
-          {/* TODO VEL-T2-02: fetch from GET /incidents */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', padding: '40px 0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '8px', height: '8px', background: '#6B8A5A', borderRadius: '50%' }} />
-              <span style={{ fontFamily: IN, fontSize: '13px', color: '#6B8A5A' }}>No incidents recorded.</span>
+          {incidentData === null ? (
+            <div style={{ padding: '40px 0' }}>
+              <Skeleton className="w-48 h-4" />
             </div>
-            <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.3)' }}>
-              Vela has been operational since launch.
-            </span>
-          </div>
+          ) : incidentData.all_clear ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '40px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '8px', height: '8px', background: '#6B8A5A', borderRadius: '50%' }} />
+                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#6B8A5A' }}>All Systems Operational</span>
+              </div>
+              <span style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,228,216,0.3)', marginTop: '8px' }}>
+                No incidents recorded in the last 30 days.
+              </span>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 120px 1fr 1fr', gap: '0 16px', padding: '0 0 8px', borderBottom: '1px solid rgba(232,228,216,0.08)', marginBottom: '4px' }}>
+                {['STARTED', 'TYPE', 'DESCRIPTION', 'IMPACT'].map(h => (
+                  <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,228,216,0.25)' }}>{h}</span>
+                ))}
+              </div>
+              {incidentData.incidents.map(inc => {
+                const typeColor = inc.incident_type === 'RESTART'
+                  ? { bg: 'rgba(204,51,51,0.1)', border: 'rgba(204,51,51,0.3)', text: 'rgba(204,51,51,0.7)' }
+                  : { bg: 'rgba(180,140,60,0.1)', border: 'rgba(180,140,60,0.3)', text: 'rgba(180,140,60,0.7)' }
+                return (
+                  <div key={inc.id} style={{ display: 'grid', gridTemplateColumns: '140px 120px 1fr 1fr', gap: '0 16px', padding: '10px 0', borderBottom: '1px solid rgba(232,228,216,0.05)', alignItems: 'start' }}>
+                    <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.35)' }}>
+                      {formatIncidentDate(inc.started_at)}
+                    </span>
+                    <span style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: typeColor.text, background: typeColor.bg, border: `1px solid ${typeColor.border}`, padding: '2px 6px', display: 'inline-block' }}>
+                      {inc.incident_type.replace('_', ' ')}
+                    </span>
+                    <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.7)', lineHeight: 1.5 }}>
+                      {inc.description}
+                    </span>
+                    <span style={{ fontFamily: IN, fontSize: '11px', color: inc.resolved_at ? 'rgba(232,228,216,0.35)' : '#CC3333', lineHeight: 1.5 }}>
+                      {inc.resolved_at
+                        ? formatResolution(inc.started_at, inc.resolved_at)
+                        : '● Ongoing'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -220,6 +306,7 @@ export default function StatusPage() {
             { href: '/', label: 'Home' },
             { href: '/status', label: 'Status' },
             { href: '/transparency', label: 'Transparency' },
+            { href: '/decisions', label: 'Decisions' },
             { href: '/operator', label: 'Operator' },
           ].map(({ href, label }) => (
             <a

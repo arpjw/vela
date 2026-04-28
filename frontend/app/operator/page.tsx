@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect, useCallback } from 'react'
 import HexCanvas from '@/components/HexCanvas'
 
 const PF = "'Playfair Display', serif"
@@ -7,6 +8,20 @@ const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
 
 const OPERATOR_ADDRESS = '0x63c1C089e08EF6949f6Ee8dB1F3c2dC7f3e9B64EC0'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
+
+interface MarketMaker {
+  address: string
+  display_name: string | null
+  registered_at: number
+  is_internal: boolean
+}
+
+function formatDate(tsMs: number): string {
+  const d = new Date(tsMs)
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
+}
 
 const CAN_DO = [
   'Match orders submitted by users',
@@ -51,6 +66,24 @@ Signed: April 2026. Operator: 0x63c1C089...3e9B64EC0`
 const PLACEHOLDER_SIG = '0x' + '0'.repeat(130)
 
 export default function OperatorPage() {
+  const [mms, setMms] = useState<MarketMaker[] | null>(null)
+
+  const fetchMMs = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/market-makers`)
+      const json = await res.json()
+      if (json.ok) setMms(json.data.market_makers)
+    } catch {
+      // silently ignore
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchMMs()
+    const id = setInterval(fetchMMs, 5 * 60_000)
+    return () => clearInterval(id)
+  }, [fetchMMs])
+
   return (
     <div style={{ background: '#0C0C0C', minHeight: '100vh' }}>
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 pt-12 pb-12 lg:px-[52px] lg:pt-[60px]">
@@ -226,28 +259,70 @@ export default function OperatorPage() {
             Market makers who choose to disclose their identity are listed here. Anonymous market makers are shown by wallet address only. All active market makers are visible regardless of disclosure status.
           </p>
 
-          <div style={{ background: 'rgba(232,228,216,0.04)', border: '1px solid rgba(232,228,216,0.08)', padding: '24px', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
-              <div>
-                <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#E8E4D8', margin: '0 0 4px' }}>
-                  Monolith Systematic LLC (Internal MM Bot)
-                </p>
-                <p style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.35)', margin: 0 }}>
-                  {OPERATOR_ADDRESS}
-                </p>
-              </div>
-              <span style={{ fontFamily: IN, fontWeight: 700, fontSize: '11px', color: '#6B8A5A', letterSpacing: '0.05em' }}>
-                ● ACTIVE
-              </span>
+          {mms === null ? (
+            <div style={{ background: 'rgba(232,228,216,0.04)', border: '1px solid rgba(232,228,216,0.08)', padding: '24px', marginBottom: '16px' }}>
+              <span style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,228,216,0.3)' }}>Loading…</span>
             </div>
-            <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', lineHeight: 1.7, color: 'rgba(232,228,216,0.55)', margin: 0 }}>
-              CoinGecko-priced automated market maker. 10 bid + 10 ask levels per market at 0.05% spread.
-            </p>
-          </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              {mms.map(mm => (
+                <div key={mm.address} style={{ padding: '20px 24px', background: 'rgba(232,228,216,0.04)', borderLeft: '2px solid rgba(232,228,216,0.07)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                    <div>
+                      <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#E8E4D8', margin: '0 0 2px' }}>
+                        {mm.display_name ?? 'Anonymous Market Maker'}
+                      </p>
+                      {mm.is_internal && (
+                        <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.35)', margin: '2px 0 0' }}>
+                          Official MM Bot — CoinGecko-priced, 10 levels per market at 0.05% spread
+                        </p>
+                      )}
+                    </div>
+                    <span style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#6B8A5A', flexShrink: 0 }}>● ACTIVE</span>
+                  </div>
+                  <p style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.35)', margin: '6px 0 4px' }}>
+                    {mm.address.slice(0, 10)}…{mm.address.slice(-8)}
+                  </p>
+                  <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,228,216,0.2)', margin: 0 }}>
+                    Active since {formatDate(mm.registered_at)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
 
           <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,228,216,0.2)', margin: 0 }}>
-            External market makers can register their disclosure at /market-makers/register (coming soon).
+            Want to be listed? Register your MM wallet at{' '}
+            <a href="/market-makers/register" style={{ color: 'rgba(232,228,216,0.4)', textDecoration: 'underline' }}>
+              vela.monolithsystematic.com/market-makers/register
+            </a>
           </p>
+        </div>
+      </div>
+
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <HexCanvas />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '20px' }}>
+            Governance
+          </p>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#E8E4D8', margin: '0 0 16px' }}>
+            Decision Log
+          </h2>
+
+          <div style={{ background: 'rgba(232,228,216,0.04)', border: '1px solid rgba(232,228,216,0.08)', padding: '24px', marginBottom: '16px' }}>
+            <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(232,228,216,0.55)', lineHeight: 1.8, margin: '0 0 16px' }}>
+              Every material decision about Vela Exchange is published at /decisions before it takes effect, signed by the operator wallet. Fee changes require 14 days notice.
+            </p>
+            <a
+              href="/decisions"
+              style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.6)', textDecoration: 'none' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#E8E4D8')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(232,228,216,0.6)')}
+            >
+              View decision log →
+            </a>
+          </div>
         </div>
       </div>
 

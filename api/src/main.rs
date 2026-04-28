@@ -4,6 +4,7 @@ use types::{
     AssetId, DepositRequest, FeeConfig, Market, MarketId, OrderSide, OrderType, PostOrderRequest,
     Request, UserId,
 };
+use api::types::Incident;
 
 fn seed_markets(engine: &mut MatchingEngine) {
     for ticker in &[
@@ -167,8 +168,19 @@ async fn main() {
 
     let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
 
+    let mut loaded_incidents: Vec<Incident> = Vec::new();
+    let mut loaded_decisions: Vec<api::types::Decision> = Vec::new();
+    let mut loaded_mms: Vec<api::types::RegisteredMM> = Vec::new();
+    let mut need_restart_incident = false;
+
     match api::snapshot::load_snapshot().await {
         Ok(Some(snapshot)) => {
+            if !snapshot.clean_shutdown {
+                need_restart_incident = true;
+            }
+            loaded_incidents = snapshot.incidents.clone();
+            loaded_decisions = snapshot.decisions.clone();
+            loaded_mms = snapshot.registered_mms.clone();
             match api::snapshot::restore_engine_from_snapshot(&mut engine, snapshot) {
                 Ok(()) => println!("Restored from snapshot"),
                 Err(e) => {
@@ -176,6 +188,10 @@ async fn main() {
                     engine = MatchingEngine::new(FeeConfig::default(), 5.0);
                     seed_markets(&mut engine);
                     seed_order_books(&mut engine);
+                    loaded_incidents.clear();
+                    loaded_decisions.clear();
+                    loaded_mms.clear();
+                    need_restart_incident = false;
                 }
             }
         }
@@ -192,6 +208,29 @@ async fn main() {
     }
 
     let state = api::AppState::new(engine);
+
+    {
+        *state.incidents.lock().await = loaded_incidents;
+        *state.decisions.lock().await = loaded_decisions;
+        *state.registered_mms.lock().await = loaded_mms;
+    }
+
+    if need_restart_incident {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let mut incidents = state.incidents.lock().await;
+        let next_id = incidents.iter().map(|i| i.id).max().unwrap_or(0) + 1;
+        incidents.push(Incident {
+            id: next_id,
+            incident_type: "RESTART".to_string(),
+            started_at: now_ms.saturating_sub(1000),
+            resolved_at: Some(now_ms),
+            description: "Engine restarted. State restored from snapshot.".to_string(),
+            impact: "Brief interruption. All state preserved.".to_string(),
+        });
+    }
 
     if let Some((anchors, count)) = api::anchor::load_anchors().await {
         let last = anchors.last().map(|a| (a.tx_hash.clone(), a.timestamp));

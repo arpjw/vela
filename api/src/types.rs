@@ -219,6 +219,37 @@ pub struct StateRootData {
     pub anchor_count: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Incident {
+    pub id: u64,
+    pub incident_type: String,
+    pub started_at: u64,
+    pub resolved_at: Option<u64>,
+    pub description: String,
+    pub impact: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Decision {
+    pub id: u64,
+    pub decision_type: String,
+    pub title: String,
+    pub description: String,
+    pub rationale: String,
+    pub effective_date: u64,
+    pub announced_at: u64,
+    pub status: String,
+    pub operator_signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisteredMM {
+    pub address: String,
+    pub display_name: Option<String>,
+    pub registered_at: u64,
+    pub signature: String,
+}
+
 pub fn format_amount(raw: u64, decimals: u32) -> String {
     let scale = 10u64.pow(decimals);
     let whole = raw / scale;

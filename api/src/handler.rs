@@ -158,6 +158,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/referral/:address", get(get_referral_handler))
         .route("/leaderboard", get(get_leaderboard))
         .route("/anchors", get(get_anchors))
+        .route("/incidents", get(get_incidents))
+        .route("/admin/incidents", post(create_incident))
+        .route("/decisions", get(get_decisions))
+        .route("/admin/decisions", post(create_decision))
+        .route("/market-makers", get(get_market_makers))
+        .route("/market-makers/register", post(register_market_maker))
         .with_state(state)
         .layer(cors)
 }
@@ -1623,6 +1629,203 @@ async fn get_leaderboard(State(state): State<Arc<AppState>>) -> impl IntoRespons
         "top_referrers": referrers,
         "period": "all_time",
     })))).into_response()
+}
+
+// ---------------------------------------------------------------------------
+// Transparency endpoints: incidents, decisions, market makers
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct CreateIncidentBody {
+    incident_type: String,
+    description: String,
+    impact: String,
+    resolved_at: Option<u64>,
+}
+
+#[derive(serde::Deserialize)]
+struct CreateDecisionBody {
+    decision_type: String,
+    title: String,
+    description: String,
+    rationale: String,
+    effective_date: u64,
+    operator_signature: String,
+}
+
+#[derive(serde::Deserialize)]
+struct RegisterMMBody {
+    address: String,
+    display_name: Option<String>,
+    signature: String,
+    nonce: u64,
+}
+
+#[derive(serde::Serialize)]
+struct MMEntry {
+    address: String,
+    display_name: Option<String>,
+    registered_at: u64,
+    is_internal: bool,
+}
+
+const INTERNAL_MM_REGISTERED_AT: u64 = 1775001600000;
+
+async fn get_incidents(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let incidents = state.incidents.lock().await;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let thirty_days_ms: u64 = 30 * 24 * 3600 * 1000;
+    let threshold = now_ms.saturating_sub(thirty_days_ms);
+    let all_clear = !incidents.iter().any(|i| i.started_at >= threshold);
+    let total = incidents.len();
+    let data = incidents.clone();
+    Json(ApiResponse::ok(serde_json::json!({
+        "incidents": data,
+        "total": total,
+        "all_clear": all_clear,
+    })))
+}
+
+async fn create_incident(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateIncidentBody>,
+) -> impl IntoResponse {
+    let expected = std::env::var("ADMIN_TOKEN").unwrap_or_else(|_| "vela-admin-2026".to_string());
+    let provided = headers.get("x-admin-token").and_then(|v| v.to_str().ok()).unwrap_or("");
+    if provided != expected {
+        return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("unauthorized"))).into_response();
+    }
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let mut incidents = state.incidents.lock().await;
+    let next_id = incidents.iter().map(|i| i.id).max().unwrap_or(0) + 1;
+    let incident = crate::types::Incident {
+        id: next_id,
+        incident_type: body.incident_type,
+        started_at: now_ms,
+        resolved_at: body.resolved_at,
+        description: body.description,
+        impact: body.impact,
+    };
+    incidents.push(incident.clone());
+    (StatusCode::OK, Json(ApiResponse::ok(incident))).into_response()
+}
+
+async fn get_decisions(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let decisions = state.decisions.lock().await;
+    let total = decisions.len();
+    let pending_count = decisions.iter().filter(|d| d.status == "PENDING").count();
+    let data = decisions.clone();
+    Json(ApiResponse::ok(serde_json::json!({
+        "decisions": data,
+        "total": total,
+        "pending_count": pending_count,
+    })))
+}
+
+async fn create_decision(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateDecisionBody>,
+) -> impl IntoResponse {
+    let expected = std::env::var("ADMIN_TOKEN").unwrap_or_else(|_| "vela-admin-2026".to_string());
+    let provided = headers.get("x-admin-token").and_then(|v| v.to_str().ok()).unwrap_or("");
+    if provided != expected {
+        return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("unauthorized"))).into_response();
+    }
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let mut decisions = state.decisions.lock().await;
+    let next_id = decisions.iter().map(|d| d.id).max().unwrap_or(0) + 1;
+    let decision = crate::types::Decision {
+        id: next_id,
+        decision_type: body.decision_type,
+        title: body.title,
+        description: body.description,
+        rationale: body.rationale,
+        effective_date: body.effective_date,
+        announced_at: now_ms,
+        status: "PENDING".to_string(),
+        operator_signature: body.operator_signature,
+    };
+    decisions.push(decision.clone());
+    (StatusCode::OK, Json(ApiResponse::ok(decision))).into_response()
+}
+
+async fn get_market_makers(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let operator_address = std::env::var("OPERATOR_WALLET_ADDRESS")
+        .unwrap_or_else(|_| "0x63c1C089e08EF6949f6Ee8dB1F3c2dC7f3e9B64EC0".to_string());
+
+    let mut entries: Vec<MMEntry> = vec![MMEntry {
+        address: operator_address,
+        display_name: Some("Monolith Systematic LLC (Internal MM Bot)".to_string()),
+        registered_at: INTERNAL_MM_REGISTERED_AT,
+        is_internal: true,
+    }];
+
+    let registered = state.registered_mms.lock().await;
+    for mm in registered.iter() {
+        entries.push(MMEntry {
+            address: mm.address.clone(),
+            display_name: mm.display_name.clone(),
+            registered_at: mm.registered_at,
+            is_internal: false,
+        });
+    }
+
+    Json(ApiResponse::ok(serde_json::json!({ "market_makers": entries })))
+}
+
+async fn register_market_maker(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<RegisterMMBody>,
+) -> impl IntoResponse {
+    if !body.address.starts_with("0x") || body.address.len() != 42 {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("invalid address"))).into_response();
+    }
+
+    if let Some(ref name) = body.display_name {
+        if name.len() > 64 {
+            return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err("display_name exceeds 64 characters"))).into_response();
+        }
+    }
+
+    let msg = format!("vela:mm-register:{}:{}", body.address.to_lowercase(), body.nonce).into_bytes();
+    if verify_matches_async(msg, body.signature.clone(), body.address.clone()).await.is_err() {
+        return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("invalid signature"))).into_response();
+    }
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let mut registered = state.registered_mms.lock().await;
+    let addr_lower = body.address.to_lowercase();
+    if registered.iter().any(|mm| mm.address.to_lowercase() == addr_lower) {
+        return (StatusCode::CONFLICT, Json(ApiResponse::<()>::err("address already registered"))).into_response();
+    }
+
+    let mm = crate::types::RegisteredMM {
+        address: body.address,
+        display_name: body.display_name,
+        registered_at: now_ms,
+        signature: body.signature,
+    };
+    registered.push(mm.clone());
+    (StatusCode::OK, Json(ApiResponse::ok(mm))).into_response()
 }
 
 async fn admin_fees_handler(
