@@ -15,6 +15,7 @@ use types::{
     PRICE_DECIMALS, QUANTITY_DECIMALS,
 };
 use std::collections::{BTreeMap, HashSet};
+use std::sync::atomic::Ordering;
 use crate::{
     AppState,
     auth::{cancel_signing_message, eth_message_hash, order_signing_message, verify_matches_async, withdrawal_signing_message},
@@ -126,6 +127,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/health", get(health))
+        .route("/status", get(status_handler))
+        .route("/fees/public", get(fees_public_handler))
         .route("/markets", get(list_markets))
         .route("/markets/:market/book", get(get_book))
         .route("/account/:address/balances", get(get_balances))
@@ -400,6 +403,8 @@ async fn record_order_and_fills(
 
     let Some(posted) = posted else { return };
 
+    state.orders_today.fetch_add(1, Ordering::Relaxed);
+
     let total_filled: u64 = fill_pairs.iter().map(|(_, f)| f.quantity).sum();
 
     let self_fills: Vec<OrderFillRecord> = fill_pairs
@@ -456,6 +461,14 @@ async fn record_order_and_fills(
                 timestamp: f.timestamp,
                 side: side_to_str(f.side).to_string(),
             });
+            let notional_micro = (f.price as u128 * f.quantity as u128 / 10_000_000_000u128) as u64;
+            let taker_fee = notional_micro * 5 / 10000;
+            let maker_rebate = notional_micro / 10000;
+            state.fills_today.fetch_add(1, Ordering::Relaxed);
+            state.volume_today_usdc.fetch_add(notional_micro, Ordering::Relaxed);
+            state.fees_collected_today.fetch_add(taker_fee, Ordering::Relaxed);
+            state.total_taker_fees_collected.fetch_add(taker_fee, Ordering::Relaxed);
+            state.total_maker_rebates_paid.fetch_add(maker_rebate, Ordering::Relaxed);
         }
     }
 
@@ -1435,6 +1448,90 @@ async fn get_referral_handler(
         "total_earnings_usdc": earnings_usdc,
         "referred_users": meta.referred_users,
     })))).into_response()
+}
+
+async fn status_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let uptime_secs = state.start_time.elapsed().as_secs();
+
+    let active_markets = {
+        let engine = state.engine.lock().await;
+        engine.markets.len()
+    };
+
+    let (fill_ids, order_ids) = {
+        let fills = state.fills.lock().await;
+        let fids: Vec<String> = fills.iter().map(|f| f.id.clone()).collect();
+        drop(fills);
+        let orders = state.stored_orders.lock().await;
+        let oids: Vec<String> = orders.keys().map(|k| k.to_string()).collect();
+        (fids, oids)
+    };
+
+    let mut hasher = Keccak256::new();
+    for id in &fill_ids { hasher.update(id.as_bytes()); }
+    for id in &order_ids { hasher.update(id.as_bytes()); }
+    let last_state_root = format!("0x{}", hex::encode(hasher.finalize()));
+
+    let last_snapshot_ts = state.last_snapshot_ts.load(Ordering::Relaxed);
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let snapshot_stale = if last_snapshot_ts == 0 {
+        uptime_secs > 300
+    } else {
+        now_ms.saturating_sub(last_snapshot_ts) > 300_000
+    };
+
+    let status = if uptime_secs < 30 {
+        "starting"
+    } else if snapshot_stale {
+        "degraded"
+    } else {
+        "operational"
+    };
+
+    let orders_today = state.orders_today.load(Ordering::Relaxed);
+    let fills_today = state.fills_today.load(Ordering::Relaxed);
+    let volume_raw = state.volume_today_usdc.load(Ordering::Relaxed);
+    let volume_str = format!("{:.2}", volume_raw as f64 / 1_000_000.0);
+    let ws_clients = state.ws_client_count.load(Ordering::Relaxed);
+    let restart_reason = state.last_restart_reason.lock().unwrap().clone();
+
+    Json(ApiResponse::ok(serde_json::json!({
+        "status": status,
+        "engine_uptime_seconds": uptime_secs,
+        "engine_version": state.engine_version,
+        "last_snapshot_timestamp": last_snapshot_ts,
+        "last_state_root": last_state_root,
+        "orders_processed_today": orders_today,
+        "fills_today": fills_today,
+        "volume_today_usdc": volume_str,
+        "active_markets": active_markets,
+        "connected_ws_clients": ws_clients,
+        "last_restart_reason": restart_reason,
+    })))
+}
+
+async fn fees_public_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let taker_raw = state.total_taker_fees_collected.load(Ordering::Relaxed);
+    let rebates_raw = state.total_maker_rebates_paid.load(Ordering::Relaxed);
+    let net_raw = taker_raw.saturating_sub(rebates_raw);
+    let today_raw = state.fees_collected_today.load(Ordering::Relaxed);
+
+    let fmt = |v: u64| format!("{:.6}", v as f64 / 1_000_000.0);
+
+    Json(ApiResponse::ok(serde_json::json!({
+        "total_taker_fees_collected_usdc": fmt(taker_raw),
+        "total_maker_rebates_paid_usdc": fmt(rebates_raw),
+        "net_exchange_revenue_usdc": fmt(net_raw),
+        "fees_collected_today_usdc": fmt(today_raw),
+        "maker_fee_bps": -1,
+        "taker_fee_bps": 5,
+        "since": "2026-04-01T00:00:00Z",
+    })))
 }
 
 async fn get_leaderboard(State(state): State<Arc<AppState>>) -> impl IntoResponse {

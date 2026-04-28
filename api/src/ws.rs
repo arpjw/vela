@@ -92,6 +92,12 @@ pub async fn run_background_task(state: Arc<AppState>) {
 }
 
 pub async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
+    state.ws_client_count.fetch_add(1, Ordering::Relaxed);
+    handle_ws_inner(socket, state.clone()).await;
+    state.ws_client_count.fetch_sub(1, Ordering::Relaxed);
+}
+
+async fn handle_ws_inner(socket: WebSocket, state: Arc<AppState>) {
     let (mut sender, mut receiver) = socket.split();
     let mut authenticated_user: Option<types::UserId> = None;
     let mut public_rx = state.feeds.lock().await.subscribe_public();

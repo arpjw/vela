@@ -49,7 +49,14 @@ export default function TransparencyPage() {
   const [tradesLoaded, setTradesLoaded] = useState(false)
   const [activeMarket, setActiveMarket] = useState('ALL')
   const [orderInput, setOrderInput] = useState('')
+  const [feeData, setFeeData] = useState<{
+    total_taker_fees_collected_usdc: string
+    total_maker_rebates_paid_usdc: string
+    net_exchange_revenue_usdc: string
+    fees_collected_today_usdc: string
+  } | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const feeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchContractBalance = useCallback(async () => {
     try {
@@ -109,10 +116,21 @@ export default function TransparencyPage() {
     }
   }, [activeMarket])
 
+  const fetchFees = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/fees/public`)
+      const data = await res.json()
+      if (data.ok) setFeeData(data.data)
+    } catch {
+      // silently ignore
+    }
+  }, [])
+
   useEffect(() => {
     fetchReserves()
     fetchTrades()
-  }, [fetchReserves, fetchTrades])
+    fetchFees()
+  }, [fetchReserves, fetchTrades, fetchFees])
 
   useEffect(() => {
     if (refreshTimerRef.current) clearInterval(refreshTimerRef.current)
@@ -121,6 +139,11 @@ export default function TransparencyPage() {
     }, 60_000)
     return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current) }
   }, [fetchReserves])
+
+  useEffect(() => {
+    feeTimerRef.current = setInterval(fetchFees, 60_000)
+    return () => { if (feeTimerRef.current) clearInterval(feeTimerRef.current) }
+  }, [fetchFees])
 
   useEffect(() => {
     const t = setInterval(fetchTrades, 3_000)
@@ -259,6 +282,69 @@ export default function TransparencyPage() {
             </span>
           )}
         </div>
+      </div>
+
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 12px' }}>
+          Exchange Revenue
+        </p>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#0C0C0C', margin: '0 0 12px' }}>
+          Published in real time.
+        </h2>
+        <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.8, color: 'rgba(12,12,12,0.45)', maxWidth: '500px', marginBottom: '32px' }}>
+          Vela charges 5 bps on taker fills and pays 1 bps rebates to makers. This is the complete revenue record since launch. No other exchange publishes this.
+        </p>
+
+        {!feeData ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{ background: 'white', padding: '28px 32px' }}>
+                <Skeleton className="w-28 h-2" />
+                <Skeleton className="w-20 h-10 mt-3" />
+                <Skeleton className="w-36 h-2 mt-2" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.05)' }}>
+            <div style={{ background: 'white', padding: '28px 32px' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
+                Taker Fees Collected
+              </p>
+              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '32px', color: '#0C0C0C', margin: '0 0 6px' }}>
+                ${feeData.total_taker_fees_collected_usdc}
+              </p>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: 0 }}>
+                Since launch
+              </p>
+            </div>
+            <div style={{ background: 'white', padding: '28px 32px' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
+                Maker Rebates Paid
+              </p>
+              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '32px', color: '#6B8A5A', margin: '0 0 6px' }}>
+                ${feeData.total_maker_rebates_paid_usdc}
+              </p>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: 0 }}>
+                Paid to market makers
+              </p>
+            </div>
+            <div style={{ background: 'white', padding: '28px 32px' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', margin: '0 0 8px' }}>
+                Net Exchange Revenue
+              </p>
+              <p style={{ fontFamily: PF, fontWeight: 900, fontSize: '32px', color: '#0C0C0C', margin: '0 0 6px' }}>
+                ${feeData.net_exchange_revenue_usdc}
+              </p>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: 0 }}>
+                Fees minus rebates
+              </p>
+            </div>
+          </div>
+        )}
+        <p style={{ fontFamily: IN, fontSize: '9px', color: 'rgba(12,12,12,0.3)', marginTop: '16px' }}>
+          Fee rate: -1 bps maker rebate · 5 bps taker fee · Net margin: 4 bps per matched trade
+        </p>
       </div>
 
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
@@ -430,7 +516,7 @@ export default function TransparencyPage() {
           Go deeper.
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
           {[
             {
               href: '/operator',
@@ -449,6 +535,12 @@ export default function TransparencyPage() {
               title: 'Fraud Proof System',
               desc: 'Understand the ZK architecture. Verify state roots. Submit a challenge if you find a discrepancy.',
               link: 'Verify trades →',
+            },
+            {
+              href: '/status',
+              title: 'System Status',
+              desc: 'Live engine health, uptime metrics, and incident history. Published in real time.',
+              link: 'View status →',
             },
           ].map((card) => (
             <a

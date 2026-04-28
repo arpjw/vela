@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { IBM_Plex_Mono, Playfair_Display, Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth'
@@ -29,7 +30,42 @@ const inter = Inter({
   display: 'swap',
 })
 
+const STATUS_API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://vela-engine.fly.dev'
+
+type EngineStatus = 'operational' | 'degraded' | 'starting' | null
+
 function BetaBanner() {
+  const [engineStatus, setEngineStatus] = useState<EngineStatus>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    async function fetchEngineStatus() {
+      try {
+        const res = await fetch(`${STATUS_API_URL}/status`)
+        const data = await res.json()
+        if (mounted && data.ok) setEngineStatus(data.data.status)
+      } catch {
+        // silently ignore
+      }
+    }
+
+    fetchEngineStatus()
+    const t = setInterval(fetchEngineStatus, 60_000)
+    return () => {
+      mounted = false
+      clearInterval(t)
+    }
+  }, [])
+
+  const dotColor = engineStatus === 'operational'
+    ? '#6B8A5A'
+    : engineStatus === 'degraded'
+    ? '#CC3333'
+    : 'rgba(232,228,216,0.5)'
+
+  const statusText = engineStatus === 'degraded' ? 'DEGRADED' : 'PUBLIC BETA'
+
   return (
     <div
       style={{
@@ -51,14 +87,27 @@ function BetaBanner() {
         letterSpacing: '0.08em',
       }}
     >
-      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'rgba(232,228,216,0.5)' }}>
-        <motion.span
-          animate={{ opacity: [1, 0.15, 1] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          ●
-        </motion.span>
-        PUBLIC BETA
+      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: engineStatus === 'degraded' ? '#CC3333' : 'rgba(232,228,216,0.5)' }}>
+        {engineStatus === 'starting' ? (
+          <motion.span
+            style={{ color: dotColor }}
+            animate={{ opacity: [1, 0.15, 1] }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            ●
+          </motion.span>
+        ) : engineStatus === null ? (
+          <motion.span
+            style={{ color: 'rgba(232,228,216,0.5)' }}
+            animate={{ opacity: [1, 0.15, 1] }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            ●
+          </motion.span>
+        ) : (
+          <span style={{ color: dotColor }}>●</span>
+        )}
+        {statusText}
       </span>
       <span style={{ color: 'rgba(232,228,216,0.25)' }}>
         Ethereum Sepolia Testnet — Do not use real funds

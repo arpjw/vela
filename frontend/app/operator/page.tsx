@@ -175,6 +175,82 @@ export default function OperatorPage() {
         </div>
       </div>
 
+      <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '20px' }}>
+          Conflicts of Interest
+        </p>
+        <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#0C0C0C', margin: '0 0 24px' }}>
+          Disclosed in full.
+        </h2>
+
+        <div style={{ background: 'white', padding: '28px 32px', marginBottom: '24px' }}>
+          <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '14px', color: '#0C0C0C', margin: '0 0 16px' }}>
+            Monolith Systematic LLC operates both Vela Exchange and the Onyx Fund LP, a systematic global macro CTA fund.
+          </p>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', lineHeight: 1.8, color: 'rgba(12,12,12,0.6)', margin: '0 0 16px' }}>
+            Monolith Systematic does not trade spot crypto assets on Vela Exchange with proprietary capital. The Onyx Fund trades futures contracts on IBKR Pro and has no positions on Vela Exchange.
+          </p>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', lineHeight: 1.8, color: 'rgba(12,12,12,0.6)', margin: '0 0 16px' }}>
+            If this ever changes, Vela will publish a signed decision notice at least 14 days in advance. The decision will be signed by the operator wallet and permanently recorded.
+          </p>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', lineHeight: 1.8, color: 'rgba(12,12,12,0.6)', margin: 0 }}>
+            This disclosure is itself signed by the operator wallet. The signature below proves that the operator acknowledges this conflict and has made this commitment publicly.
+          </p>
+        </div>
+
+        <div>
+          <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.3)', marginBottom: '8px' }}>
+            Operator Signature — Conflict of Interest Disclosure
+          </p>
+          <div style={{ background: '#0C0C0C', padding: '12px 16px', marginBottom: '8px' }}>
+            <p style={{ fontFamily: CN, fontSize: '9px', color: 'rgba(232,228,216,0.25)', margin: 0, wordBreak: 'break-all' }}>
+              {'0x' + 'pending'.padEnd(130, '0')}
+            </p>
+          </div>
+          <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.35)', margin: 0 }}>
+            Cryptographic signature of this disclosure will be published at mainnet launch.
+          </p>
+        </div>
+      </div>
+
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <HexCanvas />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '20px' }}>
+            Active Market Makers
+          </p>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#E8E4D8', margin: '0 0 16px' }}>
+            Who makes markets on Vela.
+          </h2>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,228,216,0.35)', maxWidth: '520px', marginBottom: '32px' }}>
+            Market makers who choose to disclose their identity are listed here. Anonymous market makers are shown by wallet address only. All active market makers are visible regardless of disclosure status.
+          </p>
+
+          <div style={{ background: 'rgba(232,228,216,0.04)', border: '1px solid rgba(232,228,216,0.08)', padding: '24px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
+              <div>
+                <p style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#E8E4D8', margin: '0 0 4px' }}>
+                  Monolith Systematic LLC (Internal MM Bot)
+                </p>
+                <p style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.35)', margin: 0 }}>
+                  {OPERATOR_ADDRESS}
+                </p>
+              </div>
+              <span style={{ fontFamily: IN, fontWeight: 700, fontSize: '11px', color: '#6B8A5A', letterSpacing: '0.05em' }}>
+                ● ACTIVE
+              </span>
+            </div>
+            <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', lineHeight: 1.7, color: 'rgba(232,228,216,0.55)', margin: 0 }}>
+              CoinGecko-priced automated market maker. 10 bid + 10 ask levels per market at 0.05% spread.
+            </p>
+          </div>
+
+          <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,228,216,0.2)', margin: 0 }}>
+            External market makers can register their disclosure at /market-makers/register (coming soon).
+          </p>
+        </div>
+      </div>
+
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>

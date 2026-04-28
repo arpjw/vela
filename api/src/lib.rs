@@ -11,7 +11,7 @@ pub mod ws;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tokio::sync::Mutex;
 use engine::MatchingEngine;
 use feeds::FeedManager;
@@ -37,6 +37,16 @@ pub struct AppState {
     pub da: Arc<da::DaSubmitter>,
     pub ws_tx: Arc<tokio::sync::broadcast::Sender<WsEnvelope>>,
     pub ws_seqs: Arc<dashmap::DashMap<String, AtomicU64>>,
+    pub engine_version: &'static str,
+    pub ws_client_count: Arc<AtomicUsize>,
+    pub orders_today: Arc<AtomicU64>,
+    pub fills_today: Arc<AtomicU64>,
+    pub volume_today_usdc: Arc<AtomicU64>,
+    pub last_restart_reason: Arc<std::sync::Mutex<Option<String>>>,
+    pub last_snapshot_ts: Arc<AtomicU64>,
+    pub total_taker_fees_collected: Arc<AtomicU64>,
+    pub total_maker_rebates_paid: Arc<AtomicU64>,
+    pub fees_collected_today: Arc<AtomicU64>,
 }
 
 impl AppState {
@@ -62,10 +72,21 @@ impl AppState {
             da: Arc::new(da::DaSubmitter::new(Arc::new(da::LocalDaClient::new(da_dir)))),
             ws_tx: Arc::new(ws_bcast_tx),
             ws_seqs: Arc::new(dashmap::DashMap::new()),
+            engine_version: "0.2.0",
+            ws_client_count: Arc::new(AtomicUsize::new(0)),
+            orders_today: Arc::new(AtomicU64::new(0)),
+            fills_today: Arc::new(AtomicU64::new(0)),
+            volume_today_usdc: Arc::new(AtomicU64::new(0)),
+            last_restart_reason: Arc::new(std::sync::Mutex::new(None)),
+            last_snapshot_ts: Arc::new(AtomicU64::new(0)),
+            total_taker_fees_collected: Arc::new(AtomicU64::new(0)),
+            total_maker_rebates_paid: Arc::new(AtomicU64::new(0)),
+            fees_collected_today: Arc::new(AtomicU64::new(0)),
         });
 
         tokio::spawn(engine_order_task(order_rx, engine_arc));
         tokio::spawn(ws::run_background_task(Arc::clone(&state)));
+        tokio::spawn(midnight_reset_task(Arc::clone(&state)));
 
         state
     }
@@ -103,6 +124,22 @@ pub async fn engine_order_task(
             let responses = eng.process(Request::PostOrder(item.req), item.ts);
             let _ = item.response_tx.send(responses);
         }
+    }
+}
+
+async fn midnight_reset_task(state: Arc<AppState>) {
+    loop {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let next_midnight = (now / 86400 + 1) * 86400;
+        let sleep_secs = next_midnight.saturating_sub(now);
+        tokio::time::sleep(std::time::Duration::from_secs(sleep_secs)).await;
+        state.orders_today.store(0, Ordering::Relaxed);
+        state.fills_today.store(0, Ordering::Relaxed);
+        state.volume_today_usdc.store(0, Ordering::Relaxed);
+        state.fees_collected_today.store(0, Ordering::Relaxed);
     }
 }
 

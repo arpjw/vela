@@ -99,11 +99,17 @@ pub async fn load_snapshot() -> Result<Option<EngineSnapshot>> {
     Ok(Some(snapshot))
 }
 
-pub async fn run_snapshot_task(engine: Arc<Mutex<MatchingEngine>>) {
+pub async fn run_snapshot_task(state: Arc<crate::AppState>) {
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(SNAPSHOT_INTERVAL_SECS)).await;
-        if let Err(e) = save_snapshot(engine.clone()).await {
+        if let Err(e) = save_snapshot(state.engine.clone()).await {
             tracing::error!("Snapshot error: {e}");
+        } else {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            state.last_snapshot_ts.store(ts, std::sync::atomic::Ordering::Relaxed);
         }
     }
 }

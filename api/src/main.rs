@@ -198,9 +198,9 @@ async fn main() {
         api::mm::run_mm_bot(engine_arc).await;
     });
 
-    let snapshot_engine = Arc::clone(&state.engine);
+    let snapshot_state = Arc::clone(&state);
     tokio::spawn(async move {
-        api::snapshot::run_snapshot_task(snapshot_engine).await;
+        api::snapshot::run_snapshot_task(snapshot_state).await;
     });
     // Note: engine_order_task (P2-01 batch pipeline) is spawned inside AppState::new
 
