@@ -282,6 +282,17 @@ export default function TransparencyPage() {
             </span>
           )}
         </div>
+
+        <div style={{ marginTop: '20px' }}>
+          <a
+            href="/batches"
+            style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(12,12,12,0.4)', textDecoration: 'none' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#0C0C0C')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(12,12,12,0.4)')}
+          >
+            View on-chain state root anchors →
+          </a>
+        </div>
       </div>
 
       <div style={{ background: '#E8E4D8' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
@@ -527,7 +538,7 @@ export default function TransparencyPage() {
             {
               href: '/batches',
               title: 'Batch Explorer',
-              desc: 'Browse every batch of trades processed by Vela. Download state roots. Verify any batch yourself.',
+              desc: 'Every batch has a keccak256 state root. State roots are anchored to Ethereum every 10 minutes — a permanent, immutable record verifiable on Etherscan.',
               link: 'Explore batches →',
             },
             {

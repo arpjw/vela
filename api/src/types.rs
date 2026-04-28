@@ -198,12 +198,25 @@ pub struct BatchDetail {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnchorRecord {
+    pub anchor_id: u64,
+    pub state_root: String,
+    pub tx_hash: String,
+    pub timestamp: u64,
+    pub orders_processed: u64,
+    pub block_number: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateRootData {
     pub state_root: String,
     pub timestamp: u64,
     pub order_count: usize,
     pub user_count: usize,
     pub block_number: Option<u64>,
+    pub last_anchor_tx: Option<String>,
+    pub last_anchor_time: Option<u64>,
+    pub anchor_count: u64,
 }
 
 pub fn format_amount(raw: u64, decimals: u32) -> String {

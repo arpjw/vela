@@ -193,6 +193,29 @@ async fn main() {
 
     let state = api::AppState::new(engine);
 
+    if let Some((anchors, count)) = api::anchor::load_anchors().await {
+        let last = anchors.last().map(|a| (a.tx_hash.clone(), a.timestamp));
+        *state.anchors.lock().await = anchors;
+        state.anchor_count.store(count, std::sync::atomic::Ordering::Relaxed);
+        if let Some((tx, ts)) = last {
+            *state.last_anchor_tx.lock().await = Some(tx);
+            state.last_anchor_time.store(ts, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    let alchemy_url = std::env::var("ALCHEMY_API_URL")
+        .unwrap_or_else(|_| "https://eth-sepolia.g.alchemy.com/v2/demo".to_string());
+    let operator_key = std::env::var("OPERATOR_PRIVATE_KEY").unwrap_or_default();
+
+    if !operator_key.is_empty() {
+        let anchor_state = Arc::clone(&state);
+        tokio::spawn(async move {
+            api::anchor::anchor_task(anchor_state, alchemy_url, operator_key).await;
+        });
+    } else {
+        tracing::warn!("OPERATOR_PRIVATE_KEY not set — anchor task disabled");
+    }
+
     let engine_arc = Arc::clone(&state.engine);
     tokio::spawn(async move {
         api::mm::run_mm_bot(engine_arc).await;

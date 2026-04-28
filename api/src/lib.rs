@@ -1,3 +1,4 @@
+pub mod anchor;
 pub mod auth;
 pub mod da;
 pub mod feeds;
@@ -16,7 +17,7 @@ use tokio::sync::Mutex;
 use engine::MatchingEngine;
 use feeds::FeedManager;
 use rate_limit::RateLimiter;
-use crate::types::{StoredFill, StoredOrder, WsEnvelope};
+use crate::types::{AnchorRecord, StoredFill, StoredOrder, WsEnvelope};
 
 pub struct OrderChannelItem {
     pub req: ::types::PostOrderRequest,
@@ -47,6 +48,10 @@ pub struct AppState {
     pub total_taker_fees_collected: Arc<AtomicU64>,
     pub total_maker_rebates_paid: Arc<AtomicU64>,
     pub fees_collected_today: Arc<AtomicU64>,
+    pub anchors: Arc<Mutex<Vec<AnchorRecord>>>,
+    pub anchor_count: Arc<AtomicU64>,
+    pub last_anchor_tx: Arc<Mutex<Option<String>>>,
+    pub last_anchor_time: Arc<AtomicU64>,
 }
 
 impl AppState {
@@ -82,6 +87,10 @@ impl AppState {
             total_taker_fees_collected: Arc::new(AtomicU64::new(0)),
             total_maker_rebates_paid: Arc::new(AtomicU64::new(0)),
             fees_collected_today: Arc::new(AtomicU64::new(0)),
+            anchors: Arc::new(Mutex::new(Vec::new())),
+            anchor_count: Arc::new(AtomicU64::new(0)),
+            last_anchor_tx: Arc::new(Mutex::new(None)),
+            last_anchor_time: Arc::new(AtomicU64::new(0)),
         });
 
         tokio::spawn(engine_order_task(order_rx, engine_arc));

@@ -22,10 +22,19 @@ contract VelaSettlement is ReentrancyGuard {
     // ETH represented as address(0)
     address public constant ETH = address(0);
 
+    mapping(uint256 => bytes32) public anchoredStateRoots;
+    uint256 public anchorCount;
+
     event Deposited(address indexed user, address indexed asset, uint256 amount);
     event Withdrawn(address indexed user, address indexed asset, uint256 amount);
     event EmergencyExitInitiated(address indexed user, address indexed asset, uint256 unlockAt);
     event EmergencyExitExecuted(address indexed user, address indexed asset, uint256 amount);
+    event StateRootAnchored(
+        uint256 indexed anchorId,
+        bytes32 stateRoot,
+        uint256 timestamp,
+        uint256 ordersProcessed
+    );
 
     constructor(address _operator) {
         operator = _operator;
@@ -103,6 +112,26 @@ contract VelaSettlement is ReentrancyGuard {
         }
 
         emit EmergencyExitExecuted(msg.sender, asset, amount);
+    }
+
+    function anchorStateRoot(
+        bytes32 stateRoot,
+        uint256 ordersProcessed
+    ) external onlyOperator {
+        uint256 anchorId = anchorCount++;
+        anchoredStateRoots[anchorId] = stateRoot;
+        emit StateRootAnchored(anchorId, stateRoot, block.timestamp, ordersProcessed);
+    }
+
+    function latestAnchoredStateRoot() external view returns (
+        uint256 anchorId,
+        bytes32 stateRoot,
+        uint256 anchorCount_
+    ) {
+        if (anchorCount == 0) return (0, bytes32(0), 0);
+        anchorId = anchorCount - 1;
+        stateRoot = anchoredStateRoots[anchorId];
+        anchorCount_ = anchorCount;
     }
 
     function getBalance(address user, address asset) external view returns (uint256) {

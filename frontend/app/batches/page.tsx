@@ -21,6 +21,16 @@ interface Batch {
   fills: string[]
 }
 
+interface AnchorRecord {
+  anchor_id: number
+  state_root: string
+  tx_hash: string
+  timestamp: number
+  orders_processed: number
+  block_number: number | null
+  etherscan_url: string
+}
+
 function formatDateTime(ms: number): string {
   return new Date(ms).toLocaleString('en-US', {
     month: 'short',
@@ -35,9 +45,18 @@ function padBatchId(id: number): string {
   return `#${String(id).padStart(3, '0')}`
 }
 
+function formatAnchorId(id: number): string {
+  return `#${String(id).padStart(3, '0')}`
+}
+
+function formatNumber(n: number): string {
+  return n.toLocaleString('en-US')
+}
+
 export default function BatchesPage() {
   const [batches, setBatches] = useState<Batch[]>([])
   const [loading, setLoading] = useState(true)
+  const [anchors, setAnchors] = useState<AnchorRecord[]>([])
 
   const fetchBatches = useCallback(async () => {
     try {
@@ -53,11 +72,28 @@ export default function BatchesPage() {
     }
   }, [])
 
+  const fetchAnchors = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/anchors`)
+      const data = await res.json()
+      if (data.ok && data.data?.anchors) {
+        setAnchors(data.data.anchors)
+      }
+    } catch {
+      // silently ignore
+    }
+  }, [])
+
   useEffect(() => {
     fetchBatches()
-    const t = setInterval(fetchBatches, 10_000)
-    return () => clearInterval(t)
-  }, [fetchBatches])
+    fetchAnchors()
+    const t1 = setInterval(fetchBatches, 10_000)
+    const t2 = setInterval(fetchAnchors, 60_000)
+    return () => {
+      clearInterval(t1)
+      clearInterval(t2)
+    }
+  }, [fetchBatches, fetchAnchors])
 
   const totalFills = batches.reduce((s, b) => s + b.fill_count, 0)
   const avgFills = batches.length > 0 ? (totalFills / batches.length).toFixed(1) : '—'
@@ -141,6 +177,50 @@ export default function BatchesPage() {
             <p style={{ fontFamily: CN, fontSize: '16px', color: '#0C0C0C', margin: 0 }}>{avgFills}</p>
           </div>
         </div>
+      </div>
+
+      <div style={{ background: '#E8E4D8', borderTop: '1px solid rgba(12,12,12,0.08)' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(12,12,12,0.3)', marginBottom: '8px' }}>
+          On-Chain Anchors
+        </p>
+        <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(12,12,12,0.45)', lineHeight: 1.8, maxWidth: '600px', marginBottom: '20px' }}>
+          The engine state root is anchored to Ethereum every 10 minutes. Each anchor is a permanent, immutable record of exchange state that cannot be retroactively altered.
+        </p>
+
+        <div style={{ padding: '6px 0', borderBottom: '1px solid rgba(12,12,12,0.1)' }} className="grid grid-cols-[80px_1fr_180px_120px_100px]">
+          {(['ANCHOR', 'STATE ROOT', 'TIMESTAMP', 'ORDERS', 'TX'] as const).map((h) => (
+            <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.3)' }}>{h}</span>
+          ))}
+        </div>
+
+        {anchors.length === 0 ? (
+          <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(12,12,12,0.35)', padding: '32px 0' }}>
+            No anchors yet. First anchor will publish in less than 10 minutes.
+          </p>
+        ) : (
+          anchors.map((anchor) => (
+            <div
+              key={anchor.anchor_id}
+              style={{ padding: '11px 0', borderBottom: '1px solid rgba(12,12,12,0.05)', alignItems: 'center' }}
+              className="grid grid-cols-[80px_1fr_180px_120px_100px]"
+            >
+              <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '11px', color: '#0C0C0C' }}>{formatAnchorId(anchor.anchor_id)}</span>
+              <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(12,12,12,0.4)' }}>{anchor.state_root.slice(0, 10)}…</span>
+              <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.45)' }}>{formatDateTime(anchor.timestamp)}</span>
+              <span style={{ fontFamily: CN, fontSize: '11px', color: '#0C0C0C' }}>{formatNumber(anchor.orders_processed)}</span>
+              <a
+                href={anchor.etherscan_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(12,12,12,0.4)', textDecoration: 'none' }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#0C0C0C')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(12,12,12,0.4)')}
+              >
+                View →
+              </a>
+            </div>
+          ))
+        )}
       </div>
     </div>
   )

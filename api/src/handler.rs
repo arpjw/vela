@@ -157,6 +157,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/referral/register", post(register_referral))
         .route("/referral/:address", get(get_referral_handler))
         .route("/leaderboard", get(get_leaderboard))
+        .route("/anchors", get(get_anchors))
         .with_state(state)
         .layer(cors)
 }
@@ -1199,13 +1200,51 @@ async fn get_state_root(State(state): State<Arc<AppState>>) -> impl IntoResponse
         .unwrap_or_default()
         .as_millis() as u64;
 
+    let last_anchor_tx = state.last_anchor_tx.lock().await.clone();
+    let last_anchor_time_raw = state.last_anchor_time.load(Ordering::Relaxed);
+    let last_anchor_time = if last_anchor_time_raw == 0 { None } else { Some(last_anchor_time_raw) };
+    let anchor_count = state.anchor_count.load(Ordering::Relaxed);
+
     Json(ApiResponse::ok(StateRootData {
         state_root,
         timestamp,
         order_count,
         user_count,
         block_number: None,
+        last_anchor_tx,
+        last_anchor_time,
+        anchor_count,
     }))
+}
+
+async fn get_anchors(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let anchors = state.anchors.lock().await;
+    let mut result = anchors.clone();
+    drop(anchors);
+
+    result.reverse();
+
+    let total = state.anchor_count.load(Ordering::Relaxed);
+
+    let anchors_out: Vec<serde_json::Value> = result
+        .iter()
+        .map(|a| {
+            serde_json::json!({
+                "anchor_id": a.anchor_id,
+                "state_root": a.state_root,
+                "tx_hash": a.tx_hash,
+                "timestamp": a.timestamp,
+                "orders_processed": a.orders_processed,
+                "block_number": a.block_number,
+                "etherscan_url": format!("https://sepolia.etherscan.io/tx/{}", a.tx_hash),
+            })
+        })
+        .collect();
+
+    Json(ApiResponse::ok(serde_json::json!({
+        "anchors": anchors_out,
+        "total": total,
+    })))
 }
 
 #[derive(serde::Deserialize)]

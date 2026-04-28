@@ -35,6 +35,16 @@ interface BatchDetail {
   fills: StoredFill[]
 }
 
+interface AnchorRecord {
+  anchor_id: number
+  state_root: string
+  tx_hash: string
+  timestamp: number
+  orders_processed: number
+  block_number: number | null
+  etherscan_url: string
+}
+
 function truncateAddress(addr: string): string {
   if (!addr || addr.length < 12) return addr
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
@@ -56,6 +66,7 @@ export default function BatchDetailPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [coveringAnchor, setCoveringAnchor] = useState<AnchorRecord | null | undefined>(undefined)
 
   const fetchBatch = useCallback(async () => {
     try {
@@ -72,7 +83,29 @@ export default function BatchDetailPage() {
     }
   }, [id])
 
+  const fetchAnchors = useCallback(async (batchTimestamp: number) => {
+    try {
+      const res = await fetch(`${API_URL}/anchors`)
+      const data = await res.json()
+      if (data.ok && Array.isArray(data.data?.anchors)) {
+        const sorted: AnchorRecord[] = data.data.anchors.slice().sort(
+          (a: AnchorRecord, b: AnchorRecord) => a.timestamp - b.timestamp
+        )
+        const covering = sorted.find((a) => a.timestamp >= batchTimestamp) ?? null
+        setCoveringAnchor(covering)
+      } else {
+        setCoveringAnchor(null)
+      }
+    } catch {
+      setCoveringAnchor(null)
+    }
+  }, [])
+
   useEffect(() => { fetchBatch() }, [fetchBatch])
+
+  useEffect(() => {
+    if (batch) fetchAnchors(batch.timestamp)
+  }, [batch, fetchAnchors])
 
   function downloadFills() {
     if (!batch) return
@@ -154,6 +187,42 @@ export default function BatchDetailPage() {
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '13px', color: 'rgba(12,12,12,0.5)', lineHeight: 1.8, maxWidth: '560px', marginBottom: '16px' }}>
             The state root is a cryptographic hash of all trades in this batch. Anyone can recompute this hash from the fills below and verify it matches — proving the batch was not tampered with.
           </p>
+
+          {coveringAnchor !== undefined && (
+            <div style={{ marginBottom: '16px' }}>
+              {coveringAnchor ? (
+                <div>
+                  <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#6B8A5A', margin: '0 0 6px' }}>
+                    ● ANCHORED ON-CHAIN
+                  </p>
+                  <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(12,12,12,0.55)', margin: '0 0 4px' }}>
+                    State root anchored in Ethereum tx:{' '}
+                    <span style={{ fontFamily: CN, fontSize: '11px' }}>
+                      {coveringAnchor.tx_hash.slice(0, 10)}…{coveringAnchor.tx_hash.slice(-6)}
+                    </span>
+                  </p>
+                  <a
+                    href={coveringAnchor.etherscan_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontFamily: IN, fontSize: '11px', color: '#0C0C0C', textDecoration: 'underline' }}
+                  >
+                    View on Etherscan →
+                  </a>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(12,12,12,0.3)', margin: '0 0 6px' }}>
+                    ○ PENDING ANCHOR
+                  </p>
+                  <p style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(12,12,12,0.45)', margin: 0 }}>
+                    This batch will be included in the next on-chain anchor (every 10 minutes).
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           <button
             onClick={() => setShowModal(true)}
             style={{ fontFamily: IN, fontSize: '10px', color: '#0C0C0C', background: 'transparent', border: '1px solid rgba(12,12,12,0.15)', padding: '8px 16px', cursor: 'pointer' }}
