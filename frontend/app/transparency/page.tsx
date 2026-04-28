@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import HexCanvas from '@/components/HexCanvas'
 import Skeleton from '@/components/ui/Skeleton'
+import { COMPLETE_COUNT } from '@/lib/transparency-score'
 
 const PF = "'Playfair Display', serif"
 const IN = 'Inter, sans-serif'
@@ -172,6 +174,12 @@ export default function TransparencyPage() {
           </div>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '15px', lineHeight: 1.75, color: 'rgba(232,228,216,0.4)', maxWidth: '560px', marginTop: '20px' }}>
             Every trade. Every order. Every dollar. Verifiable on-chain, in real time, forever. No other exchange has ever done this.
+          </p>
+          <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.3)', marginTop: '16px' }}>
+            {COMPLETE_COUNT}/25 transparency criteria complete ·{' '}
+            <Link href="/transparency-score" style={{ color: 'rgba(232,228,216,0.45)', textDecoration: 'underline' }}>
+              View scorecard →
+            </Link>
           </p>
         </div>
       </div>
@@ -527,8 +535,14 @@ export default function TransparencyPage() {
           Go deeper.
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
           {[
+            {
+              href: '/transparency-score',
+              title: 'Transparency Score',
+              desc: '25 criteria across 5 categories. Scored honestly — complete means verifiable right now. The industry standard for exchange transparency.',
+              link: 'View scorecard →',
+            },
             {
               href: '/operator',
               title: 'Operator Disclosure',
