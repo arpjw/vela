@@ -164,6 +164,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/admin/decisions", post(create_decision))
         .route("/market-makers", get(get_market_makers))
         .route("/market-makers/register", post(register_market_maker))
+        .route("/analytics", get(analytics_handler))
+        .route("/analytics/:market_id", get(analytics_market_handler))
         .with_state(state)
         .layer(cors)
 }
@@ -1826,6 +1828,224 @@ async fn register_market_maker(
     };
     registered.push(mm.clone());
     (StatusCode::OK, Json(ApiResponse::ok(mm))).into_response()
+}
+
+// ---------------------------------------------------------------------------
+// VEL-T2-05: Market analytics endpoint
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct AnalyticsQuery {
+    market_id: Option<String>,
+    timeframe: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct AnalyticsTimeframeQuery {
+    timeframe: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct MarketAnalytics {
+    market_id: String,
+    current_spread_bps: Option<f64>,
+    current_bid: Option<u64>,
+    current_ask: Option<u64>,
+    current_mid: Option<u64>,
+    slippage_1k_usdc: Option<f64>,
+    slippage_10k_usdc: Option<f64>,
+    slippage_100k_usdc: Option<f64>,
+    total_volume_usdc: String,
+    fill_count: usize,
+    avg_fill_size_usdc: String,
+    largest_fill_usdc: String,
+    depth_1pct_bid_usdc: String,
+    depth_1pct_ask_usdc: String,
+    depth_1pct_total_usdc: String,
+}
+
+#[derive(serde::Serialize)]
+struct AnalyticsData {
+    timeframe: String,
+    markets: Vec<MarketAnalytics>,
+    generated_at: u64,
+}
+
+fn fmt_usdc_2dp(v: f64) -> String {
+    format!("{:.2}", v)
+}
+
+fn compute_slippage_bps(asks: &[(u64, u64)], mid: u64, budget_usdc: u64) -> Option<f64> {
+    if mid == 0 || asks.is_empty() {
+        return None;
+    }
+    let mut remaining: u128 = budget_usdc as u128 * 10_000_000_000_000_000u128;
+    let mut total_qty: u128 = 0;
+    let mut total_cost: u128 = 0;
+    for &(price_fp, qty_fp) in asks {
+        if remaining == 0 || price_fp == 0 {
+            break;
+        }
+        let max_qty = remaining / price_fp as u128;
+        let fill_qty = max_qty.min(qty_fp as u128);
+        if fill_qty == 0 {
+            continue;
+        }
+        let cost = fill_qty * price_fp as u128;
+        total_qty += fill_qty;
+        total_cost += cost;
+        remaining = remaining.saturating_sub(cost);
+    }
+    if total_qty == 0 {
+        return None;
+    }
+    let avg_price = total_cost as f64 / total_qty as f64;
+    Some(((avg_price - mid as f64) / mid as f64 * 10_000.0).max(0.0))
+}
+
+fn compute_depth_usdc_1pct(levels: &[(u64, u64)], mid: u64, is_bid: bool) -> f64 {
+    if mid == 0 {
+        return 0.0;
+    }
+    let bound = if is_bid { mid * 99 / 100 } else { mid * 101 / 100 };
+    let mut total_qty: u128 = 0;
+    for &(price, qty) in levels {
+        let in_range = if is_bid { price >= bound } else { price <= bound };
+        if !in_range {
+            break;
+        }
+        total_qty += qty as u128;
+    }
+    total_qty as f64 * mid as f64 / 1e16
+}
+
+async fn build_analytics_data(
+    filter_market: Option<&str>,
+    timeframe_str: &str,
+    state: &Arc<AppState>,
+) -> ApiResponse<AnalyticsData> {
+    let window_us: u64 = match timeframe_str {
+        "1H" => 3_600_000_000,
+        "7D" => 604_800_000_000,
+        _ => 86_400_000_000,
+    };
+
+    let now_us = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_micros() as u64;
+    let window_start = now_us.saturating_sub(window_us);
+
+    let engine = state.engine.lock().await;
+    let fills = state.fills.lock().await;
+
+    let mut market_ids: Vec<String> = if let Some(mid) = filter_market {
+        vec![mid.to_string()]
+    } else {
+        let mut ids: Vec<String> = engine.markets.keys().map(|k| k.0.clone()).collect();
+        ids.sort();
+        ids
+    };
+    market_ids.retain(|id| engine.markets.contains_key(&MarketId(id.clone())));
+
+    let mut markets = Vec::new();
+
+    for market_id in &market_ids {
+        let book = engine.order_books.get(&MarketId(market_id.clone()));
+
+        let (best_bid, best_ask) = match book {
+            Some(b) => (b.best_bid(), b.best_ask()),
+            None => (None, None),
+        };
+
+        let current_mid = match (best_bid, best_ask) {
+            (Some(bid), Some(ask)) => Some(bid + (ask - bid) / 2),
+            _ => None,
+        };
+
+        let current_spread_bps = match (best_bid, best_ask, current_mid) {
+            (Some(bid), Some(ask), Some(mid)) if mid > 0 => {
+                Some((ask - bid) as f64 / mid as f64 * 10_000.0)
+            }
+            _ => None,
+        };
+
+        let (slippage_1k, slippage_10k, slippage_100k, depth_bid, depth_ask) =
+            match (book, current_mid) {
+                (Some(b), Some(mid)) => {
+                    let asks = b.depth_asks(500);
+                    let bids = b.depth_bids(500);
+                    (
+                        compute_slippage_bps(&asks, mid, 1_000),
+                        compute_slippage_bps(&asks, mid, 10_000),
+                        compute_slippage_bps(&asks, mid, 100_000),
+                        compute_depth_usdc_1pct(&bids, mid, true),
+                        compute_depth_usdc_1pct(&asks, mid, false),
+                    )
+                }
+                _ => (None, None, None, 0.0, 0.0),
+            };
+
+        let market_fills: Vec<&StoredFill> = fills
+            .iter()
+            .filter(|f| f.market_id == *market_id && f.timestamp >= window_start)
+            .collect();
+
+        let fill_count = market_fills.len();
+        let notionals: Vec<f64> = market_fills
+            .iter()
+            .map(|f| f.price as f64 * f.quantity as f64 / 1e16)
+            .collect();
+        let total_volume: f64 = notionals.iter().sum();
+        let largest_fill: f64 = notionals.iter().cloned().fold(0.0f64, f64::max);
+        let avg_fill = if fill_count > 0 { total_volume / fill_count as f64 } else { 0.0 };
+
+        markets.push(MarketAnalytics {
+            market_id: market_id.clone(),
+            current_spread_bps,
+            current_bid: best_bid,
+            current_ask: best_ask,
+            current_mid,
+            slippage_1k_usdc: slippage_1k,
+            slippage_10k_usdc: slippage_10k,
+            slippage_100k_usdc: slippage_100k,
+            total_volume_usdc: fmt_usdc_2dp(total_volume),
+            fill_count,
+            avg_fill_size_usdc: fmt_usdc_2dp(avg_fill),
+            largest_fill_usdc: fmt_usdc_2dp(largest_fill),
+            depth_1pct_bid_usdc: fmt_usdc_2dp(depth_bid),
+            depth_1pct_ask_usdc: fmt_usdc_2dp(depth_ask),
+            depth_1pct_total_usdc: fmt_usdc_2dp(depth_bid + depth_ask),
+        });
+    }
+
+    let generated_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    ApiResponse::ok(AnalyticsData {
+        timeframe: timeframe_str.to_string(),
+        markets,
+        generated_at,
+    })
+}
+
+async fn analytics_handler(
+    Query(query): Query<AnalyticsQuery>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let tf = query.timeframe.as_deref().unwrap_or("24H");
+    Json(build_analytics_data(query.market_id.as_deref(), tf, &state).await)
+}
+
+async fn analytics_market_handler(
+    Path(market_id): Path<String>,
+    Query(query): Query<AnalyticsTimeframeQuery>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let tf = query.timeframe.as_deref().unwrap_or("24H");
+    Json(build_analytics_data(Some(&market_id), tf, &state).await)
 }
 
 async fn admin_fees_handler(

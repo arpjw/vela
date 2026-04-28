@@ -535,7 +535,7 @@ export default function TransparencyPage() {
           Go deeper.
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[1px]" style={{ background: 'rgba(12,12,12,0.07)' }}>
           {[
             {
               href: '/transparency-score',
@@ -566,6 +566,12 @@ export default function TransparencyPage() {
               title: 'System Status',
               desc: 'Live engine health, uptime metrics, and incident history. Published in real time.',
               link: 'View status →',
+            },
+            {
+              href: '/analytics',
+              title: 'Market Analytics',
+              desc: 'Real-time spread, slippage estimates, and market depth for all 16 markets. Published openly.',
+              link: 'View analytics →',
             },
           ].map((card) => (
             <a

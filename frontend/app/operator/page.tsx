@@ -330,6 +330,68 @@ export default function OperatorPage() {
         <HexCanvas />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '20px' }}>
+            Operator Key Rotation
+          </p>
+          <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '28px', color: '#E8E4D8', margin: '0 0 16px' }}>
+            The key rotates. The record is permanent.
+          </h2>
+          <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '14px', lineHeight: 1.75, color: 'rgba(232,228,216,0.35)', maxWidth: '500px', marginBottom: '32px' }}>
+            The operator wallet key is rotated every 90 days. Each rotation is announced 14 days in advance via a signed message from the current key. The complete rotation history is published below.
+          </p>
+
+          <div style={{ padding: '24px', background: 'rgba(232,228,216,0.04)', borderLeft: '2px solid rgba(232,228,216,0.07)', marginBottom: '32px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {[
+                { label: 'ROTATION FREQUENCY', value: 'Every 90 days' },
+                { label: 'ADVANCE NOTICE', value: '14 days minimum' },
+                { label: 'HANDOFF PROOF', value: 'Signed by outgoing key' },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,228,216,0.3)' }}>{label}</span>
+                  <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '13px', color: '#E8E4D8' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,228,216,0.25)', marginBottom: '12px' }}>
+            Key Rotation History
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 100px', gap: '0 16px', padding: '0 0 8px', borderBottom: '1px solid rgba(232,228,216,0.08)' }}>
+            {['EVENT', 'FROM ADDRESS', 'TO ADDRESS', 'DATE'].map((h) => (
+              <span key={h} style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(232,228,216,0.2)' }}>{h}</span>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 100px', gap: '0 16px', padding: '14px 0', borderBottom: '1px solid rgba(232,228,216,0.06)', alignItems: 'center' }}>
+            <span style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(232,228,216,0.5)', border: '1px solid rgba(232,228,216,0.15)', padding: '2px 6px', display: 'inline-block' }}>
+              GENESIS
+            </span>
+            <span style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,228,216,0.3)' }}>—</span>
+            <a
+              href={`https://sepolia.etherscan.io/address/${OPERATOR_ADDRESS}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.5)', textDecoration: 'none', wordBreak: 'break-all' }}
+            >
+              {OPERATOR_ADDRESS.slice(0, 10)}…{OPERATOR_ADDRESS.slice(-8)}
+            </a>
+            <span style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.35)' }}>April 2026</span>
+          </div>
+
+          {/* TODO VEL-T1-02: fetch from GET /key-rotations */}
+
+          <p style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,228,216,0.2)', marginTop: '12px' }}>
+            No rotations have occurred yet. First rotation scheduled for July 2026.
+          </p>
+        </div>
+      </div>
+
+      <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
+        <HexCanvas />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <p style={{ fontFamily: IN, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.3)', marginBottom: '20px' }}>
             Signed Commitment
           </p>
           <h2 style={{ fontFamily: PF, fontWeight: 700, fontSize: '32px', color: '#E8E4D8', margin: '0 0 16px' }}>

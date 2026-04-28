@@ -88,8 +88,8 @@ export const TRANSPARENCY_CRITERIA: Criterion[] = [
     category: 'Operational Transparency',
     title: 'Spread and slippage analytics',
     description: 'Real-time spread per market, average slippage for standard order sizes, published publicly.',
-    status: 'planned',
-    plannedIn: 'VEL-T2-05',
+    status: 'complete',
+    evidence: '/analytics',
   },
   {
     id: 'OI-01',
@@ -168,8 +168,8 @@ export const TRANSPARENCY_CRITERIA: Criterion[] = [
     category: 'Governance',
     title: 'Operator key rotation schedule',
     description: 'Published key rotation policy with cryptographic proof of each handoff.',
-    status: 'planned',
-    plannedIn: 'VEL-T1-02',
+    status: 'complete',
+    evidence: '/operator',
   },
   {
     id: 'CV-01',
