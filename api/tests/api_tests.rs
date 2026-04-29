@@ -5,6 +5,17 @@ use engine::MatchingEngine;
 use serde_json::{json, Value};
 use types::{AssetId, DepositRequest, FeeConfig, Market, MarketId, OrderSide, OrderType, PostOrderRequest, Request, PRICE_SCALE, QUANTITY_SCALE};
 
+fn make_wal() -> Arc<api::wal::Wal> {
+    let dir = std::env::temp_dir().join(format!(
+        "vela_test_wal_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    Arc::new(api::wal::Wal::new(&dir).unwrap())
+}
+
 fn user_addr() -> String {
     "0x0000000000000000000000000000000000000001".to_string()
 }
@@ -51,7 +62,7 @@ struct EngineWithUser {
 type EngineWithUser2 = MatchingEngine;
 
 fn test_server(engine: MatchingEngine) -> TestServer {
-    let state = AppState::new(engine);
+    let state = AppState::new(engine, make_wal());
     let router = api::build_router(state);
     TestServer::new(router).unwrap()
 }
@@ -223,7 +234,7 @@ mod ws_tests {
     /// Create a server that shares its AppState with the caller so tests can
     /// inject events directly via `state.feeds`.  WS requires HTTP transport.
     fn ws_test_server(engine: MatchingEngine) -> (axum_test::TestServer, Arc<AppState>) {
-        let state = AppState::new(engine);
+        let state = AppState::new(engine, super::make_wal());
         let state_clone = state.clone();
         let config = TestServerConfig::builder().http_transport().build();
         let server = axum_test::TestServer::new_with_config(

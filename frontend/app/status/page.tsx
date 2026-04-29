@@ -39,6 +39,17 @@ interface StatusData {
   last_restart_reason: string | null
 }
 
+interface WalStatsData {
+  current_sequence: number
+  current_segment: string
+  segment_size_bytes: number
+  last_checkpoint_sequence: number
+  last_checkpoint_time: number
+  entries_since_checkpoint: number
+  last_engine_start_reason: string
+  wal_enabled: boolean
+}
+
 function formatUptime(secs: number): string {
   if (secs < 60) return `${secs}s`
   if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`
@@ -79,16 +90,23 @@ export default function StatusPage() {
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [incidentData, setIncidentData] = useState<IncidentData | null>(null)
+  const [walStats, setWalStats] = useState<WalStatsData | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const incidentIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/status`)
-      const json = await res.json()
-      if (json.ok) {
-        setData(json.data)
+      const [statusRes, walRes] = await Promise.all([
+        fetch(`${API_URL}/status`),
+        fetch(`${API_URL}/wal/stats`),
+      ])
+      const [statusJson, walJson] = await Promise.all([statusRes.json(), walRes.json()])
+      if (statusJson.ok) {
+        setData(statusJson.data)
         setLastUpdated(new Date())
+      }
+      if (walJson.ok) {
+        setWalStats(walJson.data)
       }
     } catch {
       // silently ignore
@@ -119,25 +137,35 @@ export default function StatusPage() {
     return () => { if (incidentIntervalRef.current) clearInterval(incidentIntervalRef.current) }
   }, [fetchIncidents])
 
-  const status = data?.status ?? null
+  const walDegraded = walStats != null && walStats.entries_since_checkpoint > 5000
+  const effectiveStatus = walDegraded && data?.status === 'operational' ? 'degraded' : (data?.status ?? null)
 
-  const dotColor = status === 'operational'
+  const dotColor = effectiveStatus === 'operational'
     ? '#6B8A5A'
-    : status === 'degraded'
+    : effectiveStatus === 'degraded'
     ? '#CC3333'
     : 'rgba(232,228,216,0.4)'
 
-  const statusLabel = status === 'operational'
+  const statusLabel = effectiveStatus === 'operational'
     ? 'OPERATIONAL'
-    : status === 'degraded'
+    : effectiveStatus === 'degraded'
     ? 'DEGRADED'
     : 'STARTING'
 
-  const statusColor = status === 'operational'
+  const statusColor = effectiveStatus === 'operational'
     ? '#6B8A5A'
-    : status === 'degraded'
+    : effectiveStatus === 'degraded'
     ? '#CC3333'
     : 'rgba(232,228,216,0.4)'
+
+  const walSeqColor = '#0C0C0C'
+  const walEntriesColor = walStats == null
+    ? 'rgba(12,12,12,0.6)'
+    : walStats.entries_since_checkpoint > 5000
+    ? '#CC3333'
+    : walStats.entries_since_checkpoint > 1000
+    ? 'rgba(180,140,60,0.8)'
+    : 'rgba(12,12,12,0.6)'
 
   const metrics = data ? [
     { label: 'ENGINE UPTIME', value: formatUptime(data.engine_uptime_seconds) },
@@ -224,6 +252,22 @@ export default function StatusPage() {
                 </p>
               </div>
             ))}
+            <div style={{ background: 'rgba(12,12,12,0.04)', padding: '24px', borderLeft: '2px solid rgba(12,12,12,0.08)' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.35)', margin: '0 0 10px' }}>
+                WAL SEQUENCE
+              </p>
+              <p style={{ fontFamily: CN, fontWeight: 600, fontSize: '14px', color: walSeqColor, margin: 0 }}>
+                {walStats != null ? walStats.current_sequence.toLocaleString() : '—'}
+              </p>
+            </div>
+            <div style={{ background: 'rgba(12,12,12,0.04)', padding: '24px', borderLeft: '2px solid rgba(12,12,12,0.08)' }}>
+              <p style={{ fontFamily: IN, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(12,12,12,0.35)', margin: '0 0 10px' }}>
+                ENTRIES SINCE CHECKPOINT
+              </p>
+              <p style={{ fontFamily: CN, fontWeight: 600, fontSize: '14px', color: walEntriesColor, margin: 0 }}>
+                {walStats != null ? walStats.entries_since_checkpoint.toLocaleString() : '—'}
+              </p>
+            </div>
           </div>
         ) : (
           <p style={{ fontFamily: IN, fontSize: '13px', color: 'rgba(12,12,12,0.4)', textAlign: 'center', padding: '40px 0' }}>

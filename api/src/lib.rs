@@ -7,6 +7,7 @@ pub mod mm;
 pub mod rate_limit;
 pub mod snapshot;
 pub mod types;
+pub mod wal;
 pub mod ws;
 
 use std::collections::HashMap;
@@ -61,10 +62,11 @@ pub struct AppState {
     pub prover: Arc<dyn ZkProver>,
     pub attestations: Arc<Mutex<HashMap<u64, AttestationRecord>>>,
     pub attester: Arc<dyn TeeAttester>,
+    pub wal: Arc<wal::Wal>,
 }
 
 impl AppState {
-    pub fn new(engine: MatchingEngine) -> Arc<Self> {
+    pub fn new(engine: MatchingEngine, wal: Arc<wal::Wal>) -> Arc<Self> {
         let (order_tx, order_rx) = tokio::sync::mpsc::channel::<OrderChannelItem>(1024);
         let engine_arc = Arc::new(Mutex::new(engine));
         let (ws_bcast_tx, _) = tokio::sync::broadcast::channel::<WsEnvelope>(4096);
@@ -110,6 +112,7 @@ impl AppState {
             prover,
             attestations: Arc::new(Mutex::new(HashMap::new())),
             attester,
+            wal,
         });
 
         tokio::spawn(engine_order_task(order_rx, engine_arc));

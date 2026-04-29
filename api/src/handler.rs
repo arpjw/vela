@@ -24,6 +24,8 @@ use crate::{
         CancelOrderBody, DepositBody, MarketResponse, OrderFillRecord, PostOrderBody,
         StateRootData, StoredFill, StoredOrder, WithdrawBody, format_amount,
     },
+    wal,
+    wal::{WalDeposit, WalFillCreated, WalOrderCancel, WalOrderPost, WalOrderProcessed, WalWithdrawalRequest},
     ws::handle_ws,
 };
 
@@ -172,6 +174,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/proofs", get(proofs_list_handler))
         .route("/tee/stats", get(tee_stats_handler))
         .route("/attestations", get(attestations_list_handler))
+        .route("/wal/stats", get(wal_stats_handler))
         .with_state(state)
         .layer(cors)
 }
@@ -545,6 +548,61 @@ async fn record_order_and_fills(
         orders_guard.insert(posted.order_id, new_order.clone());
     }
 
+    let wal_post = WalOrderPost {
+        order_id: posted.order_id,
+        user: body.address.clone(),
+        market_id: body.market.clone(),
+        side: side_to_str(body.side).to_string(),
+        price: body.price,
+        quantity: body.quantity,
+        order_type: order_type_to_str(body.order_type).to_string(),
+        time_in_force: order_type_to_tif(body.order_type).to_string(),
+        nonce: body.nonce,
+        client_order_id: body.client_order_id.clone(),
+    };
+    if let Err(e) = state.wal.append(wal::ORDER_POST, &wal_post).await {
+        tracing::error!("WAL ORDER_POST failed: {e}");
+    }
+
+    let result_str = if total_filled >= body.quantity {
+        "filled"
+    } else if total_filled > 0 {
+        "partial"
+    } else if matches!(posted.status, OrderStatus::Open | OrderStatus::PartiallyFilled) {
+        "resting"
+    } else {
+        "rejected"
+    };
+
+    let wal_processed = WalOrderProcessed {
+        order_id: posted.order_id,
+        result: result_str.to_string(),
+        fill_ids: fill_pairs.iter().map(|(id, _)| id.clone()).collect(),
+        filled_quantity: total_filled,
+        rejection_reason: None,
+    };
+    if let Err(e) = state.wal.append(wal::ORDER_PROCESSED, &wal_processed).await {
+        tracing::error!("WAL ORDER_PROCESSED failed: {e}");
+    }
+
+    for (fill_id, f) in &fill_pairs {
+        let wal_fill = WalFillCreated {
+            fill_id: fill_id.clone(),
+            market_id: body.market.clone(),
+            maker_order_id: f.maker_order_id,
+            taker_order_id: f.taker_order_id,
+            maker_address: f.maker.to_hex(),
+            taker_address: f.taker.to_hex(),
+            price: f.price,
+            quantity: f.quantity,
+            maker_fee: f.maker_fee,
+            taker_fee: f.taker_fee as u64,
+        };
+        if let Err(e) = state.wal.append(wal::FILL_CREATED, &wal_fill).await {
+            tracing::error!("WAL FILL_CREATED failed: {e}");
+        }
+    }
+
     let da_order_id = new_order.id;
     let da_bytes = serde_json::to_vec(&new_order).unwrap_or_default();
     let state_da = Arc::clone(state);
@@ -702,6 +760,9 @@ async fn cancel_order(
         return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("invalid signature"))).into_response();
     }
 
+    let cancel_client_order_id = body.client_order_id.clone();
+    let cancel_order_id_hint = body.order_id;
+
     let req = CancelOrderRequest {
         user: user.clone(),
         order_id: body.order_id,
@@ -726,6 +787,22 @@ async fn cancel_order(
         return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(msg))).into_response();
     }
 
+    let canceled_id = responses.iter().find_map(|r| {
+        if let EngineResponse::OrderCanceled(c) = r { Some(c.order_id) } else { None }
+    }).or(cancel_order_id_hint);
+
+    if let Some(order_id) = canceled_id {
+        let wal_cancel = WalOrderCancel {
+            order_id,
+            client_order_id: cancel_client_order_id,
+            user: user.to_hex(),
+            reason: "user".to_string(),
+        };
+        if let Err(e) = state.wal.append(wal::ORDER_CANCEL, &wal_cancel).await {
+            tracing::error!("WAL ORDER_CANCEL failed: {e}");
+        }
+    }
+
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
 }
 
@@ -742,6 +819,11 @@ async fn initiate_withdrawal(
     if verify_matches_async(msg, body.signature.clone(), body.address.clone()).await.is_err() {
         return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<()>::err("invalid signature"))).into_response();
     }
+
+    let wal_asset = body.asset.clone();
+    let wal_amount = body.amount;
+    let wal_nonce = body.nonce;
+    let wal_user_hex = body.address.clone();
 
     let req = WithdrawalRequest {
         user: user.clone(),
@@ -765,6 +847,16 @@ async fn initiate_withdrawal(
 
     if let Some(msg) = first_engine_error(&responses) {
         return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(msg))).into_response();
+    }
+
+    let wal_wr = WalWithdrawalRequest {
+        user: wal_user_hex,
+        asset: wal_asset,
+        amount: wal_amount,
+        nonce: wal_nonce,
+    };
+    if let Err(e) = state.wal.append(wal::WITHDRAWAL_REQUEST, &wal_wr).await {
+        tracing::error!("WAL WITHDRAWAL_REQUEST failed: {e}");
     }
 
     (StatusCode::OK, Json(ApiResponse::ok(responses))).into_response()
@@ -817,6 +909,10 @@ async fn deposit_handler(
     let mut l1_tx_hash = [0u8; 32];
     l1_tx_hash.copy_from_slice(&hash_result);
 
+    let wal_dep_user = body.user.clone();
+    let wal_dep_asset = body.asset.clone();
+    let wal_tx_hash_hex = hex::encode(l1_tx_hash);
+
     let req = DepositRequest {
         user: user.clone(),
         asset: AssetId(body.asset),
@@ -833,6 +929,16 @@ async fn deposit_handler(
 
     if let Some(msg) = first_engine_error(&responses) {
         return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::err(msg))).into_response();
+    }
+
+    let wal_dep = WalDeposit {
+        user: wal_dep_user,
+        asset: wal_dep_asset,
+        amount,
+        tx_hash: Some(wal_tx_hash_hex),
+    };
+    if let Err(e) = state.wal.append(wal::DEPOSIT, &wal_dep).await {
+        tracing::error!("WAL DEPOSIT failed: {e}");
     }
 
     let engine = state.engine.lock().await;
@@ -2485,6 +2591,20 @@ async fn attestations_list_handler(
     }))).into_response()
 }
 
+async fn wal_stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let stats = state.wal.stats().await;
+    Json(ApiResponse::ok(serde_json::json!({
+        "current_sequence": stats.current_sequence,
+        "current_segment": stats.current_segment,
+        "segment_size_bytes": stats.segment_size_bytes,
+        "last_checkpoint_sequence": stats.last_checkpoint_sequence,
+        "last_checkpoint_time": stats.last_checkpoint_time,
+        "entries_since_checkpoint": stats.entries_since_checkpoint,
+        "last_engine_start_reason": stats.last_engine_start_reason,
+        "wal_enabled": true,
+    })))
+}
+
 #[cfg(test)]
 mod tee_tests {
     use super::*;
@@ -2494,7 +2614,15 @@ mod tee_tests {
         use engine::MatchingEngine;
         use types::FeeConfig;
         let engine = MatchingEngine::new(FeeConfig::default(), 5.0);
-        let state = crate::AppState::new(engine);
+        let wal_dir = std::env::temp_dir().join(format!(
+            "vela_tee_test_wal_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let wal = std::sync::Arc::new(crate::wal::Wal::new(&wal_dir).unwrap());
+        let state = crate::AppState::new(engine, wal);
         let router = build_router(state);
         TestServer::new(router).unwrap()
     }

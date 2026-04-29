@@ -5,6 +5,7 @@ use types::{
     Request, UserId,
 };
 use api::types::Incident;
+use api::wal::{Wal, WalEngineStart, WalEngineStop};
 
 fn seed_markets(engine: &mut MatchingEngine) {
     for ticker in &[
@@ -166,6 +167,27 @@ async fn main() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(3001);
 
+    let wal_dir = std::path::PathBuf::from(
+        std::env::var("SNAPSHOT_DIR").unwrap_or_else(|_| "/data".to_string()),
+    );
+
+    let wal = Arc::new(match Wal::new(&wal_dir) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("WAL init failed: {e} — continuing without WAL");
+            Wal::new(&std::env::temp_dir().join("vela_wal_fallback")).unwrap_or_else(|_| {
+                panic!("Cannot initialize WAL even in temp dir")
+            })
+        }
+    });
+
+    let was_clean = Wal::was_clean_shutdown_sync(&wal_dir);
+    let checkpoint_seq = if !was_clean && Wal::wal_files_exist(&wal_dir) {
+        Wal::find_checkpoint_sequence_sync(&wal_dir)
+    } else {
+        0
+    };
+
     let mut engine = MatchingEngine::new(FeeConfig::default(), 5.0);
 
     let mut loaded_incidents: Vec<Incident> = Vec::new();
@@ -213,7 +235,23 @@ async fn main() {
         }
     }
 
-    let state = api::AppState::new(engine);
+    let (recovery_reason, recovered_fills, recovered_orders) =
+        if !was_clean && Wal::wal_files_exist(&wal_dir) {
+            let (fills, orders) =
+                api::snapshot::replay_wal_entries(&mut engine, &wal_dir, checkpoint_seq);
+            tracing::info!(
+                "WAL replay complete: replayed entries, recovered {} orders {} fills",
+                orders.len(),
+                fills.len()
+            );
+            ("crash_recovery", fills, orders)
+        } else {
+            ("clean", vec![], std::collections::HashMap::new())
+        };
+
+    let previous_sequence = wal.current_sequence();
+
+    let state = api::AppState::new(engine, Arc::clone(&wal));
 
     {
         *state.incidents.lock().await = loaded_incidents;
@@ -221,6 +259,11 @@ async fn main() {
         *state.registered_mms.lock().await = loaded_mms;
         *state.proofs.lock().await = loaded_proofs;
         *state.attestations.lock().await = loaded_attestations;
+    }
+
+    if !recovered_fills.is_empty() || !recovered_orders.is_empty() {
+        *state.fills.lock().await = recovered_fills;
+        *state.stored_orders.lock().await = recovered_orders;
     }
 
     if need_restart_incident {
@@ -239,6 +282,14 @@ async fn main() {
             impact: "Brief interruption. All state preserved.".to_string(),
         });
     }
+
+    wal.append(api::wal::ENGINE_START, &WalEngineStart {
+        version: "0.2.0".to_string(),
+        reason: recovery_reason.to_string(),
+        previous_sequence,
+    })
+    .await
+    .unwrap_or_else(|e| { tracing::error!("WAL ENGINE_START write failed: {e}"); 0 });
 
     if let Some((anchors, count)) = api::anchor::load_anchors().await {
         let last = anchors.last().map(|a| (a.tx_hash.clone(), a.timestamp));
@@ -272,12 +323,41 @@ async fn main() {
     tokio::spawn(async move {
         api::snapshot::run_snapshot_task(snapshot_state).await;
     });
-    // Note: engine_order_task (P2-01 batch pipeline) is spawned inside AppState::new
 
     let router = api::build_router(state);
 
     let addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     tracing::info!("listening on {addr}");
-    axum::serve(listener, router).await.unwrap();
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        result = axum::serve(listener, router) => {
+            if let Err(e) = result {
+                eprintln!("Server error: {e}");
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("SIGINT received, shutting down");
+        }
+        _ = terminate => {
+            tracing::info!("SIGTERM received, shutting down");
+        }
+    }
+
+    wal.append(api::wal::ENGINE_STOP, &WalEngineStop {
+        reason: "clean".to_string(),
+        final_sequence: wal.current_sequence(),
+    })
+    .await
+    .unwrap_or_else(|e| { tracing::error!("WAL ENGINE_STOP write failed: {e}"); 0 });
 }
