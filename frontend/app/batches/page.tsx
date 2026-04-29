@@ -222,6 +222,11 @@ export default function BatchesPage() {
           ))
         )}
       </div>
+      <div style={{ background: '#E8E4D8', borderTop: '1px solid rgba(12,12,12,0.07)', padding: '20px 52px' }}>
+        <Link href="/proofs" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.5)', textDecoration: 'underline' }}>
+          ZK Proof System →
+        </Link>
+      </div>
     </div>
   )
 }

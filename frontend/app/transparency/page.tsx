@@ -573,6 +573,12 @@ export default function TransparencyPage() {
               desc: 'Real-time spread, slippage estimates, and market depth for all 16 markets. Published openly.',
               link: 'View analytics →',
             },
+            {
+              href: '/proofs',
+              title: 'ZK Proof System',
+              desc: 'Vela\'s optimistic-ZK architecture. Infrastructure deployed, SP1 integration and full per-batch proving ships post-Stanford AFT Lab (June 2026).',
+              link: 'View proof system →',
+            },
           ].map((card) => (
             <a
               key={card.href}

@@ -9,6 +9,7 @@ license.workspace = true
 types = { workspace = true }
 engine = { workspace = true }
 state = { workspace = true }
+zkvm = { path = "../zkvm" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

@@ -207,7 +207,7 @@ export const TRANSPARENCY_CRITERIA: Criterion[] = [
     id: 'CV-05',
     category: 'Cryptographic Verification',
     title: 'ZK proof for every batch',
-    description: 'Mathematical proof of correct execution generated and published for every batch of trades.',
+    description: 'ZK proof infrastructure built. SP1 integration and full per-batch proving ships June 2026 (Stanford AFT Lab).',
     status: 'planned',
     plannedIn: 'VEL-T1-01',
   },

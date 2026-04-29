@@ -1,10 +1,13 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tracing::{info, warn};
 use state::StateManager;
 use state::mpt::Hash;
 use types::Request;
+use zkvm::{BatchProof, ProofRequest, ZkProver};
 use crate::batch::CommitBatch;
 use crate::da::{DaRecord, DataAvailabilityClient};
 use crate::forced_inclusion::{DelayedInbox, ForcedEntry};
@@ -45,6 +48,8 @@ pub struct CommitterConfig {
     /// the typical Arbitrum delayed-inbox window.  Set to `Duration::ZERO` in
     /// tests to make every forced tx immediately eligible.
     pub forced_inclusion_timeout: Duration,
+    pub prover: Option<Arc<dyn ZkProver>>,
+    pub proof_store: Option<Arc<Mutex<HashMap<u64, BatchProof>>>>,
 }
 
 impl Default for CommitterConfig {
@@ -54,6 +59,8 @@ impl Default for CommitterConfig {
             disk_path: None,
             max_batch_size: 10_000,
             forced_inclusion_timeout: Duration::from_secs(24 * 60 * 60),
+            prover: None,
+            proof_store: None,
         }
     }
 }
@@ -72,6 +79,9 @@ pub struct Committer {
     total_committed: u64,
     da_client: Option<Box<dyn DataAvailabilityClient>>,
     inbox: DelayedInbox,
+    prover: Option<Arc<dyn ZkProver>>,
+    proof_store: Option<Arc<Mutex<HashMap<u64, BatchProof>>>>,
+    prev_root: Option<Hash>,
 }
 
 impl Committer {
@@ -83,6 +93,8 @@ impl Committer {
         da_client: Option<Box<dyn DataAvailabilityClient>>,
     ) -> Self {
         let disk_path = config.disk_path.clone();
+        let prover = config.prover.clone();
+        let proof_store = config.proof_store.clone();
         Committer {
             rx,
             forced_rx,
@@ -93,6 +105,9 @@ impl Committer {
             total_committed: 0,
             da_client,
             inbox: DelayedInbox::new(),
+            prover,
+            proof_store,
+            prev_root: None,
         }
     }
 
@@ -185,6 +200,10 @@ impl Committer {
         let snapshot = self.state_manager.take_snapshot();
         let requests_for_da = self.pending_requests.clone();
 
+        let state_root_before = self.prev_root
+            .map(|r| format!("0x{}", hex::encode(r)))
+            .unwrap_or_else(|| format!("0x{}", "0".repeat(64)));
+
         let root = self.state_manager.commit_full(snapshot.clone());
         self.total_committed += batch_size as u64;
         let sequence = self.state_manager.batch_sequence;
@@ -202,6 +221,24 @@ impl Committer {
         let da_record = self.submit_to_da(sequence, root, &snapshot, &requests_for_da);
 
         self.pending_requests.clear();
+
+        if let (Some(prover), Some(proof_store)) = (self.prover.clone(), self.proof_store.clone()) {
+            let state_root_after = format!("0x{}", hex::encode(root));
+            let request = ProofRequest {
+                batch_id: sequence,
+                state_root_before,
+                state_root_after,
+                fills: vec![],
+                orders_processed: self.total_committed,
+                timestamp: ts,
+            };
+            tokio::spawn(async move {
+                let result = prover.prove_batch(request).await;
+                proof_store.lock().await.insert(sequence, result.proof);
+            });
+        }
+
+        self.prev_root = Some(root);
 
         if let Some(tx) = &self.result_tx {
             let result = CommitResult {

@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
 use engine::MatchingEngine;
 use types::{AssetId, Balance, Market, Order, UserId, UserMetadata};
 use crate::types::{Decision, Incident, RegisteredMM};
+use zkvm::BatchProof;
 
 const SNAPSHOT_INTERVAL_SECS: u64 = 60;
 
@@ -39,6 +39,8 @@ pub struct EngineSnapshot {
     pub decisions: Vec<Decision>,
     #[serde(default)]
     pub registered_mms: Vec<RegisteredMM>,
+    #[serde(default)]
+    pub proofs: HashMap<u64, BatchProof>,
 }
 
 pub async fn save_snapshot(state: Arc<crate::AppState>) -> Result<()> {
@@ -78,6 +80,7 @@ pub async fn save_snapshot(state: Arc<crate::AppState>) -> Result<()> {
     let incidents = state.incidents.lock().await.clone();
     let decisions = state.decisions.lock().await.clone();
     let registered_mms = state.registered_mms.lock().await.clone();
+    let proofs = state.proofs.lock().await.clone();
 
     let snapshot = EngineSnapshot {
         version: 1,
@@ -92,6 +95,7 @@ pub async fn save_snapshot(state: Arc<crate::AppState>) -> Result<()> {
         incidents,
         decisions,
         registered_mms,
+        proofs,
     };
 
     let json = serde_json::to_vec(&snapshot)?;
@@ -177,4 +181,8 @@ pub fn restore_engine_from_snapshot(
     tracing::info!("Engine restored from snapshot: {}", snapshot.timestamp);
 
     Ok(())
+}
+
+pub fn extract_proofs_from_snapshot(snapshot: &EngineSnapshot) -> HashMap<u64, BatchProof> {
+    snapshot.proofs.clone()
 }

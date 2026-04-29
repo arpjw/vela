@@ -5,6 +5,25 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import HexCanvas from '@/components/HexCanvas'
 
+interface PublicInputs {
+  state_root_before: string
+  state_root_after: string
+  batch_id: number
+  fill_count: number
+}
+
+interface BatchProofData {
+  batch_id: number
+  status: 'proven' | 'pending' | 'skipped' | 'failed'
+  prover: string
+  public_inputs: PublicInputs | null
+  proof_bytes: string | null
+  generated_at: number | null
+  proving_time_ms: number | null
+  proof_size_bytes: number | null
+  verification_note: string
+}
+
 const PF = "'Playfair Display', serif"
 const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
@@ -67,6 +86,7 @@ export default function BatchDetailPage() {
   const [notFound, setNotFound] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [coveringAnchor, setCoveringAnchor] = useState<AnchorRecord | null | undefined>(undefined)
+  const [proofData, setProofData] = useState<BatchProofData | null>(null)
 
   const fetchBatch = useCallback(async () => {
     try {
@@ -101,11 +121,24 @@ export default function BatchDetailPage() {
     }
   }, [])
 
+  const fetchProof = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/batches/${id}/proof`)
+      const data = await res.json()
+      if (data.ok && data.data) setProofData(data.data)
+    } catch {
+      // silently ignore
+    }
+  }, [id])
+
   useEffect(() => { fetchBatch() }, [fetchBatch])
 
   useEffect(() => {
-    if (batch) fetchAnchors(batch.timestamp)
-  }, [batch, fetchAnchors])
+    if (batch) {
+      fetchAnchors(batch.timestamp)
+      fetchProof()
+    }
+  }, [batch, fetchAnchors, fetchProof])
 
   function downloadFills() {
     if (!batch) return
@@ -242,6 +275,82 @@ export default function BatchDetailPage() {
             Real cryptographic signatures will be published at mainnet.
           </p>
         </div>
+
+        <div style={{ background: '#0C0C0C', padding: '20px 24px', marginTop: '36px' }}>
+          <p style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.2)', margin: '0 0 14px' }}>
+            ZK Proof Status
+          </p>
+          {!proofData ? (
+            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.3)', margin: 0 }}>Loading proof status…</p>
+          ) : proofData.status === 'skipped' ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgba(180,140,60,0.7)', flexShrink: 0 }} />
+                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: 'rgba(180,140,60,0.9)' }}>OPTIMISTIC MODE</span>
+              </div>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.35)', margin: '0 0 14px', lineHeight: 1.7 }}>
+                This batch is secured by optimistic verification. A ZK proof will be generated if this batch is challenged during the 7-day challenge window.
+              </p>
+              {proofData.public_inputs && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                  {[
+                    ['STATE ROOT BEFORE', proofData.public_inputs.state_root_before.slice(0, 18) + '…'],
+                    ['STATE ROOT AFTER', proofData.public_inputs.state_root_after.slice(0, 18) + '…'],
+                    ['FILL COUNT', String(proofData.public_inputs.fill_count)],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ display: 'flex', gap: '12px' }}>
+                      <span style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', minWidth: '130px' }}>{label}</span>
+                      <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.45)' }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : proofData.status === 'proven' ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#6B8A5A', flexShrink: 0 }} />
+                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#6B8A5A' }}>PROVEN</span>
+              </div>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.35)', margin: '0 0 10px' }}>
+                Prover: {proofData.prover} · {proofData.proving_time_ms}ms · {proofData.proof_size_bytes ? `${proofData.proof_size_bytes} bytes` : 'size unknown'}
+              </p>
+              <button
+                disabled
+                title="On-chain verification coming at mainnet"
+                style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,228,216,0.3)', background: 'transparent', border: '1px solid rgba(232,228,216,0.1)', padding: '6px 14px', cursor: 'not-allowed' }}
+              >
+                VERIFY
+              </button>
+            </div>
+          ) : proofData.status === 'pending' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgba(180,140,60,0.5)', flexShrink: 0, animation: 'pulse 1.5s ease-in-out infinite' }} />
+              <span style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,228,216,0.3)' }}>PROOF PENDING — Check back shortly.</span>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#CC3333', flexShrink: 0 }} />
+                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#CC3333' }}>PROOF FAILED</span>
+              </div>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.3)', margin: 0 }}>
+                {proofData.verification_note}
+              </p>
+            </div>
+          )}
+          <p style={{ fontFamily: IN, fontSize: '9px', color: 'rgba(232,228,216,0.15)', margin: '14px 0 0', lineHeight: 1.6 }}>
+            Full ZK proof generation for every batch ships post-Stanford AFT Lab (June 2026). Powered by SP1.{' '}
+            <a
+              href="https://github.com/succinctlabs/sp1"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'rgba(232,228,216,0.3)', textDecoration: 'underline' }}
+            >
+              Learn more about SP1 →
+            </a>
+          </p>
+        </div>
       </div>
 
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
@@ -302,9 +411,12 @@ export default function BatchDetailPage() {
         </div>
       </div>
 
-      <div style={{ background: '#E8E4D8', padding: '24px 52px' }}>
+      <div style={{ background: '#E8E4D8', padding: '24px 52px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
         <Link href="/batches" style={{ fontFamily: IN, fontSize: '11px', color: '#0C0C0C', textDecoration: 'underline' }}>
           ← Back to batch explorer
+        </Link>
+        <Link href="/proofs" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.5)', textDecoration: 'underline' }}>
+          ZK Proof System →
         </Link>
       </div>
 

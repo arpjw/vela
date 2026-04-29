@@ -18,6 +18,7 @@ use engine::MatchingEngine;
 use feeds::FeedManager;
 use rate_limit::RateLimiter;
 use crate::types::{AnchorRecord, Decision, Incident, RegisteredMM, StoredFill, StoredOrder, WsEnvelope};
+use zkvm::{BatchProof, ZkProver};
 
 pub struct OrderChannelItem {
     pub req: ::types::PostOrderRequest,
@@ -55,6 +56,8 @@ pub struct AppState {
     pub incidents: Arc<Mutex<Vec<Incident>>>,
     pub decisions: Arc<Mutex<Vec<Decision>>>,
     pub registered_mms: Arc<Mutex<Vec<RegisteredMM>>>,
+    pub proofs: Arc<Mutex<HashMap<u64, BatchProof>>>,
+    pub prover: Arc<dyn ZkProver>,
 }
 
 impl AppState {
@@ -66,6 +69,8 @@ impl AppState {
         let da_dir = std::env::var("DA_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/data/da"));
+
+        let prover: Arc<dyn ZkProver> = Arc::new(zkvm::PlaceholderProver);
 
         let state = Arc::new(AppState {
             engine: Arc::clone(&engine_arc),
@@ -97,6 +102,8 @@ impl AppState {
             incidents: Arc::new(Mutex::new(Vec::new())),
             decisions: Arc::new(Mutex::new(Vec::new())),
             registered_mms: Arc::new(Mutex::new(Vec::new())),
+            proofs: Arc::new(Mutex::new(HashMap::new())),
+            prover,
         });
 
         tokio::spawn(engine_order_task(order_rx, engine_arc));

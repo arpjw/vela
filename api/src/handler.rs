@@ -166,6 +166,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/market-makers/register", post(register_market_maker))
         .route("/analytics", get(analytics_handler))
         .route("/analytics/:market_id", get(analytics_market_handler))
+        .route("/batches/:batch_id/proof", get(batch_proof_handler))
+        .route("/proofs/stats", get(proof_stats_handler))
+        .route("/proofs", get(proofs_list_handler))
         .with_state(state)
         .layer(cors)
 }
@@ -1106,19 +1109,72 @@ fn batch_state_root(fill_ids: &[String]) -> String {
     format!("0x{}", hex::encode(hasher.finalize()))
 }
 
+fn stored_fill_to_proof_fill(fill: &StoredFill) -> zkvm::ProofFill {
+    zkvm::ProofFill {
+        fill_id: fill.id.clone(),
+        market_id: fill.market_id.clone(),
+        price: fill.price,
+        quantity: fill.quantity,
+        maker_address: fill.maker_address.clone(),
+        taker_address: fill.taker_address.clone(),
+        timestamp: fill.timestamp,
+    }
+}
+
+fn spawn_proof(
+    state: Arc<AppState>,
+    batch_id: u64,
+    state_root_before: String,
+    state_root_after: String,
+    fills: Vec<zkvm::ProofFill>,
+    orders_processed: u64,
+    timestamp: u64,
+) {
+    let pending = zkvm::BatchProof {
+        batch_id,
+        status: zkvm::ProofStatus::Pending,
+        proof_bytes: None,
+        public_inputs: None,
+        prover: "placeholder".to_string(),
+        generated_at: None,
+        proving_time_ms: None,
+        proof_size_bytes: None,
+    };
+    let proofs = Arc::clone(&state.proofs);
+    let prover = Arc::clone(&state.prover);
+    tokio::spawn(async move {
+        proofs.lock().await.insert(batch_id, pending);
+        let request = zkvm::ProofRequest {
+            batch_id,
+            state_root_before,
+            state_root_after,
+            fills,
+            orders_processed,
+            timestamp,
+        };
+        let result = prover.prove_batch(request).await;
+        proofs.lock().await.insert(batch_id, result.proof);
+    });
+}
+
 
 async fn list_batches(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     const WINDOW_US: u64 = 30_000_000;
     let fills = state.fills.lock().await;
-    let mut windows: BTreeMap<u64, Vec<&StoredFill>> = BTreeMap::new();
+    let mut windows: BTreeMap<u64, Vec<StoredFill>> = BTreeMap::new();
     for fill in fills.iter() {
-        windows.entry(fill.timestamp / WINDOW_US).or_default().push(fill);
+        windows.entry(fill.timestamp / WINDOW_US).or_default().push(fill.clone());
     }
-    let batches: Vec<BatchSummary> = windows.into_iter().enumerate().map(|(idx, (window_key, batch_fills))| {
+    drop(fills);
+
+    let window_vec: Vec<(u64, Vec<StoredFill>)> = windows.into_iter().collect();
+    let mut prev_root = format!("0x{}", "0".repeat(64));
+
+    let batches: Vec<BatchSummary> = window_vec.iter().enumerate().map(|(idx, (window_key, batch_fills))| {
         let fill_ids: Vec<String> = batch_fills.iter().map(|f| f.id.clone()).collect();
         let mut order_ids: HashSet<u64> = HashSet::new();
         let mut markets: HashSet<String> = HashSet::new();
-        for fill in &batch_fills {
+        for fill in batch_fills {
             order_ids.insert(fill.maker_order_id);
             order_ids.insert(fill.taker_order_id);
             markets.insert(fill.market_id.clone());
@@ -1137,6 +1193,23 @@ async fn list_batches(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             fills: fill_ids,
         }
     }).collect();
+
+    for (idx, (window_key, batch_fills)) in window_vec.iter().enumerate() {
+        let batch_id = (idx + 1) as u64;
+        let fill_ids: Vec<String> = batch_fills.iter().map(|f| f.id.clone()).collect();
+        let state_root_after = batch_state_root(&fill_ids);
+        let state_root_before = prev_root.clone();
+        prev_root = state_root_after.clone();
+
+        let has_proof = state.proofs.lock().await.contains_key(&batch_id);
+        if !has_proof {
+            let proof_fills: Vec<zkvm::ProofFill> = batch_fills.iter().map(stored_fill_to_proof_fill).collect();
+            let orders_processed = batch_fills.len() as u64 * (idx as u64 + 1);
+            let timestamp = window_key * WINDOW_US / 1000;
+            spawn_proof(Arc::clone(&state), batch_id, state_root_before, state_root_after, proof_fills, orders_processed, timestamp);
+        }
+    }
+
     Json(ApiResponse::ok(batches))
 }
 
@@ -1146,15 +1219,18 @@ async fn get_batch(
 ) -> impl IntoResponse {
     const WINDOW_US: u64 = 30_000_000;
     let fills = state.fills.lock().await;
-    let mut windows: BTreeMap<u64, Vec<&StoredFill>> = BTreeMap::new();
+    let mut windows: BTreeMap<u64, Vec<StoredFill>> = BTreeMap::new();
     for fill in fills.iter() {
-        windows.entry(fill.timestamp / WINDOW_US).or_default().push(fill);
+        windows.entry(fill.timestamp / WINDOW_US).or_default().push(fill.clone());
     }
+    drop(fills);
+
     let target_idx = batch_id.saturating_sub(1) as usize;
-    let entry = windows.into_iter().nth(target_idx);
+    let window_vec: Vec<(u64, Vec<StoredFill>)> = windows.into_iter().collect();
+    let entry = window_vec.into_iter().enumerate().nth(target_idx);
     match entry {
         None => (StatusCode::NOT_FOUND, Json(ApiResponse::<()>::err("batch not found"))).into_response(),
-        Some((window_key, batch_fills)) => {
+        Some((idx, (window_key, batch_fills))) => {
             let fill_ids: Vec<String> = batch_fills.iter().map(|f| f.id.clone()).collect();
             let mut order_ids: HashSet<u64> = HashSet::new();
             let mut markets: HashSet<String> = HashSet::new();
@@ -1166,6 +1242,32 @@ async fn get_batch(
             let mut markets_vec: Vec<String> = markets.into_iter().collect();
             markets_vec.sort();
             let state_root = batch_state_root(&fill_ids);
+
+            let has_proof = state.proofs.lock().await.contains_key(&batch_id);
+            if !has_proof {
+                let state_root_after = state_root.clone();
+                let state_root_before = if idx == 0 {
+                    format!("0x{}", "0".repeat(64))
+                } else {
+                    let fills_guard = state.fills.lock().await;
+                    let mut prev_windows: BTreeMap<u64, Vec<StoredFill>> = BTreeMap::new();
+                    for f in fills_guard.iter() {
+                        prev_windows.entry(f.timestamp / WINDOW_US).or_default().push(f.clone());
+                    }
+                    drop(fills_guard);
+                    let prev_fill_ids: Vec<String> = prev_windows
+                        .into_iter()
+                        .nth(idx - 1)
+                        .map(|(_, fs)| fs.iter().map(|f| f.id.clone()).collect())
+                        .unwrap_or_default();
+                    batch_state_root(&prev_fill_ids)
+                };
+                let proof_fills: Vec<zkvm::ProofFill> = batch_fills.iter().map(stored_fill_to_proof_fill).collect();
+                let orders_processed = batch_fills.len() as u64;
+                let timestamp = window_key * WINDOW_US / 1000;
+                spawn_proof(Arc::clone(&state), batch_id, state_root_before, state_root_after, proof_fills, orders_processed, timestamp);
+            }
+
             let detail = BatchDetail {
                 batch_id,
                 timestamp: window_key * WINDOW_US / 1000,
@@ -1174,7 +1276,7 @@ async fn get_batch(
                 markets: markets_vec,
                 state_root,
                 operator_signature: format!("0x{}", "0".repeat(130)),
-                fills: batch_fills.iter().map(|f| (*f).clone()).collect(),
+                fills: batch_fills,
             };
             (StatusCode::OK, Json(ApiResponse::ok(detail))).into_response()
         }
@@ -2071,4 +2173,123 @@ async fn admin_fees_handler(
         "fee_balances": fee_balances,
         "total_fees_collected_usdc": total_fees_collected_usdc,
     })))).into_response()
+}
+
+#[derive(serde::Deserialize, Default)]
+struct ProofsListQuery {
+    limit: Option<usize>,
+    cursor: Option<u64>,
+}
+
+async fn batch_proof_handler(
+    Path(batch_id): Path<u64>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let proof = state.proofs.lock().await.get(&batch_id).cloned();
+    match proof {
+        Some(p) => {
+            let status_str = match p.status {
+                zkvm::ProofStatus::Proven => "proven",
+                zkvm::ProofStatus::Pending => "pending",
+                zkvm::ProofStatus::Skipped => "skipped",
+                zkvm::ProofStatus::Failed => "failed",
+            };
+            let data = serde_json::json!({
+                "batch_id": p.batch_id,
+                "status": status_str,
+                "prover": p.prover,
+                "public_inputs": p.public_inputs,
+                "proof_bytes": p.proof_bytes.as_ref().map(|b| format!("0x{}", hex::encode(b))),
+                "generated_at": p.generated_at,
+                "proving_time_ms": p.proving_time_ms,
+                "proof_size_bytes": p.proof_size_bytes,
+                "verification_note": "Optimistic mode: proof generated only if challenged. Full ZK proving coming post-Stanford AFT Lab.",
+            });
+            Json(ApiResponse::ok(data)).into_response()
+        }
+        None => {
+            let data = serde_json::json!({
+                "batch_id": batch_id,
+                "status": "pending",
+                "prover": "placeholder",
+                "public_inputs": null,
+                "verification_note": "Proof pending. Check back shortly.",
+            });
+            Json(ApiResponse::ok(data)).into_response()
+        }
+    }
+}
+
+async fn proof_stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let proofs = state.proofs.lock().await;
+    let total_batches = proofs.len() as u64;
+    let mut proven: u64 = 0;
+    let mut skipped: u64 = 0;
+    let mut pending: u64 = 0;
+    let mut failed: u64 = 0;
+    for p in proofs.values() {
+        match p.status {
+            zkvm::ProofStatus::Proven => proven += 1,
+            zkvm::ProofStatus::Skipped => skipped += 1,
+            zkvm::ProofStatus::Pending => pending += 1,
+            zkvm::ProofStatus::Failed => failed += 1,
+        }
+    }
+    drop(proofs);
+
+    Json(ApiResponse::ok(serde_json::json!({
+        "total_batches": total_batches,
+        "proven": proven,
+        "skipped": skipped,
+        "pending": pending,
+        "failed": failed,
+        "prover_mode": "optimistic",
+        "prover_version": "placeholder-0.1.0",
+        "sp1_integration_status": "coming_soon",
+        "note": "Full ZK proof generation ships post-Stanford AFT Lab (June 2026).",
+    }))).into_response()
+}
+
+async fn proofs_list_handler(
+    Query(params): Query<ProofsListQuery>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let limit = params.limit.unwrap_or(50).min(200);
+    let cursor = params.cursor;
+
+    let proofs_map = state.proofs.lock().await;
+    let mut all: Vec<&zkvm::BatchProof> = proofs_map.values().collect();
+    all.sort_by(|a, b| b.batch_id.cmp(&a.batch_id));
+
+    let filtered: Vec<&zkvm::BatchProof> = all
+        .into_iter()
+        .filter(|p| cursor.map_or(true, |c| p.batch_id < c))
+        .take(limit)
+        .collect();
+
+    let items: Vec<serde_json::Value> = filtered.iter().map(|p| {
+        let status_str = match p.status {
+            zkvm::ProofStatus::Proven => "proven",
+            zkvm::ProofStatus::Pending => "pending",
+            zkvm::ProofStatus::Skipped => "skipped",
+            zkvm::ProofStatus::Failed => "failed",
+        };
+        serde_json::json!({
+            "batch_id": p.batch_id,
+            "status": status_str,
+            "prover": p.prover,
+            "generated_at": p.generated_at,
+            "proving_time_ms": p.proving_time_ms,
+            "proof_size_bytes": p.proof_size_bytes,
+            "public_inputs": p.public_inputs,
+        })
+    }).collect();
+
+    let next_cursor = filtered.last().map(|p| p.batch_id);
+    drop(proofs_map);
+
+    Json(ApiResponse::ok(serde_json::json!({
+        "proofs": items,
+        "next_cursor": next_cursor,
+    }))).into_response()
 }

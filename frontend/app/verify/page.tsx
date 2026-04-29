@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import HexCanvas from '@/components/HexCanvas'
 
 const PF = "'Playfair Display', serif"
@@ -258,6 +259,11 @@ export default function VerifyPage() {
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '12px', color: 'rgba(232,228,216,0.2)', maxWidth: '480px' }}>
             All submitted challenges and their resolutions will be published here publicly.
           </p>
+          <div style={{ marginTop: '32px' }}>
+            <Link href="/proofs" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.3)', textDecoration: 'underline' }}>
+              View ZK proof system →
+            </Link>
+          </div>
         </div>
       </div>
     </div>

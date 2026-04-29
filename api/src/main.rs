@@ -171,6 +171,7 @@ async fn main() {
     let mut loaded_incidents: Vec<Incident> = Vec::new();
     let mut loaded_decisions: Vec<api::types::Decision> = Vec::new();
     let mut loaded_mms: Vec<api::types::RegisteredMM> = Vec::new();
+    let mut loaded_proofs: std::collections::HashMap<u64, zkvm::BatchProof> = std::collections::HashMap::new();
     let mut need_restart_incident = false;
 
     match api::snapshot::load_snapshot().await {
@@ -181,6 +182,7 @@ async fn main() {
             loaded_incidents = snapshot.incidents.clone();
             loaded_decisions = snapshot.decisions.clone();
             loaded_mms = snapshot.registered_mms.clone();
+            loaded_proofs = api::snapshot::extract_proofs_from_snapshot(&snapshot);
             match api::snapshot::restore_engine_from_snapshot(&mut engine, snapshot) {
                 Ok(()) => println!("Restored from snapshot"),
                 Err(e) => {
@@ -191,6 +193,7 @@ async fn main() {
                     loaded_incidents.clear();
                     loaded_decisions.clear();
                     loaded_mms.clear();
+                    loaded_proofs.clear();
                     need_restart_incident = false;
                 }
             }
@@ -213,6 +216,7 @@ async fn main() {
         *state.incidents.lock().await = loaded_incidents;
         *state.decisions.lock().await = loaded_decisions;
         *state.registered_mms.lock().await = loaded_mms;
+        *state.proofs.lock().await = loaded_proofs;
     }
 
     if need_restart_incident {
