@@ -24,6 +24,24 @@ interface BatchProofData {
   verification_note: string
 }
 
+interface AttestationData {
+  batch_id: number
+  status: 'attested' | 'simulated' | 'pending' | 'failed'
+  platform: string
+  binary_hash: string | null
+  state_root: string | null
+  fill_count: number | null
+  operator_address: string | null
+  generated_at: number | null
+  attestation_time_ms: number | null
+  attester_version: string | null
+  verification_note: string
+  attestation_report: string | null
+  vcek_cert: string | null
+  measurement: string | null
+  etherscan_anchor_tx: string | null
+}
+
 const PF = "'Playfair Display', serif"
 const IN = 'Inter, sans-serif'
 const CN = "'Courier New', monospace"
@@ -87,6 +105,7 @@ export default function BatchDetailPage() {
   const [showModal, setShowModal] = useState(false)
   const [coveringAnchor, setCoveringAnchor] = useState<AnchorRecord | null | undefined>(undefined)
   const [proofData, setProofData] = useState<BatchProofData | null>(null)
+  const [attestationData, setAttestationData] = useState<AttestationData | null>(null)
 
   const fetchBatch = useCallback(async () => {
     try {
@@ -131,14 +150,25 @@ export default function BatchDetailPage() {
     }
   }, [id])
 
+  const fetchAttestation = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/batches/${id}/attestation`)
+      const data = await res.json()
+      if (data.ok && data.data) setAttestationData(data.data)
+    } catch {
+      // silently ignore
+    }
+  }, [id])
+
   useEffect(() => { fetchBatch() }, [fetchBatch])
 
   useEffect(() => {
     if (batch) {
       fetchAnchors(batch.timestamp)
       fetchProof()
+      fetchAttestation()
     }
-  }, [batch, fetchAnchors, fetchProof])
+  }, [batch, fetchAnchors, fetchProof, fetchAttestation])
 
   function downloadFills() {
     if (!batch) return
@@ -351,6 +381,85 @@ export default function BatchDetailPage() {
             </a>
           </p>
         </div>
+
+        <div style={{ borderTop: '1px solid rgba(232,228,216,0.06)', marginTop: '16px', paddingTop: '16px' }}>
+          <p style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(232,228,216,0.2)', margin: '0 0 14px' }}>
+            TEE Attestation
+          </p>
+          {!attestationData ? (
+            <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.3)', margin: 0 }}>Loading attestation status…</p>
+          ) : attestationData.status === 'simulated' ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgba(180,140,60,0.7)', flexShrink: 0 }} />
+                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: 'rgba(180,140,60,0.9)' }}>SIMULATED</span>
+              </div>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.35)', margin: '0 0 12px', lineHeight: 1.7 }}>
+                Hardware attestation requires AMD SEV-SNP deployment. This record confirms the structural integrity of the attestation pipeline.
+              </p>
+              {attestationData.binary_hash && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                  {[
+                    ['BINARY HASH', attestationData.binary_hash.slice(7, 23) + '…'],
+                    ['PLATFORM', 'Placeholder'],
+                    ['STATE ROOT', attestationData.state_root ? attestationData.state_root.slice(0, 10) + '…' : '—'],
+                    ['FILL COUNT', String(attestationData.fill_count ?? '—')],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ display: 'flex', gap: '12px' }}>
+                      <span style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', minWidth: '100px' }}>{label}</span>
+                      <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.45)' }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p style={{ fontFamily: IN, fontSize: '9px', color: 'rgba(232,228,216,0.15)', margin: '8px 0 0', lineHeight: 1.6 }}>
+                Real TEE attestation ships June 2026. Platform: AMD SEV-SNP + NVIDIA H100
+              </p>
+            </div>
+          ) : attestationData.status === 'attested' ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#6B8A5A', flexShrink: 0 }} />
+                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#6B8A5A' }}>ATTESTED — AMD SEV-SNP</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                {[
+                  ['BINARY HASH', attestationData.binary_hash ?? '—'],
+                  ['MEASUREMENT', attestationData.measurement ?? '—'],
+                  ['VCEK CERT', attestationData.vcek_cert ? 'View certificate chain →' : '—'],
+                  ['PLATFORM', 'AMD SEV-SNP'],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display: 'flex', gap: '12px' }}>
+                    <span style={{ fontFamily: IN, fontSize: '8px', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(232,228,216,0.2)', minWidth: '100px' }}>{label}</span>
+                    <span style={{ fontFamily: CN, fontSize: '10px', color: 'rgba(232,228,216,0.45)' }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+              <button
+                disabled
+                title="On-chain verification coming at mainnet"
+                style={{ fontFamily: IN, fontSize: '10px', color: 'rgba(232,228,216,0.3)', background: 'transparent', border: '1px solid rgba(232,228,216,0.1)', padding: '6px 14px', cursor: 'not-allowed' }}
+              >
+                VERIFY ATTESTATION
+              </button>
+            </div>
+          ) : attestationData.status === 'pending' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgba(180,140,60,0.5)', flexShrink: 0, animation: 'pulse 1.5s ease-in-out infinite' }} />
+              <span style={{ fontFamily: IN, fontSize: '12px', color: 'rgba(232,228,216,0.3)' }}>ATTESTATION PENDING — Check back shortly.</span>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#CC3333', flexShrink: 0 }} />
+                <span style={{ fontFamily: IN, fontWeight: 600, fontSize: '12px', color: '#CC3333' }}>ATTESTATION FAILED</span>
+              </div>
+              <p style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(232,228,216,0.3)', margin: 0 }}>
+                {attestationData.verification_note}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{ position: 'relative', background: '#0C0C0C', overflow: 'hidden' }} className="px-6 py-12 lg:px-[52px] lg:py-[52px]">
@@ -417,6 +526,9 @@ export default function BatchDetailPage() {
         </Link>
         <Link href="/proofs" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.5)', textDecoration: 'underline' }}>
           ZK Proof System →
+        </Link>
+        <Link href="/tee" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.5)', textDecoration: 'underline' }}>
+          TEE Attestation →
         </Link>
       </div>
 

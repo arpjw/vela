@@ -6,6 +6,7 @@ use engine::MatchingEngine;
 use types::{AssetId, Balance, Market, Order, UserId, UserMetadata};
 use crate::types::{Decision, Incident, RegisteredMM};
 use zkvm::BatchProof;
+use tee::AttestationRecord;
 
 const SNAPSHOT_INTERVAL_SECS: u64 = 60;
 
@@ -41,6 +42,8 @@ pub struct EngineSnapshot {
     pub registered_mms: Vec<RegisteredMM>,
     #[serde(default)]
     pub proofs: HashMap<u64, BatchProof>,
+    #[serde(default)]
+    pub attestations: HashMap<u64, AttestationRecord>,
 }
 
 pub async fn save_snapshot(state: Arc<crate::AppState>) -> Result<()> {
@@ -81,6 +84,7 @@ pub async fn save_snapshot(state: Arc<crate::AppState>) -> Result<()> {
     let decisions = state.decisions.lock().await.clone();
     let registered_mms = state.registered_mms.lock().await.clone();
     let proofs = state.proofs.lock().await.clone();
+    let attestations = state.attestations.lock().await.clone();
 
     let snapshot = EngineSnapshot {
         version: 1,
@@ -96,6 +100,7 @@ pub async fn save_snapshot(state: Arc<crate::AppState>) -> Result<()> {
         decisions,
         registered_mms,
         proofs,
+        attestations,
     };
 
     let json = serde_json::to_vec(&snapshot)?;
@@ -185,4 +190,10 @@ pub fn restore_engine_from_snapshot(
 
 pub fn extract_proofs_from_snapshot(snapshot: &EngineSnapshot) -> HashMap<u64, BatchProof> {
     snapshot.proofs.clone()
+}
+
+pub fn extract_attestations_from_snapshot(
+    snapshot: &EngineSnapshot,
+) -> HashMap<u64, AttestationRecord> {
+    snapshot.attestations.clone()
 }

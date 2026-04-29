@@ -19,6 +19,7 @@ use feeds::FeedManager;
 use rate_limit::RateLimiter;
 use crate::types::{AnchorRecord, Decision, Incident, RegisteredMM, StoredFill, StoredOrder, WsEnvelope};
 use zkvm::{BatchProof, ZkProver};
+use tee::{AttestationRecord, TeeAttester};
 
 pub struct OrderChannelItem {
     pub req: ::types::PostOrderRequest,
@@ -58,6 +59,8 @@ pub struct AppState {
     pub registered_mms: Arc<Mutex<Vec<RegisteredMM>>>,
     pub proofs: Arc<Mutex<HashMap<u64, BatchProof>>>,
     pub prover: Arc<dyn ZkProver>,
+    pub attestations: Arc<Mutex<HashMap<u64, AttestationRecord>>>,
+    pub attester: Arc<dyn TeeAttester>,
 }
 
 impl AppState {
@@ -71,6 +74,7 @@ impl AppState {
             .unwrap_or_else(|_| PathBuf::from("/data/da"));
 
         let prover: Arc<dyn ZkProver> = Arc::new(zkvm::PlaceholderProver);
+        let attester: Arc<dyn TeeAttester> = Arc::new(tee::PlaceholderAttester::new());
 
         let state = Arc::new(AppState {
             engine: Arc::clone(&engine_arc),
@@ -104,6 +108,8 @@ impl AppState {
             registered_mms: Arc::new(Mutex::new(Vec::new())),
             proofs: Arc::new(Mutex::new(HashMap::new())),
             prover,
+            attestations: Arc::new(Mutex::new(HashMap::new())),
+            attester,
         });
 
         tokio::spawn(engine_order_task(order_rx, engine_arc));

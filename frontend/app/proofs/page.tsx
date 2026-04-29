@@ -252,6 +252,9 @@ export default function ProofsPage() {
         <Link href="/verify" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.5)', textDecoration: 'underline' }}>
           Submit a challenge →
         </Link>
+        <Link href="/tee" style={{ fontFamily: IN, fontSize: '11px', color: 'rgba(12,12,12,0.5)', textDecoration: 'underline' }}>
+          TEE Attestation →
+        </Link>
       </div>
     </div>
   )

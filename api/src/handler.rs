@@ -167,8 +167,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/analytics", get(analytics_handler))
         .route("/analytics/:market_id", get(analytics_market_handler))
         .route("/batches/:batch_id/proof", get(batch_proof_handler))
+        .route("/batches/:batch_id/attestation", get(batch_attestation_handler))
         .route("/proofs/stats", get(proof_stats_handler))
         .route("/proofs", get(proofs_list_handler))
+        .route("/tee/stats", get(tee_stats_handler))
+        .route("/attestations", get(attestations_list_handler))
         .with_state(state)
         .layer(cors)
 }
@@ -1157,6 +1160,39 @@ fn spawn_proof(
     });
 }
 
+fn spawn_attestation(
+    state: Arc<AppState>,
+    batch_id: u64,
+    state_root: String,
+    fill_count: u64,
+    orders_processed: u64,
+    timestamp: u64,
+) {
+    let attestations = Arc::clone(&state.attestations);
+    let attester = Arc::clone(&state.attester);
+    let operator_address = std::env::var("OPERATOR_ADDRESS")
+        .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
+    tokio::spawn(async move {
+        let binary_hash = attester.binary_hash();
+        let request = tee::AttestationRequest {
+            batch_id,
+            state_root,
+            binary_hash,
+            fill_count,
+            orders_processed,
+            timestamp,
+            operator_address,
+        };
+        let result = attester.attest_batch(request).await;
+        let mut store = attestations.lock().await;
+        store.insert(batch_id, result.record);
+        if store.len() > 1000 {
+            if let Some(&min_key) = store.keys().min() {
+                store.remove(&min_key);
+            }
+        }
+    });
+}
 
 async fn list_batches(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     const WINDOW_US: u64 = 30_000_000;
@@ -1206,7 +1242,14 @@ async fn list_batches(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             let proof_fills: Vec<zkvm::ProofFill> = batch_fills.iter().map(stored_fill_to_proof_fill).collect();
             let orders_processed = batch_fills.len() as u64 * (idx as u64 + 1);
             let timestamp = window_key * WINDOW_US / 1000;
-            spawn_proof(Arc::clone(&state), batch_id, state_root_before, state_root_after, proof_fills, orders_processed, timestamp);
+            spawn_proof(Arc::clone(&state), batch_id, state_root_before, state_root_after.clone(), proof_fills, orders_processed, timestamp);
+        }
+        let has_attestation = state.attestations.lock().await.contains_key(&batch_id);
+        if !has_attestation {
+            let fill_count = batch_fills.len() as u64;
+            let orders_processed = fill_count * (idx as u64 + 1);
+            let timestamp = window_key * WINDOW_US / 1000;
+            spawn_attestation(Arc::clone(&state), batch_id, state_root_after, fill_count, orders_processed, timestamp);
         }
     }
 
@@ -1266,6 +1309,14 @@ async fn get_batch(
                 let orders_processed = batch_fills.len() as u64;
                 let timestamp = window_key * WINDOW_US / 1000;
                 spawn_proof(Arc::clone(&state), batch_id, state_root_before, state_root_after, proof_fills, orders_processed, timestamp);
+            }
+
+            let has_attestation = state.attestations.lock().await.contains_key(&batch_id);
+            if !has_attestation {
+                let fill_count = batch_fills.len() as u64;
+                let orders_processed = fill_count;
+                let timestamp = window_key * WINDOW_US / 1000;
+                spawn_attestation(Arc::clone(&state), batch_id, state_root.clone(), fill_count, orders_processed, timestamp);
             }
 
             let detail = BatchDetail {
@@ -2292,4 +2343,182 @@ async fn proofs_list_handler(
         "proofs": items,
         "next_cursor": next_cursor,
     }))).into_response()
+}
+
+async fn batch_attestation_handler(
+    Path(batch_id): Path<u64>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let record = state.attestations.lock().await.get(&batch_id).cloned();
+    match record {
+        Some(r) => {
+            let status_str = match r.status {
+                tee::AttestationStatus::Attested => "attested",
+                tee::AttestationStatus::Pending => "pending",
+                tee::AttestationStatus::Simulated => "simulated",
+                tee::AttestationStatus::Failed => "failed",
+            };
+            let platform_str = match r.platform {
+                tee::TeePlatform::AmdSevSnp => "amd_sev_snp",
+                tee::TeePlatform::IntelTdx => "intel_tdx",
+                tee::TeePlatform::AwsNitro => "aws_nitro",
+                tee::TeePlatform::Placeholder => "placeholder",
+            };
+            let data = serde_json::json!({
+                "batch_id": r.batch_id,
+                "status": status_str,
+                "platform": platform_str,
+                "binary_hash": format!("sha256:{}", r.binary_hash),
+                "state_root": r.state_root,
+                "fill_count": r.fill_count,
+                "operator_address": r.operator_address,
+                "generated_at": r.generated_at,
+                "attestation_time_ms": r.attestation_time_ms,
+                "attester_version": r.attester_version,
+                "verification_note": r.verification_note,
+                "attestation_report": r.attestation_report.as_ref().map(|b| format!("0x{}", hex::encode(b))),
+                "vcek_cert": r.vcek_cert,
+                "measurement": r.measurement,
+                "etherscan_anchor_tx": r.etherscan_anchor_tx,
+            });
+            Json(ApiResponse::ok(data)).into_response()
+        }
+        None => {
+            let data = serde_json::json!({
+                "batch_id": batch_id,
+                "status": "pending",
+                "verification_note": "Attestation pending for this batch.",
+            });
+            Json(ApiResponse::ok(data)).into_response()
+        }
+    }
+}
+
+async fn tee_stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let attestations = state.attestations.lock().await;
+    let total_batches = attestations.len() as u64;
+    let mut attested: u64 = 0;
+    let mut simulated: u64 = 0;
+    let mut pending: u64 = 0;
+    let mut failed: u64 = 0;
+    for r in attestations.values() {
+        match r.status {
+            tee::AttestationStatus::Attested => attested += 1,
+            tee::AttestationStatus::Simulated => simulated += 1,
+            tee::AttestationStatus::Pending => pending += 1,
+            tee::AttestationStatus::Failed => failed += 1,
+        }
+    }
+    let binary_hash = format!("sha256:{}", state.attester.binary_hash());
+    drop(attestations);
+
+    Json(ApiResponse::ok(serde_json::json!({
+        "platform": "placeholder",
+        "platform_status": "development",
+        "binary_hash": binary_hash,
+        "total_batches": total_batches,
+        "attested": attested,
+        "simulated": simulated,
+        "pending": pending,
+        "failed": failed,
+        "attestation_roadmap": {
+            "current": "Placeholder — structural correctness only",
+            "phase_2": "AMD SEV-SNP confidential VM (June 2026)",
+            "phase_3": "NVIDIA H100 GPU attestation for ZK acceleration",
+            "reference": "https://oasis.net/blog/verifiable-ai-with-tees",
+        },
+    }))).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct AttestationsListQuery {
+    limit: Option<usize>,
+    cursor: Option<u64>,
+}
+
+async fn attestations_list_handler(
+    Query(params): Query<AttestationsListQuery>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let limit = params.limit.unwrap_or(50).min(200);
+    let cursor = params.cursor;
+
+    let store = state.attestations.lock().await;
+    let mut all: Vec<&tee::AttestationRecord> = store.values().collect();
+    all.sort_by(|a, b| b.batch_id.cmp(&a.batch_id));
+
+    let filtered: Vec<&tee::AttestationRecord> = all
+        .into_iter()
+        .filter(|r| cursor.map_or(true, |c| r.batch_id < c))
+        .take(limit)
+        .collect();
+
+    let items: Vec<serde_json::Value> = filtered.iter().map(|r| {
+        let status_str = match r.status {
+            tee::AttestationStatus::Attested => "attested",
+            tee::AttestationStatus::Simulated => "simulated",
+            tee::AttestationStatus::Pending => "pending",
+            tee::AttestationStatus::Failed => "failed",
+        };
+        let platform_str = match r.platform {
+            tee::TeePlatform::AmdSevSnp => "amd_sev_snp",
+            tee::TeePlatform::IntelTdx => "intel_tdx",
+            tee::TeePlatform::AwsNitro => "aws_nitro",
+            tee::TeePlatform::Placeholder => "placeholder",
+        };
+        serde_json::json!({
+            "batch_id": r.batch_id,
+            "status": status_str,
+            "platform": platform_str,
+            "binary_hash": format!("sha256:{}", r.binary_hash),
+            "generated_at": r.generated_at,
+            "fill_count": r.fill_count,
+        })
+    }).collect();
+
+    let next_cursor = filtered.last().map(|r| r.batch_id);
+    drop(store);
+
+    Json(ApiResponse::ok(serde_json::json!({
+        "attestations": items,
+        "next_cursor": next_cursor,
+    }))).into_response()
+}
+
+#[cfg(test)]
+mod tee_tests {
+    use super::*;
+    use axum_test::TestServer;
+
+    fn make_test_app() -> TestServer {
+        use engine::MatchingEngine;
+        use types::FeeConfig;
+        let engine = MatchingEngine::new(FeeConfig::default(), 5.0);
+        let state = crate::AppState::new(engine);
+        let router = build_router(state);
+        TestServer::new(router).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_batch_attestation_pending_when_no_batch() {
+        let server = make_test_app();
+        let res = server.get("/batches/9999/attestation").await;
+        res.assert_status_ok();
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["data"]["status"], "pending");
+        assert_eq!(body["data"]["batch_id"], 9999);
+    }
+
+    #[tokio::test]
+    async fn test_tee_stats_structure() {
+        let server = make_test_app();
+        let res = server.get("/tee/stats").await;
+        res.assert_status_ok();
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["data"]["platform"], "placeholder");
+        assert!(body["data"]["binary_hash"].as_str().unwrap().starts_with("sha256:"));
+        assert_eq!(body["data"]["total_batches"], 0);
+    }
 }

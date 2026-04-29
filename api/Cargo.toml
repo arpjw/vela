@@ -13,6 +13,7 @@ path = "src/main.rs"
 types = { workspace = true }
 engine = { workspace = true }
 zkvm = { path = "../zkvm" }
+tee = { path = "../tee" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

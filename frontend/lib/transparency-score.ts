@@ -211,9 +211,17 @@ export const TRANSPARENCY_CRITERIA: Criterion[] = [
     status: 'planned',
     plannedIn: 'VEL-T1-01',
   },
+  {
+    id: 'CV-06',
+    category: 'Cryptographic Verification',
+    title: 'TEE hardware attestation',
+    description: 'AMD SEV-SNP Trusted Execution Environment attests that the correct matching engine binary ran on tamper-proof hardware after every batch.',
+    status: 'planned',
+    plannedIn: 'VEL-T1-04',
+  },
 ]
 
-export const TOTAL_CRITERIA = TRANSPARENCY_CRITERIA.length
+export const TOTAL_CRITERIA = 26
 
 export const COMPLETE_COUNT = TRANSPARENCY_CRITERIA.filter(c => c.status === 'complete').length
 

@@ -224,7 +224,7 @@ export default function TransparencyScorePage() {
             </span>
           </div>
           <p style={{ fontFamily: IN, fontWeight: 300, fontSize: '15px', lineHeight: 1.8, color: 'rgba(232,228,216,0.4)', maxWidth: '580px' }}>
-            Every transparency claim we make is verifiable. Below is the complete rubric — 25 criteria across 5 categories. We score ourselves honestly: complete means anyone can verify it right now. Planned means it is on the roadmap. We publish this so the industry has a standard to measure against.
+            Every transparency claim we make is verifiable. Below is the complete rubric — 26 criteria across 5 categories. We score ourselves honestly: complete means anyone can verify it right now. Planned means it is on the roadmap. Cryptographic verification includes both ZK proofs (mathematical correctness) and AMD SEV-SNP TEE attestation (hardware trust). We publish this so the industry has a standard to measure against.
           </p>
         </div>
       </div>

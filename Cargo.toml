@@ -6,6 +6,7 @@ members = [
     "api",
     "committer",
     "zkvm",
+    "tee",
     "benches",
 ]
 resolver = "2"
